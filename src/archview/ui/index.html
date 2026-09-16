@@ -21,14 +21,50 @@
       <button id="zoom-fit" title="Fit to window (0)">Fit</button>
       <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
       <span class="sep"></span>
+      <details class="menu" id="view-menu">
+        <summary title="Filters and colouring">View</summary>
+        <div class="menu-body">
+          <label><input type="checkbox" id="opt-tests"> Hide tests</label>
+          <label><input type="checkbox" id="opt-externals"> Show third-party packages</label>
+          <label><input type="checkbox" id="opt-zones"> Colour by metric zone</label>
+          <label><input type="checkbox" id="opt-legend" checked> Legend</label>
+          <hr>
+          <button id="metrics-table" class="menu-item">Metrics table&hellip;</button>
+        </div>
+      </details>
+      <details class="menu" id="export-menu">
+        <summary title="Export this view">Export</summary>
+        <div class="menu-body">
+          <button class="menu-item" data-export="svg">SVG image</button>
+          <button class="menu-item" data-export="png">PNG image</button>
+          <button class="menu-item" data-export="mermaid">Mermaid (copy)</button>
+          <button class="menu-item" data-export="dot">Graphviz DOT (copy)</button>
+        </div>
+      </details>
+      <button id="rules" title="Rule problems from archview check" hidden>Rules</button>
       <button id="reanalyze" title="Re-read the source and the rules (r)">Reanalyze</button>
     </div>
   </header>
 
   <main id="main">
     <section class="canvas">
-      <div class="stage" id="stage"><div id="graph" class="graph"><p class="hint">Loading&hellip;</p></div></div>
-      <footer class="cycles" id="cycles" hidden></footer>
+      <div class="stage-wrap">
+        <div class="stage" id="stage"><div id="graph" class="graph"><p class="hint">Loading&hellip;</p></div></div>
+        <aside class="legend" id="legend">
+          <div><span class="sw sw-pkg"></span>package</div>
+          <div><span class="sw sw-mod"></span>module</div>
+          <div><span class="sw sw-abs"></span>abstract</div>
+          <div><span class="sw sw-ext"></span>third-party</div>
+          <div><span class="ln"></span>imports (count)</div>
+          <div><span class="ln ln-abs"></span>to an abstraction</div>
+          <div><span class="ln ln-typing"></span>type checking only</div>
+          <div><span class="ln ln-cycle"></span>in a cycle</div>
+          <div><span class="ln ln-violation"></span>breaks a rule</div>
+          <div class="zones-only"><span class="sw sw-pain"></span>zone of pain</div>
+          <div class="zones-only"><span class="sw sw-useless"></span>zone of uselessness</div>
+        </aside>
+      </div>
+      <footer class="notes" id="notes" hidden></footer>
     </section>
     <aside class="panel" id="panel" hidden>
       <div class="panel-head">

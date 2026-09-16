@@ -110,3 +110,83 @@ def test_reanalyze_picks_up_new_code(client, repo):
 
     assert summary["modules"] == 13
     assert "reports" in [n["name"] for n in view["nodes"]]
+
+
+def rules_with_one_violation(repo):
+    from archview.cli import main
+
+    main(["init", str(repo)])
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+
+
+def test_marks_edges_and_imports_that_break_the_rules(repo, capsys):
+    rules_with_one_violation(repo)
+    client = TestClient(create_app(Workspace(repo)))
+
+    view = client.get("/api/view").json()
+    summary = client.get("/api/project").json()
+
+    broken = [(e["source"], e["target"]) for e in view["edges"] if e["violation"]]
+    assert broken == [("sample.api", "sample.services")]
+    assert 'class="violation"' in view["dot"]
+    assert (summary["rules"], summary["failing"]) == ("archview.toml", 1)
+
+
+def test_serves_the_check_report(repo, capsys):
+    rules_with_one_violation(repo)
+    client = TestClient(create_app(Workspace(repo)))
+
+    report = client.get("/api/check").json()
+
+    assert [p["kind"] for p in report["problems"] if p["fails"]] == ["not_allowed"]
+    assert "domain" in report["metrics"]
+
+
+def test_check_is_not_found_without_rules(client):
+    assert client.get("/api/check").status_code == 404
+
+
+def test_exports_the_view_as_mermaid_or_dot(client):
+    mermaid = client.get("/api/export", params={"format": "mermaid"})
+    dot = client.get("/api/export", params={"format": "dot", "root": "sample.infra"})
+
+    assert mermaid.text.startswith("%% archview: sample\nflowchart TB")
+    assert dot.text.startswith('digraph "sample.infra"')
+    assert client.get("/api/export", params={"format": "png"}).status_code == 404
+
+
+def test_views_can_show_externals_and_hide_tests(repo):
+    (repo / "sample" / "tests").mkdir()
+    (repo / "sample" / "tests" / "__init__.py").write_text("")
+    (repo / "sample" / "tests" / "test_api.py").write_text("from sample.api import routes\n")
+    client = TestClient(create_app(Workspace(repo)))
+
+    def names(**params):
+        return [n["name"] for n in client.get("/api/view", params=params).json()["nodes"]]
+
+    assert "tests" in names()
+    assert "tests" not in names(hide_tests=True)
+    assert "grimp" in names(externals=True)
+
+
+def test_does_not_serve_files_outside_the_ui_folder(client):
+    assert client.get("/ui/../server/app.py").status_code == 404
+    assert client.get("/ui/%2e%2e/server/app.py").status_code == 404
+
+
+def test_watch_reanalyzes_when_a_file_changes(repo):
+    import time
+
+    workspace = Workspace(repo)
+    workspace.watch(interval=0.05)
+    first = workspace.generation
+
+    time.sleep(0.2)
+    (repo / "sample" / "api" / "views.py").write_text("from sample.domain import model\n")
+    deadline = time.monotonic() + 5
+    while workspace.generation == first and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    assert workspace.generation > first
+    assert "sample.api.views" in {n.id for n in workspace.project.model.nodes}

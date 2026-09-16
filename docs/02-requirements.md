@@ -127,3 +127,16 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview check --format json` output is stable across runs and parseable by a script.
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
+
+## 12. Implementation status (2026-09-16, after M4)
+
+| Area | Built | Not yet |
+|---|---|---|
+| Analysis | A1–A14. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
+| Viewer | V1–V9, V11–V13. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
+| Checker | C1–C4, C6–C11. C5 text + JSON | C5 GitHub Actions annotations |
+| Agents | G1 `graph`, G3 (docs/06), G4 | G1 `why`/`deps`/`rdeps`/`cycles` (M5); G2 is optional (ADR 0005) |
+
+Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
+each other; TYPE_CHECKING imports are drawn but not checked by default; a baseline
+records imports, not line numbers.

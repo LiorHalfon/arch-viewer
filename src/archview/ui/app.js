@@ -9,15 +9,20 @@ const state = {
   project: null,
   root: null,
   view: null,
-  views: new Map(),     // root -> view payload
+  views: new Map(),     // "root|externals|tests" -> view payload
   places: new Map(),    // root -> {zoom, left, top}
   zoom: 1,
   natural: { w: 0, h: 0 },
+  sticky: null,         // {ids, label} while a focus is pinned
+  options: { tests: false, externals: false, zones: false, legend: true },
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const short = (id) => id.split(".").pop();
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
+const parentOf = (id) => (id.includes(".") ? id.slice(0, id.lastIndexOf(".")) : null);
+const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -26,7 +31,7 @@ async function api(path, options) {
     try { detail = (await response.json()).detail || detail; } catch { /* not JSON */ }
     throw new Error(detail);
   }
-  return response.json();
+  return response.headers.get("content-type")?.includes("json") ? response.json() : response.text();
 }
 
 function toast(message) {
@@ -34,7 +39,33 @@ function toast(message) {
   el.textContent = message;
   el.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => { el.hidden = true; }, 2200);
+  toast.timer = setTimeout(() => { el.hidden = true; }, 2400);
+}
+
+// ---------- options (remembered per browser) ----------
+
+function loadOptions() {
+  try { Object.assign(state.options, JSON.parse(localStorage.getItem("archview.options") || "{}")); } catch { /* storage unavailable */ }
+}
+
+function saveOptions() {
+  try { localStorage.setItem("archview.options", JSON.stringify(state.options)); } catch { /* storage unavailable */ }
+}
+
+function applyOptions() {
+  $("opt-tests").checked = state.options.tests;
+  $("opt-externals").checked = state.options.externals;
+  $("opt-zones").checked = state.options.zones;
+  $("opt-legend").checked = state.options.legend;
+  document.body.classList.toggle("zones", state.options.zones);
+  $("legend").hidden = !state.options.legend;
+}
+
+function viewQuery(root) {
+  const q = new URLSearchParams({ root });
+  if (state.options.externals) q.set("externals", "true");
+  if (state.options.tests) q.set("hide_tests", "true");
+  return q.toString();
 }
 
 // ---------- navigation ----------
@@ -57,14 +88,14 @@ function rememberPlace() {
 }
 
 async function loadView(root) {
-  if (!state.views.has(root)) {
-    state.views.set(root, await api(`/api/view?root=${encodeURIComponent(root)}`));
-  }
-  return state.views.get(root);
+  const key = viewQuery(root);
+  if (!state.views.has(key)) state.views.set(key, await api(`/api/view?${key}`));
+  return state.views.get(key);
 }
 
-async function show(root) {
-  rememberPlace();
+async function show(root, { keepPanel = false, refit = false } = {}) {
+  if (refit) state.places.delete(root);
+  else rememberPlace();
   let view;
   try {
     view = await loadView(root);
@@ -72,20 +103,22 @@ async function show(root) {
     $("graph").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
     return;
   }
+  if (state.root !== root) state.sticky = null;
   state.root = root;
   state.view = view;
   document.title = `${root} · archview`;
   crumbs(root);
   stats(view);
-  cyclesFooter(view);
-  closePanel();
+  if (!keepPanel) closePanel();
   draw(view);
+  notes();
   const place = state.places.get(root);
   setZoom(place ? place.zoom : fitZoom(), false);
   const stage = $("stage");
   stage.scrollLeft = place ? place.left : 0;
   stage.scrollTop = place ? place.top : 0;
   $("up").disabled = !view.parent;
+  if (state.sticky) focusOn(state.sticky.ids, state.sticky);
 }
 
 function crumbs(root) {
@@ -107,10 +140,15 @@ function crumbs(root) {
 }
 
 function stats(view) {
-  const cycles = view.cycles.length
-    ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>`
-    : "no cycles";
-  $("stats").innerHTML = `${plural(view.nodes.length, "box", "boxes")} · ${plural(view.edges.length, "dependency", "dependencies")} · ${cycles}`;
+  const parts = [plural(view.nodes.length, "box", "boxes"), plural(view.edges.length, "dependency", "dependencies")];
+  parts.push(view.cycles.length ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>` : "no cycles");
+  const violations = view.edges.filter((e) => e.violation).length;
+  if (violations) parts.push(`<span class="bad">${plural(violations, "rule break")}</span>`);
+  const warnings = state.project.warnings.length;
+  if (warnings) parts.push(`<button class="link" id="show-warnings" title="Dynamic imports the analysis cannot follow">⚠ ${plural(warnings, "dynamic import")}</button>`);
+  $("stats").innerHTML = parts.join(" · ");
+  const button = $("show-warnings");
+  if (button) button.onclick = openWarnings;
 }
 
 function cycleText(cycle) {
@@ -118,15 +156,25 @@ function cycleText(cycle) {
   return names.length === 2 ? `${names[0]} → ${names[1]} → ${names[0]}` : `tangle of ${names.length}: ${names.join(", ")}`;
 }
 
-function cyclesFooter(view) {
-  const el = $("cycles");
-  el.hidden = view.cycles.length === 0;
-  if (el.hidden) return;
-  el.innerHTML = `<h2>Cycles at this level</h2><ul>${view.cycles
-    .map((c, i) => `<li data-i="${i}" title="Highlight">${esc(cycleText(c))}</li>`).join("")}</ul>`;
-  el.querySelectorAll("li").forEach((li) => {
-    li.onclick = () => focusOn(new Set(view.cycles[Number(li.dataset.i)]), true);
+function notes() {
+  const view = state.view;
+  const el = $("notes");
+  const sections = [];
+  if (state.sticky) {
+    sections.push(`<section class="focus-bar">Focus: <strong>${esc(state.sticky.label)}</strong> <button id="clear-focus">Clear</button></section>`);
+  }
+  if (view.cycles.length) {
+    sections.push(`<section><h2>Cycles at this level</h2><ul>${view.cycles
+      .map((c, i) => `<li data-cycle="${i}" title="Highlight">${esc(cycleText(c))}</li>`).join("")}</ul></section>`);
+  }
+  el.hidden = sections.length === 0;
+  el.innerHTML = sections.join("");
+  el.querySelectorAll("li[data-cycle]").forEach((li) => {
+    const cycle = view.cycles[Number(li.dataset.cycle)];
+    li.onclick = () => pin(new Set(cycle), cycleText(cycle), false);
   });
+  const clear = $("clear-focus");
+  if (clear) clear.onclick = clearFocus;
 }
 
 // ---------- drawing ----------
@@ -147,16 +195,23 @@ function draw(view) {
   wire(svg, view);
 }
 
+function nodeById(id) {
+  return state.view.nodes.find((n) => n.id === id);
+}
+
 function wire(svg, view) {
-  const byId = new Map(view.nodes.map((n) => [n.id, n]));
   svg.querySelectorAll("g.node").forEach((g) => {
     const id = g.querySelector("title").textContent;
-    const node = byId.get(id);
+    const node = nodeById(id);
     g.dataset.id = id;
     g.querySelector("title").textContent = tooltip(node);
-    g.onclick = () => (node.has_children ? go(id) : openSource(id));
-    g.onmouseenter = () => focusOn(new Set([id]));
-    g.onmouseleave = () => unfocus();
+    g.onclick = (e) => {
+      if (e.shiftKey || e.altKey || node.kind === "external") return openNode(node);
+      return node.has_children ? go(id) : openSource(id);
+    };
+    g.oncontextmenu = (e) => { e.preventDefault(); openNode(node); };
+    g.onmouseenter = () => { if (!state.sticky) focusOn(new Set([id])); };
+    g.onmouseleave = () => { if (!state.sticky) unfocus(); };
   });
   svg.querySelectorAll("g.edge").forEach((g) => {
     const [source, target] = g.querySelector("title").textContent.split("->");
@@ -169,7 +224,8 @@ function wire(svg, view) {
       g.insertBefore(hit, path);
     }
     const edge = view.edges.find((e) => e.source === source && e.target === target);
-    g.querySelector("title").textContent = `${short(source)} → ${short(target)}: ${plural(edge.count, "import")}`;
+    const flags = [edge.violation && "breaks a rule", edge.in_cycle && "in a cycle", edge.abstract && "to an abstraction", edge.type_checking && "type checking only"].filter(Boolean);
+    g.querySelector("title").textContent = `${short(source)} → ${short(target)}: ${plural(edge.count, "import")}${flags.length ? ` (${flags.join(", ")})` : ""}`;
     g.onclick = () => openEdge(edge);
   });
 }
@@ -177,35 +233,65 @@ function wire(svg, view) {
 function tooltip(node) {
   const lines = [node.id];
   if (node.kind === "package") lines.push(plural(node.module_count, "module"));
+  if (node.kind === "external") lines.push("third-party package");
+  else lines.push(`I ${num(node.instability)} · A ${num(node.abstractness)} · D ${num(node.distance)} · ${ZONE_NAMES[node.zone]}`);
   lines.push(`imports ${node.fan_out} · imported ${node.fan_in} · layer ${node.layer}`);
+  if (node.abstract) lines.push("abstract");
   if (node.in_cycle) lines.push("part of a cycle at this level");
   if (node.tangled) lines.push("has a cycle inside");
-  lines.push(node.has_children ? "click to open" : "click for source");
+  lines.push(node.kind === "external" ? "click for details" : node.has_children ? "click to open · shift-click for details" : "click for source · shift-click for details");
   return lines.join("\n");
 }
 
-function focusOn(ids, sticky = false) {
+// ---------- focus (V10) ----------
+
+function focusOn(ids, pinned = null) {
   const svg = $("graph").querySelector("svg");
   if (!svg) return;
   svg.classList.add("focusing");
-  svg.querySelectorAll("g.node").forEach((g) => g.classList.toggle("related", ids.has(g.dataset.id)));
-  const neighbours = new Set(ids);
+  const single = ids.size === 1 && !(pinned && pinned.strict);
+  const shown = new Set(ids);
   svg.querySelectorAll("g.edge").forEach((g) => {
-    const single = ids.size === 1;
     const related = single
       ? ids.has(g.dataset.source) || ids.has(g.dataset.target)
       : ids.has(g.dataset.source) && ids.has(g.dataset.target);
     g.classList.toggle("related", related);
-    if (related && single) { neighbours.add(g.dataset.source); neighbours.add(g.dataset.target); }
+    if (related && single) { shown.add(g.dataset.source); shown.add(g.dataset.target); }
   });
-  svg.querySelectorAll("g.node").forEach((g) => g.classList.toggle("related", neighbours.has(g.dataset.id)));
-  if (sticky) state.sticky = ids;
+  svg.querySelectorAll("g.node").forEach((g) => {
+    g.classList.toggle("related", shown.has(g.dataset.id));
+    g.classList.toggle("focus-root", !!pinned && pinned.root === g.dataset.id);
+  });
 }
 
 function unfocus() {
-  if (state.sticky) return focusOn(state.sticky, true);
   const svg = $("graph").querySelector("svg");
   if (svg) svg.classList.remove("focusing");
+}
+
+function pin(ids, label, strict = true, root = null) {
+  state.sticky = { ids, label, strict, root };
+  focusOn(ids, state.sticky);
+  notes();
+}
+
+function clearFocus() {
+  state.sticky = null;
+  unfocus();
+  notes();
+}
+
+function reach(start, forward) {
+  const seen = new Set([start]);
+  const queue = [start];
+  while (queue.length) {
+    const id = queue.shift();
+    for (const e of state.view.edges) {
+      const [from, to] = forward ? [e.source, e.target] : [e.target, e.source];
+      if (from === id && !seen.has(to)) { seen.add(to); queue.push(to); }
+    }
+  }
+  return seen;
 }
 
 // ---------- zoom ----------
@@ -222,12 +308,13 @@ function setZoom(zoom, keepCentre = true) {
   const svg = $("graph").querySelector("svg");
   if (!svg) return;
   const stage = $("stage");
-  const ratio = zoom / state.zoom;
+  const next = Math.max(0.1, Math.min(4, zoom));
+  const ratio = next / state.zoom;
   const cx = stage.scrollLeft + stage.clientWidth / 2;
   const cy = stage.scrollTop + stage.clientHeight / 2;
-  state.zoom = Math.max(0.1, Math.min(4, zoom));
-  svg.style.width = `${state.natural.w * state.zoom}px`;
-  svg.style.height = `${state.natural.h * state.zoom}px`;
+  state.zoom = next;
+  svg.style.width = `${state.natural.w * next}px`;
+  svg.style.height = `${state.natural.h * next}px`;
   if (keepCentre) {
     stage.scrollLeft = cx * ratio - stage.clientWidth / 2;
     stage.scrollTop = cy * ratio - stage.clientHeight / 2;
@@ -255,28 +342,91 @@ function closePanel() {
 
 function select(selector) {
   document.querySelectorAll("#graph .selected").forEach((g) => g.classList.remove("selected"));
-  document.querySelectorAll(selector).forEach((g) => g.classList.add("selected"));
+  if (selector) document.querySelectorAll(selector).forEach((g) => g.classList.add("selected"));
 }
 
 function importItems(imports, showTarget) {
-  return imports.map((i, n) => `<li data-n="${n}">
-      <div class="where">${esc(i.file)}:${i.line}</div>
+  return imports.map((i, n) => {
+    const flags = [i.violation && '<span class="badge warn">breaks a rule</span>', i.type_checking && '<span class="badge flag">type checking</span>', i.lazy && '<span class="badge flag">inside a function</span>'].filter(Boolean).join(" ");
+    return `<li data-n="${n}" class="${i.violation ? "violation" : ""}">
+      <div class="where">${esc(i.file)}:${i.line} ${flags}</div>
       <div class="text">${esc(i.text.trim())}</div>
       ${showTarget ? `<div class="target">${esc(i.importer)} → ${esc(i.imported)}</div>` : ""}
-    </li>`).join("");
+    </li>`;
+  }).join("");
+}
+
+function wireImports(container, imports) {
+  container.querySelectorAll(".imports li").forEach((li) => {
+    const imp = imports[Number(li.dataset.n)];
+    li.onclick = () => openSource(imp.importer, imp.line);
+  });
 }
 
 function openEdge(edge) {
   select(`#graph g.edge[data-source="${CSS.escape(edge.source)}"][data-target="${CSS.escape(edge.target)}"]`);
-  const cycle = edge.in_cycle ? ' <span class="badge">cycle</span>' : "";
+  const badges = [
+    edge.violation && '<span class="badge warn">breaks a rule</span>',
+    edge.in_cycle && '<span class="badge">cycle</span>',
+    edge.abstract && '<span class="badge abs">abstraction</span>',
+  ].filter(Boolean).join(" ");
   const body = openPanel(
-    `<h2>${esc(short(edge.source))} → ${esc(short(edge.target))}${cycle}</h2>
+    `<h2>${esc(short(edge.source))} → ${esc(short(edge.target))} ${badges}</h2>
      <div class="sub">${plural(edge.count, "import")}</div>`,
     `<ul class="imports">${importItems(edge.imports, true)}</ul>`,
   );
-  body.querySelectorAll(".imports li").forEach((li) => {
-    const imp = edge.imports[Number(li.dataset.n)];
-    li.onclick = () => openSource(imp.importer, imp.line);
+  wireImports(body, edge.imports);
+}
+
+function linkList(edges, pick) {
+  if (!edges.length) return '<p class="hint">none</p>';
+  return `<ul class="links">${edges.map((e) => `<li data-s="${esc(e.source)}" data-t="${esc(e.target)}">${esc(short(pick(e)))} <span class="n">(${e.count})</span>${e.violation ? ' <span class="badge warn">rule</span>' : ""}</li>`).join("")}</ul>`;
+}
+
+function openNode(node) {
+  select(`#graph g.node[data-id="${CSS.escape(node.id)}"]`);
+  const view = state.view;
+  const incoming = view.edges.filter((e) => e.target === node.id);
+  const outgoing = view.edges.filter((e) => e.source === node.id);
+  const zone = node.zone === "pain" || node.zone === "useless" ? `<span class="zone zone-${node.zone}">${ZONE_NAMES[node.zone]}</span>` : ZONE_NAMES[node.zone];
+  const metrics = node.kind === "external" ? "" : `
+      <dt>Instability I</dt><dd>${num(node.instability)}</dd>
+      <dt>Abstractness A</dt><dd>${num(node.abstractness)}</dd>
+      <dt>Distance D</dt><dd>${num(node.distance)}</dd>
+      <dt>Zone</dt><dd>${zone}</dd>`;
+  const body = openPanel(
+    `<h2>${esc(node.name)} ${node.abstract ? '<span class="badge abs">abstract</span>' : ""}${node.in_cycle ? ' <span class="badge">cycle</span>' : ""}</h2><div class="sub">${esc(node.id)}</div>`,
+    `<div class="actions">
+       ${node.has_children ? '<button data-act="open">Open</button>' : ""}
+       ${node.kind === "module" ? '<button data-act="source">Source</button>' : ""}
+       <button data-act="neighbours">Focus neighbours</button>
+       <button data-act="reaches" title="Everything this depends on, directly or not">What it reaches</button>
+       <button data-act="reached" title="Everything that depends on this, directly or not">What reaches it</button>
+     </div>
+     <dl class="facts">
+       <dt>Kind</dt><dd>${node.kind}${node.kind === "package" ? `, ${plural(node.module_count, "module")}` : ""}</dd>
+       <dt>Layer</dt><dd>${node.layer}</dd>
+       <dt>Imports</dt><dd>${node.fan_out}</dd>
+       <dt>Imported by</dt><dd>${node.fan_in}</dd>
+       ${metrics}
+     </dl>
+     <h3>Depends on</h3>${linkList(outgoing, (e) => e.target)}
+     <h3>Depended on by</h3>${linkList(incoming, (e) => e.source)}`,
+  );
+  const actions = {
+    open: () => go(node.id),
+    source: () => openSource(node.id),
+    neighbours: () => {
+      const ids = new Set([node.id]);
+      view.edges.forEach((e) => { if (e.source === node.id) ids.add(e.target); if (e.target === node.id) ids.add(e.source); });
+      pin(ids, `${node.name} and its neighbours`, false, node.id);
+    },
+    reaches: () => pin(reach(node.id, true), `what ${node.name} reaches`, true, node.id),
+    reached: () => pin(reach(node.id, false), `what reaches ${node.name}`, true, node.id),
+  };
+  body.querySelectorAll("[data-act]").forEach((b) => { b.onclick = actions[b.dataset.act]; });
+  body.querySelectorAll(".links li").forEach((li) => {
+    li.onclick = () => openEdge(view.edges.find((e) => e.source === li.dataset.s && e.target === li.dataset.t));
   });
 }
 
@@ -291,34 +441,36 @@ async function openSource(module, line = null) {
   select(`#graph g.node[data-id="${CSS.escape(module)}"]`);
   const lines = source.text.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
-  const importLines = new Map();
+  const byLine = new Map();
   source.imports.forEach((i) => {
-    if (!importLines.has(i.line)) importLines.set(i.line, []);
-    importLines.get(i.line).push(i.imported);
+    if (!byLine.has(i.line)) byLine.set(i.line, []);
+    byLine.get(i.line).push(i);
   });
+  const warned = new Set(source.warnings.map((w) => w.line));
   const highlighted = window.hljs
     ? hljs.highlight(source.text, { language: "python", ignoreIllegals: true }).value
     : esc(source.text);
   const gutter = lines.map((_, i) => {
     const n = i + 1;
-    const targets = importLines.get(n);
-    return targets
-      ? `<span class="imp" data-line="${n}" title="imports ${esc(targets.join(", "))} (click to open)">${n}</span>`
-      : `<span data-line="${n}">${n}</span>`;
+    const imports = byLine.get(n);
+    if (imports) {
+      const title = imports.map((x) => `imports ${x.imported}${x.violation ? " (breaks a rule)" : ""}`).join("\n");
+      return `<span class="imp" data-line="${n}" title="${esc(title)} (click to open)">${n}</span>`;
+    }
+    return warned.has(n) ? `<span title="dynamic import: not followed">${n}⚠</span>` : `<span>${n}</span>`;
   }).join("");
-  const marks = [...importLines.keys()].map((n) => `<div class="mark" style="top:calc(8px + ${n - 1} * var(--line))"></div>`).join("")
-    + (line ? `<div class="mark target" style="top:calc(8px + ${line - 1} * var(--line))"></div>` : "");
+  const bar = (n, cls) => `<div class="mark ${cls}" style="top:calc(8px + ${n - 1} * var(--line))"></div>`;
+  const marks = [...byLine.entries()].map(([n, imps]) => bar(n, imps.some((x) => x.violation) ? "target" : "")).join("")
+    + (line ? bar(line, "target") : "");
 
+  const flags = source.abstract ? ' <span class="badge abs">abstract</span>' : "";
   const body = openPanel(
-    `<h2>${esc(short(module))}</h2><div class="sub">${esc(source.file)}${line ? `:${line}` : ""}</div>`,
+    `<h2>${esc(short(module))}${flags}</h2><div class="sub">${esc(source.file)}${line ? `:${line}` : ""}</div>`,
     `<div class="source">${marks}<div class="gutter">${gutter}</div><pre><code class="hljs language-python">${highlighted}</code></pre></div>`,
     true,
   );
   body.querySelectorAll(".gutter span.imp").forEach((span) => {
-    span.onclick = () => {
-      const target = importLines.get(Number(span.dataset.line))[0];
-      openSource(target);
-    };
+    span.onclick = () => openSource(byLine.get(Number(span.dataset.line))[0].imported);
   });
   if (line) {
     const lineHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--line")) || 18;
@@ -326,30 +478,186 @@ async function openSource(module, line = null) {
   }
 }
 
-// ---------- actions ----------
+function openWarnings() {
+  const warnings = state.project.warnings;
+  const body = openPanel(
+    `<h2>Dynamic imports</h2><div class="sub">not followed by the analysis or the checker</div>`,
+    `<ul class="imports">${warnings.map((w, n) => `<li data-n="${n}">
+        <div class="where">${esc(w.file)}:${w.line}</div>
+        <div class="text">${esc(w.text)}</div>
+        <div class="target">${w.target ? `target ${esc(w.target)}` : "target not a literal"}</div></li>`).join("")}</ul>`,
+  );
+  body.querySelectorAll(".imports li").forEach((li) => {
+    const w = warnings[Number(li.dataset.n)];
+    li.onclick = () => openSource(w.module, w.line);
+  });
+}
 
-const parentOf = (id) => (id.includes(".") ? id.slice(0, id.lastIndexOf(".")) : null);
+async function openRules() {
+  let report;
+  try {
+    report = await api("/api/check");
+  } catch (error) {
+    toast(error.message);
+    return;
+  }
+  const all = [...report.problems.filter((p) => p.fails), ...report.problems.filter((p) => !p.fails)];
+  const failing = all.filter((p) => p.fails).length;
+  const card = (p, i) => {
+    const what = p.kind === "cycle" ? cycleText(p.components) : p.components.join(" → ");
+    const known = p.baselined ? ` · ${p.baselined} in the baseline` : "";
+    const status = p.fails ? "" : p.baselined ? " (known)" : " (reported only)";
+    return `<div class="problem ${p.fails ? "" : "known"}">
+      <div class="head">${esc(p.kind.replace("_", " "))}: ${esc(what)}${status}</div>
+      <div class="sub">${esc(p.rule)} · ${plural(p.count, p.kind === "cycle" ? "edge" : "import")}${known}</div>
+      <div class="hint">${esc(p.hint)}</div>
+      ${p.imports.length ? `<ul class="imports" data-p="${i}">${importItems(p.imports.slice(0, 20), true)}</ul>` : ""}
+    </div>`;
+  };
+  const unused = report.unused_allowances.length
+    ? `<h3>Allowed but unused</h3><ul class="links">${report.unused_allowances.map((u) => `<li>${esc(u.from)} → ${esc(u.to)}</li>`).join("")}</ul>` : "";
+  const warnings = report.warnings.length
+    ? `<h3>Warnings</h3><ul class="links">${report.warnings.map((w) => `<li>${esc(w.message)}</li>`).join("")}</ul>` : "";
+  const body = openPanel(
+    `<h2>${failing ? plural(failing, "failing problem") : "Rules pass"}</h2><div class="sub">${esc(state.project.rules)} · ${plural(report.components.length, "component")}</div>`,
+    (all.length ? all.map(card).join("") : '<p class="hint">No problems.</p>') + unused + warnings,
+  );
+  body.querySelectorAll(".imports[data-p]").forEach((ul) => {
+    const imports = all[Number(ul.dataset.p)].imports;
+    ul.querySelectorAll("li").forEach((li) => {
+      const imp = imports[Number(li.dataset.n)];
+      li.onclick = () => openSource(imp.importer, imp.line);
+    });
+  });
+}
+
+function openMetricsTable() {
+  $("view-menu").open = false;
+  const nodes = state.view.nodes.filter((n) => n.kind !== "external");
+  const columns = [
+    ["name", "Box"], ["fan_in", "In"], ["fan_out", "Out"], ["instability", "I"], ["abstractness", "A"], ["distance", "D"], ["zone", "Zone"],
+  ];
+  let sortKey = "distance";
+  let descending = true;
+  const render = () => {
+    const sorted = [...nodes].sort((a, b) => {
+      const x = a[sortKey] ?? -1, y = b[sortKey] ?? -1;
+      const order = typeof x === "string" ? x.localeCompare(y) : x - y;
+      return (descending ? -order : order) || a.name.localeCompare(b.name);
+    });
+    const rows = sorted.map((n) => `<tr data-id="${esc(n.id)}">
+        <td>${esc(n.name)}${n.abstract ? ' <span class="badge abs">abs</span>' : ""}</td><td>${n.fan_in}</td><td>${n.fan_out}</td>
+        <td>${num(n.instability)}</td><td>${num(n.abstractness)}</td><td>${num(n.distance)}</td>
+        <td><span class="zone zone-${n.zone}">${ZONE_NAMES[n.zone]}</span></td></tr>`).join("");
+    const body = openPanel(
+      `<h2>Metrics</h2><div class="sub">${esc(state.root)} · I = instability, A = abstractness, D = |A + I − 1|</div>`,
+      `<table class="metrics"><thead><tr>${columns.map(([k, label]) => `<th data-k="${k}">${label}${k === sortKey ? (descending ? " ▾" : " ▴") : ""}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`,
+    );
+    body.querySelectorAll("th").forEach((th) => {
+      th.onclick = () => { descending = th.dataset.k === sortKey ? !descending : true; sortKey = th.dataset.k; render(); };
+    });
+    body.querySelectorAll("tbody tr").forEach((tr) => { tr.onclick = () => openNode(nodeById(tr.dataset.id)); });
+  };
+  render();
+}
+
+// ---------- export (V12) ----------
+
+function download(name, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportView(format) {
+  $("export-menu").open = false;
+  const base = state.root.replaceAll(".", "-");
+  if (format === "svg" || format === "png") {
+    const svgText = state.viz.renderString(state.view.dot, { format: "svg" });
+    if (format === "svg") return download(`${base}.svg`, new Blob([svgText], { type: "image/svg+xml" }));
+    const image = new Image();
+    image.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width * scale;
+      canvas.height = image.height * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(image, 0, 0);
+      canvas.toBlob((blob) => download(`${base}.png`, blob), "image/png");
+    };
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+    return;
+  }
+  const text = await api(`/api/export?format=${format}&${viewQuery(state.root)}`);
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`${format === "dot" ? "DOT" : "Mermaid"} copied to the clipboard`);
+  } catch {
+    download(`${base}.${format === "dot" ? "dot" : "mmd"}`, new Blob([text], { type: "text/plain" }));
+  }
+}
+
+// ---------- reanalysis (V9) ----------
+
+async function refresh(summary, message) {
+  state.project = summary;
+  state.views.clear();
+  rulesButton();
+  let root = state.root;
+  while (root) {
+    try { await loadView(root); break; } catch { root = parentOf(root); }
+  }
+  root = root || summary.project;
+  if (root === state.root) {
+    await show(root, { keepPanel: true });
+  } else {
+    go(root);
+  }
+  if (message) toast(message);
+}
 
 async function reanalyze() {
   const button = $("reanalyze");
   button.disabled = true;
   try {
-    state.project = await api("/api/reanalyze", { method: "POST" });
-    state.views.clear();
-    let root = state.root;
-    while (root) {
-      try { await loadView(root); break; } catch { root = parentOf(root); }
-    }
-    rememberPlace();    // the same root comes back where it was
-    state.root = null;  // so show() does not save over it
-    go(root || state.project.project);
-    toast(`Reanalyzed: ${plural(state.project.modules, "module")}, ${plural(state.project.imports, "import")}`);
+    const summary = await api("/api/reanalyze", { method: "POST" });
+    await refresh(summary, `Reanalyzed: ${plural(summary.modules, "module")}, ${plural(summary.imports, "import")}`);
   } catch (error) {
     toast(`Reanalyze failed: ${error.message}`);
   } finally {
     button.disabled = false;
   }
 }
+
+function poll() {
+  setInterval(async () => {
+    try {
+      const summary = await api("/api/project");
+      if (summary.error && summary.error !== state.project.error) toast(summary.error);
+      if (summary.generation !== state.project.generation) await refresh(summary, "Source changed: view updated");
+      else state.project = summary;
+    } catch { /* server stopped; try again next tick */ }
+  }, 2000);
+}
+
+function rulesButton() {
+  const button = $("rules");
+  const p = state.project;
+  button.hidden = !p.rules;
+  button.classList.toggle("bad", p.failing > 0 || !!p.rules_error);
+  button.textContent = p.rules_error ? "Rules ⚠" : p.failing ? `Rules: ${p.failing} failing` : "Rules ✓";
+  button.title = p.rules_error || `archview check against ${p.rules}`;
+}
+
+// ---------- wiring ----------
 
 function bind() {
   $("home").onclick = (e) => { e.preventDefault(); go(state.project.project); };
@@ -358,17 +666,34 @@ function bind() {
   $("zoom-out").onclick = () => setZoom(state.zoom / 1.25);
   $("zoom-fit").onclick = () => setZoom(fitZoom());
   $("reanalyze").onclick = reanalyze;
+  $("rules").onclick = openRules;
+  $("metrics-table").onclick = openMetricsTable;
   $("panel-close").onclick = closePanel;
+  document.querySelectorAll("[data-export]").forEach((b) => { b.onclick = () => exportView(b.dataset.export); });
+  const option = (id, key, redraw) => {
+    $(id).onchange = () => {
+      state.options[key] = $(id).checked;
+      saveOptions();
+      applyOptions();
+      if (redraw) show(state.root, { refit: true });
+    };
+  };
+  option("opt-tests", "tests", true);
+  option("opt-externals", "externals", true);
+  option("opt-zones", "zones", false);
+  option("opt-legend", "legend", false);
   $("graph").onclick = (e) => {
     if (e.target.closest("g.node, g.edge")) return;
-    state.sticky = null;
-    unfocus();
+    if (state.sticky) clearFocus();
   };
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll("details.menu[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  });
   addEventListener("hashchange", () => show(rootFromHash()));
   addEventListener("keydown", (e) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.matches("input, textarea")) return;
     const keys = {
-      Escape: closePanel,
+      Escape: () => { closePanel(); if (state.sticky) clearFocus(); },
       u: () => $("up").click(),
       "+": () => $("zoom-in").click(),
       "=": () => $("zoom-in").click(),
@@ -381,6 +706,8 @@ function bind() {
 }
 
 async function start() {
+  loadOptions();
+  applyOptions();
   bind();
   try {
     [state.viz, state.project] = await Promise.all([Viz.instance(), api("/api/project")]);
@@ -388,6 +715,8 @@ async function start() {
     $("graph").innerHTML = `<p class="hint">Could not start: ${esc(error.message)}</p>`;
     return;
   }
+  rulesButton();
+  if (state.project.watching) poll();
   show(rootFromHash());
 }
 

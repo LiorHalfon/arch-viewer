@@ -4,7 +4,7 @@ Date: 2026-09-06 (M1)
 
 ## Status
 
-Accepted.
+Accepted; implemented in M4 (ADR 0008).
 
 ## Context
 

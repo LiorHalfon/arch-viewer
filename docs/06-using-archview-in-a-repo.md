@@ -15,6 +15,64 @@ and `archview check <repo> --config /tmp/rules.toml`.
 
 Exit codes: `0` pass, `1` failing problems, `2` the check could not run.
 
+## Rules reference
+
+```toml
+[archview]
+package = "shop"                      # default: the only package found
+source_roots = ["src"]                # default: discovered
+exclude = ["**/migrations/**"]        # file globs left out of everything
+ignored = ["scripts"]                 # components not checked
+type_checking_imports = "ignore"      # or "include": check `if TYPE_CHECKING:` imports too
+fail_on_violations = true
+fail_on_cycles = true
+layers = ["api", ["billing", "shipping"], "domain"]   # no importing upwards; peers independent
+independent = [["billing", "shipping"]]               # these may not import each other
+# baseline = "archview-baseline.json"                 # default location, used when present
+
+[archview.allowed]                    # component -> components it may import ("all" = anything)
+api = ["domain", "billing", "shipping"]
+domain = []
+
+[[archview.forbidden]]                # checked even when `allowed` says "all"
+from = "domain"
+to = "api"
+
+[[archview.exceptions]]               # module-level exemptions, always with a reason
+importer = "shop.billing.legacy"
+imported = "shop.api.schemas"
+reason = "TT-123"
+
+[archview.components]                 # dotted globs; a package pattern covers its subtree
+adapters = ["shop.db", "shop.http_*"]
+
+[archview.metrics]
+threshold = 0.3                       # distance from the main sequence counted as healthy
+fail_on_zones = ["pain"]              # optional: fail when a component enters a zone
+ignore = ["common"]
+```
+
+Unknown keys are errors with a suggestion. A component that is not in `allowed` fails
+the check, because a new top-level package is a human decision.
+
+## Legacy code: baseline
+
+```bash
+archview check --update-baseline      # record today's failing problems in archview-baseline.json
+archview check                        # known problems pass; new imports, new cycles and grown cycles fail
+```
+
+Commit the baseline. Once problems are fixed, the check warns that entries are
+stale; run `--update-baseline` again so the baseline only shrinks.
+
+## Looking at it
+
+```bash
+archview serve --watch                # browser viewer, redraws when files change
+archview graph --mermaid              # paste into a PR description
+archview metrics                      # Ca, Ce, I, A, D and zone per component
+```
+
 ## Paragraph for the repo's CLAUDE.md / AGENTS.md
 
 ```markdown
