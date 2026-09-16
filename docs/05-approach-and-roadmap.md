@@ -108,7 +108,7 @@ MVP: `archview serve` starts a local server (stdlib `http.server` or FastAPI —
 Upgrade path (V2 interactions: focus, collapse in place, hover popups, metrics badges): React + `@xyflow/react` with elkjs layered layout (`hierarchyHandling=INCLUDE_CHILDREN`, `partitioning` per layer, orthogonal edges) — same `/api` JSON, so the server does not change. Alternative to evaluate in one afternoon: LikeC4's Builder API + `<ReactLikeC4 />` for a ready-made drill-down viewer.
 
 ### Agent integration
-`archview why A B` (grimp `find_shortest_chains`), `archview deps M` / `archview rdeps M` (upstream/downstream), `archview cycles`, `archview check --format json`. V2: a small MCP server (`archview mcp`) exposing `get_view`, `check`, `why`, `deps`; and a documented pre-commit / Claude Code hook that runs `archview check`. A paragraph for the target repo's `CLAUDE.md`: "Before handing off, run `archview check`; if it fails, restore the dependency direction (invert / interface / split) — never edit `archview.toml` to make it pass without asking."
+`archview why A B` (grimp `find_shortest_chains`), `archview deps M` / `archview rdeps M` (upstream/downstream), `archview cycles`, `archview check --format json`. V2: a documented pre-commit / Claude Code hook that runs `archview check`. A paragraph for the target repo's `CLAUDE.md`: "Before handing off, run `archview check`; if it fails, restore the dependency direction (invert / interface / split) — never edit `archview.toml` to make it pass without asking." Optional, not scheduled: a small MCP server (`archview mcp`) exposing `get_view`, `check`, `why`, `deps`, built only when an ADR 0005 trigger fires.
 
 ## 3. Roadmap (each milestone is a few Claude Code sessions)
 
@@ -119,7 +119,7 @@ Upgrade path (V2 interactions: focus, collapse in place, hover popups, metrics b
 | **M2 — checker** | `archview.toml` loader, `check` (text + JSON, exit codes, hints), `init`, exclusions, self-check in CI | Adopted in `tiny-tale-backend` with a committed rules file and a CLAUDE.md paragraph; one intentionally removed rule fails the check with `file:line` |
 | **M3 — viewer MVP** | `serve` + static UI: layered boxes, edge counts, drill-down with back, source panel, cycles list | Can navigate `tiny-tale-backend` top → package → file without reading a listing |
 | **M4 — depth** | Abstractness + UML arrowheads, metrics + zones, violations overlay, TYPE_CHECKING/dynamic-import handling, SVG/Mermaid export, reanalyze/watch, filters (tests/externals/focus) | Requirements V7–V12, A4–A5, A9–A10, C7–C9 |
-| **M5 — agents** | `why`/`deps`/`rdeps`/`cycles`, MCP server, hook + CLAUDE.md snippet, baseline mode | Claude Code answers "why does X depend on Y" via the tool; check runs in the hand-off loop |
+| **M5 — agents** | `why`/`deps`/`rdeps`/`cycles`, hook + CLAUDE.md snippet, baseline mode (MCP server optional, see ADR 0005) | Claude Code answers "why does X depend on Y" via the CLI; check runs in the hand-off loop |
 | **M6 — second language** | TypeScript extractor (tree-sitter-typescript or the TS compiler API) producing the same JSON for the frontend repo | Viewer/checker work unchanged on `tiny-tale-bespoke-pages` (or whichever frontend repo) |
 
 Suggested order of work inside M1–M3: tests and fixture first (Bob's PROJECT_NOTES process), then the smallest vertical slice that reaches the browser, then iterate — a story or two, look at the result, reorganise (35:46–41:36).

@@ -111,7 +111,7 @@ Python-side prototyping: `graphviz` 0.21 (MIT; needs `dot`), `pygraphviz` 2.0.1,
 | Rules file + checker | **Build** (DC-style `allowed` map first) | Agent-friendly, one line per component; later: import import-linter contracts / export tach config |
 | Viewer | **Build** on Graphviz-WASM first (import-linter `explore` pattern), then ELK + React Flow if interactions demand it | Smallest possible front-end for the MVP; clean upgrade path |
 | Exports | DOT/SVG via Graphviz, Mermaid text | Existing formats, zero new code beyond templates |
-| Agent interface | **Build** CLI queries; MCP server in V2 | Idea validated by the 2025–26 wave of agent-oriented code-graph tools |
+| Agent interface | **Build** CLI queries; MCP server optional (ADR 0005) | Idea validated by the 2025–26 wave of agent-oriented code-graph tools |
 | Other languages | tree-sitter (or scip) extractors into the same JSON | Deferred by decision (LH: Python first) |
 
 ## 6. Sources

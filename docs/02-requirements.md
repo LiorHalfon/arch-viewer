@@ -18,7 +18,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | User | Job to be done | Consequence for the tool |
 |---|---|---|
 | The human architect (Lior) | After the agents finish a story or two, look at the structure, decide how modules should be partitioned and how they should communicate, then write that down as rules (37:50–38:13). Also: learn an unfamiliar code base quickly (49:24). | Fast to launch, zero setup for the default case, drill-down in a few clicks, cycles and violations impossible to miss. |
-| AI coding agents (Claude Code and friends) | (a) Obey the rules: run the checker, read the failures, fix them by inverting a dependency / inserting an interface / splitting a module (27:48). (b) Answer questions about the structure with ground truth instead of guesses (26:18). | Non-zero exit codes; terse, actionable, machine-readable output with `file:line`; a query CLI (and later an MCP server) so agents ask the tool instead of the human. |
+| AI coding agents (Claude Code and friends) | (a) Obey the rules: run the checker, read the failures, fix them by inverting a dependency / inserting an interface / splitting a module (27:48). (b) Answer questions about the structure with ground truth instead of guesses (26:18). | Non-zero exit codes; terse, actionable, machine-readable output with `file:line`; a query CLI (optionally an MCP server later) so agents ask the tool instead of the human. |
 | CI / pre-commit | Block merges that break the declared architecture. | Deterministic, quick (seconds), no network, no code execution, stable output. |
 
 ## 3. Glossary
@@ -93,7 +93,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | ID | Requirement | Pri | Source |
 |---|---|---|---|
 | G1 | A query CLI agents can call: `archview graph --root pkg --json`, `archview why A B` (shortest import chain), `archview deps M` / `archview rdeps M` (direct dependencies / dependents), `archview cycles`. | MVP (graph, why) / V2 | 26:18–26:32 (interrogating agents about structure) |
-| G2 | An MCP server exposing the same queries so Claude Code can ask the tool directly. | V2 | LH (Claude Code workflow) |
+| G2 | Optional: an MCP server exposing the same queries, for agents without a shell or if repeated CLI queries prove too slow. Claude Code uses the G1 CLI. See ADR 0005. | Later | LH (Claude Code workflow) |
 | G3 | A ready-made snippet for `CLAUDE.md` / a hook so that `archview check` must pass before an agent hands off; checker messages are written to be read by an agent with a small context budget (terse, no decoration in `--format json`). | MVP | 12:33–15:14 (deterministic tools beat steering) |
 | G4 | The checker never auto-fixes; it reports. The agent (or human) decides how to restore the dependency direction. | MVP | 27:48–28:06 |
 
