@@ -51,8 +51,8 @@ it. Each other end is shortened to M's depth, so a module lists modules and a
 top-level package lists sibling packages. The concrete imports are listed under
 each entry. Third-party packages appear in `deps` only with `--externals`, as in
 `graph`. Externals keep their own name, and `rdeps` of an external lists the
-importing modules, since shortening to depth 1 would only give the project. There is no `--transitive` yet: the
-viewer's "what it reaches" still lives in the UI. If an agent needs transitive
+importing modules, since shortening to depth 1 would only give the project. There
+is no `--transitive` yet: the viewer's "what it reaches" still lives in the UI. If an agent needs transitive
 answers, that logic moves into `model/` first.
 
 ### `cycles`
@@ -61,7 +61,10 @@ Every level, not just one view. For each package with a cycle among its children
 (the same levels as `tangled_packages`), the command prints one **real cycle path**:
 the shortest cycle through the member with the smallest name, with the imports
 behind each step. With more than two members, the members the path misses are
-listed too. `describe_cycle` stays as it is for `check` and `init`. `--root`
+listed too, with the other edges among the members (`others`) and their imports.
+Pointing to `why` for those would be wrong: a tangle is computed from edges between
+packages, so two members can be in one tangle without any module-level chain of
+imports between them. `describe_cycle` stays as it is for `check` and `init`. `--root`
 limits the command to one subtree.
 
 ### Output, flags and exit codes

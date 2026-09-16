@@ -80,6 +80,19 @@ archview graph --mermaid              # paste into a PR description
 archview metrics                      # Ca, Ce, I, A, D and zone per component
 ```
 
+## Asking it (agents and humans)
+
+```bash
+archview why domain infra             # the imports behind domain -> infra, or the shortest chain
+archview deps services                # what services imports (--externals adds third-party packages)
+archview rdeps services.pricing       # who imports it; also works for externals: rdeps requests
+archview cycles [--root webapp]       # every cycle at every level, as a path with its imports
+```
+
+Names can be full (`pkg.domain`) or relative to the package (`domain`). Every query
+takes `--format json`, `--hide-tests` and `--runtime-only` (leave out TYPE_CHECKING
+imports). `why` exits 1 when there is no dependency. See ADR 0009.
+
 ## Paragraph for the repo's CLAUDE.md / AGENTS.md
 
 ```markdown
@@ -91,6 +104,10 @@ the dependency direction: invert the dependency (declare the interface in the
 higher-level package, implement it in the lower-level one), move the code, or split
 the module. Never edit `archview.toml` to make the check pass, and never add a new
 top-level package to it yourself. Ask the human.
+
+To understand the structure, ask the tool instead of guessing: `archview why A B`
+(the imports behind A -> B), `archview deps X` / `archview rdeps X` (what X imports /
+who imports X) and `archview cycles [--root X]`.
 ```
 
 ## Claude Code hook (optional)
@@ -101,11 +118,24 @@ In `.claude/settings.json`, run the check when the agent stops, and feed failure
 {
   "hooks": {
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "archview check >&2 || exit 2" } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v archview >/dev/null || exit 0; archview check --stop-hook"
+          }
+        ]
+      }
     ]
   }
 }
 ```
+
+`--stop-hook` blocks the stop only when the check fails, and sends the report back
+to the agent. It lets the agent stop the second time in a row (`stop_hook_active`),
+so a problem that needs a human cannot trap it, and it never blocks when the check
+cannot run (no rules, a broken rules file). Without archview installed, the hook
+does nothing.
 
 ## pre-commit (optional)
 

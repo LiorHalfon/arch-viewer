@@ -54,13 +54,18 @@ class Step:
 
 @dataclass(frozen=True, slots=True)
 class Cycle:
-    """A cycle among the children of `level`: the shortest path through its first member."""
+    """A cycle among the children of `level`: the shortest path through its first member.
+
+    In a tangle of more than two members, `others` are the edges among the members
+    that the path does not take, so every member's connections are shown.
+    """
 
     level: str
     members: tuple[str, ...]
     path: tuple[str, ...]
     steps: tuple[Step, ...]
     missed: tuple[str, ...]
+    others: tuple[Step, ...] = ()
 
 
 def within(module: str, name: str) -> bool:
@@ -177,6 +182,10 @@ def all_cycles(model: Model, root: str | None = None) -> tuple[Cycle, ...]:
     return tuple(found)
 
 
+def _step(source: str, target: str, edges: dict[tuple[str, str], ViewEdge]) -> Step:
+    return Step(source, target, tuple(sorted(edges[(source, target)].imports, key=_import_key)))
+
+
 def _cycle(level: str, members: tuple[str, ...], edges: dict[tuple[str, str], ViewEdge]) -> Cycle:
     inside = set(members)
     graph = digraph(members, (pair for pair in edges if set(pair) <= inside))
@@ -190,6 +199,10 @@ def _cycle(level: str, members: tuple[str, ...], edges: dict[tuple[str, str], Vi
         if back is None or len(candidate) < len(back):
             back = candidate
     path = (start, *(back or ()))
-    steps = tuple(Step(s, t, edges[(s, t)].imports) for s, t in pairwise(path))
+    steps = tuple(_step(s, t, edges) for s, t in pairwise(path))
     missed = tuple(m for m in members if m not in path)
-    return Cycle(level, members, path, steps, missed)
+    taken = set(pairwise(path))
+    others = tuple(
+        _step(s, t, edges) for s, t in sorted(edges) if {s, t} <= inside and (s, t) not in taken
+    )
+    return Cycle(level, members, path, steps, missed, others)

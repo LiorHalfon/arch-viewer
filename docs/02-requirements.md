@@ -92,7 +92,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 
 | ID | Requirement | Pri | Source |
 |---|---|---|---|
-| G1 | A query CLI agents can call: `archview graph --root pkg --json`, `archview why A B` (shortest import chain), `archview deps M` / `archview rdeps M` (direct dependencies / dependents), `archview cycles`. | MVP (graph, why) / V2 | 26:18–26:32 (interrogating agents about structure) |
+| G1 | A query CLI agents can call: `archview graph --root pkg --json`, `archview why A B` (the direct imports, else the shortest import chain), `archview deps M` / `archview rdeps M` (direct dependencies / dependents), `archview cycles`. | MVP (built in M5, ADR 0009) | 26:18–26:32 (interrogating agents about structure) |
 | G2 | Optional: an MCP server exposing the same queries, for agents without a shell or if repeated CLI queries prove too slow. Claude Code uses the G1 CLI. See ADR 0005. | Later | LH (Claude Code workflow) |
 | G3 | A ready-made snippet for `CLAUDE.md` / a hook so that `archview check` must pass before an agent hands off; checker messages are written to be read by an agent with a small context budget (terse, no decoration in `--format json`). | MVP | 12:33–15:14 (deterministic tools beat steering) |
 | G4 | The checker never auto-fixes; it reports. The agent (or human) decides how to restore the dependency direction. | MVP | 27:48–28:06 |
@@ -128,15 +128,19 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-16, after M4)
+## 12. Implementation status (2026-09-16, after M5)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A14. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
 | Checker | C1–C4, C6–C11. C5 text + JSON | C5 GitHub Actions annotations |
-| Agents | G1 `graph`, G3 (docs/06), G4 | G1 `why`/`deps`/`rdeps`/`cycles` (M5); G2 is optional (ADR 0005) |
+| Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
 each other; TYPE_CHECKING imports are drawn but not checked by default; a baseline
 records imports, not line numbers.
+
+Clarified during M5 (ADR 0009): the queries run on the filtered model, not on grimp;
+`why` prefers direct imports over a chain; `deps` leaves out third-party packages
+unless asked.

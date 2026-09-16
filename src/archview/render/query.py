@@ -7,7 +7,7 @@ from dataclasses import asdict
 from typing import Any
 
 from archview.model.graph import Import
-from archview.model.query import Cycle, Dependency, Why
+from archview.model.query import Cycle, Dependency, Step, Why
 
 EXAMPLES = 10
 
@@ -90,8 +90,21 @@ def cycles_to_text(cycles: Sequence[Cycle], root: str) -> str:
             )
             lines += _import_lines(step.imports, "    ")
         if cycle.missed:
-            lines.append(f"  also in this tangle: {', '.join(cycle.missed)}")
+            lines.append(f"  also in this tangle: {', '.join(cycle.missed)}, through")
+            for step in cycle.others:
+                count = _plural(len(step.imports), "import")
+                lines.append(f"  {step.source} -> {step.target}  ({count})")
+                lines += _import_lines(step.imports, "    ")
     return "\n".join(lines) + "\n"
+
+
+def _step_dict(step: Step) -> dict[str, Any]:
+    return {
+        "from": step.source,
+        "to": step.target,
+        "count": len(step.imports),
+        "imports": [asdict(i) for i in step.imports],
+    }
 
 
 def cycles_to_dict(cycles: Sequence[Cycle], root: str) -> dict[str, Any]:
@@ -103,15 +116,8 @@ def cycles_to_dict(cycles: Sequence[Cycle], root: str) -> dict[str, Any]:
                 "members": list(c.members),
                 "path": list(c.path),
                 "missed": list(c.missed),
-                "steps": [
-                    {
-                        "from": s.source,
-                        "to": s.target,
-                        "count": len(s.imports),
-                        "imports": [asdict(i) for i in s.imports],
-                    }
-                    for s in c.steps
-                ],
+                "steps": [_step_dict(s) for s in c.steps],
+                "others": [_step_dict(s) for s in c.others],
             }
             for c in cycles
         ],

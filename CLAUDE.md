@@ -7,16 +7,16 @@ AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1–M4 are done**: `src/archview/` holds the extractor (grimp + an `ast` pass), the
-model (views, cycles, layers, metrics), the checker (`rules/`, with layers, zones and
-baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
-`metrics`, `serve`). The repo commits its own
-`archview.toml` and `tests/test_self_check.py` enforces it (there is no CI yet).
-**M5 (agent queries: `why`/`deps`/`rdeps`/`cycles`) is next.** Read in this order:
+**M1–M5 are done**: `src/archview/` holds the extractor (grimp + an `ast` pass), the
+model (views, cycles, layers, metrics, agent queries), the checker (`rules/`, with
+layers, zones and baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`,
+`check`, `init`, `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits
+its own `archview.toml` and `tests/test_self_check.py` enforces it (there is no CI yet).
+**M6 (a second language: TypeScript) is next.** Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
 2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M6
-3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth
+3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook
 4. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
 5. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
 6. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks
@@ -62,6 +62,7 @@ uv run archview serve ~/git/tiny-tale-backend --watch   # viewer in the browser
 uv run archview graph --mermaid | --externals | --hide-tests
 uv run archview metrics                           # Ca, Ce, I, A, D, zone per component
 uv run archview check [--format json] [--update-baseline]   # exit 0 pass, 1 problems, 2 could not run
+uv run archview why cli networkx                   # also: deps X, rdeps X, cycles [--root X]
 uv run archview init ~/git/tiny-tale-backend --config /tmp/tt.toml   # rules kept outside that repo
 uv run pytest && uv run ruff check
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff

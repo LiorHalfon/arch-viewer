@@ -14,6 +14,7 @@ from archview.model.query import (
     runtime_only,
     why,
 )
+from archview.render.query import cycles_to_text
 from tests.builders import model
 
 
@@ -216,6 +217,30 @@ def test_a_tangle_lists_the_members_its_path_misses():
     assert cycle.members == ("pkg.a", "pkg.b", "pkg.c")
     assert cycle.path == ("pkg.a", "pkg.b", "pkg.a")
     assert cycle.missed == ("pkg.c",)
+
+
+def test_a_tangle_shows_the_edges_its_path_does_not_take():
+    m = model(
+        ("pkg.a.x", "pkg.b.y"),
+        ("pkg.b.y", "pkg.a.x"),
+        ("pkg.b.y", "pkg.c.z"),
+        ("pkg.c.z", "pkg.b.y"),
+    )
+
+    (cycle,) = all_cycles(m)
+    text = cycles_to_text((cycle,), "pkg")
+
+    assert [(s.source, s.target) for s in cycle.others] == [("pkg.b", "pkg.c"), ("pkg.c", "pkg.b")]
+    assert "also in this tangle: pkg.c, through\n  pkg.b -> pkg.c  (1 import)" in text
+
+
+def test_the_imports_behind_a_cycle_step_are_in_file_and_line_order():
+    m = model(("pkg.a.x", "pkg.b.z"), ("pkg.a.x", "pkg.b.y"), ("pkg.b.y", "pkg.a.x"))
+    m = replace(m, imports=m.imports[::-1])
+
+    (cycle,) = all_cycles(m)
+
+    assert [i.line for i in cycle.steps[0].imports] == [1, 2]
 
 
 def test_cycles_can_be_limited_to_a_subtree():
