@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "language": "python",
   "project": "sample",
   "nodes": [
@@ -7,61 +7,85 @@
       "id": "sample",
       "parent": null,
       "kind": "package",
-      "file": "sample/__init__.py"
+      "file": "sample/__init__.py",
+      "abstract": false
     },
     {
       "id": "sample.api",
       "parent": "sample",
       "kind": "package",
-      "file": "sample/api/__init__.py"
+      "file": "sample/api/__init__.py",
+      "abstract": false
     },
     {
       "id": "sample.api.routes",
       "parent": "sample.api",
       "kind": "module",
-      "file": "sample/api/routes.py"
+      "file": "sample/api/routes.py",
+      "abstract": false
     },
     {
       "id": "sample.domain",
       "parent": "sample",
       "kind": "package",
-      "file": "sample/domain/__init__.py"
+      "file": "sample/domain/__init__.py",
+      "abstract": false
     },
     {
       "id": "sample.domain.model",
       "parent": "sample.domain",
       "kind": "module",
-      "file": "sample/domain/model.py"
+      "file": "sample/domain/model.py",
+      "abstract": false
+    },
+    {
+      "id": "sample.domain.ports",
+      "parent": "sample.domain",
+      "kind": "module",
+      "file": "sample/domain/ports.py",
+      "abstract": true
     },
     {
       "id": "sample.infra",
       "parent": "sample",
       "kind": "package",
-      "file": "sample/infra/__init__.py"
+      "file": "sample/infra/__init__.py",
+      "abstract": false
     },
     {
       "id": "sample.infra.cache",
       "parent": "sample.infra",
       "kind": "module",
-      "file": "sample/infra/cache.py"
+      "file": "sample/infra/cache.py",
+      "abstract": false
     },
     {
       "id": "sample.infra.db",
       "parent": "sample.infra",
       "kind": "module",
-      "file": "sample/infra/db.py"
+      "file": "sample/infra/db.py",
+      "abstract": false
     },
     {
       "id": "sample.services",
       "parent": "sample",
       "kind": "package",
-      "file": "sample/services/__init__.py"
+      "file": "sample/services/__init__.py",
+      "abstract": false
     },
     {
       "id": "sample.services.pricing",
       "parent": "sample.services",
       "kind": "module",
-      "file": "sample/services/pricing.py"
+      "file": "sample/services/pricing.py",
+      "abstract": false
+    },
+    {
+      "id": "grimp",
+      "parent": null,
+      "kind": "external",
+      "file": null,
+      "abstract": false
     }
   ],
   "imports": [
@@ -70,56 +94,100 @@
       "imported": "sample.domain.model",
       "file": "sample/__init__.py",
       "line": 3,
-      "text": "from sample.domain.model import Order"
+      "text": "from sample.domain.model import Order",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "sample.api.routes",
+      "imported": "grimp",
+      "file": "sample/api/routes.py",
+      "line": 8,
+      "text": "import grimp",
+      "type_checking": false,
+      "lazy": false
     },
     {
       "importer": "sample.api.routes",
       "imported": "sample.domain",
       "file": "sample/api/routes.py",
       "line": 10,
-      "text": "from sample.domain import Order"
+      "text": "from sample.domain import Order",
+      "type_checking": false,
+      "lazy": false
     },
     {
       "importer": "sample.api.routes",
       "imported": "sample.infra.db",
       "file": "sample/api/routes.py",
       "line": 14,
-      "text": "from sample.infra.db import Session"
+      "text": "from sample.infra.db import Session",
+      "type_checking": true,
+      "lazy": false
     },
     {
       "importer": "sample.api.routes",
       "imported": "sample.services.pricing",
       "file": "sample/api/routes.py",
       "line": 11,
-      "text": "from sample.services import pricing"
+      "text": "from sample.services import pricing",
+      "type_checking": false,
+      "lazy": false
     },
     {
       "importer": "sample.domain",
       "imported": "sample.domain.model",
       "file": "sample/domain/__init__.py",
       "line": 1,
-      "text": "from sample.domain.model import Order"
+      "text": "from sample.domain.model import Order",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "sample.infra.db",
+      "imported": "sample.domain.ports",
+      "file": "sample/infra/db.py",
+      "line": 12,
+      "text": "from sample.domain.ports import OrderStore",
+      "type_checking": false,
+      "lazy": true
     },
     {
       "importer": "sample.infra.db",
       "imported": "sample.services.pricing",
       "file": "sample/infra/db.py",
       "line": 3,
-      "text": "from sample.services import pricing"
+      "text": "from sample.services import pricing",
+      "type_checking": false,
+      "lazy": false
     },
     {
       "importer": "sample.services.pricing",
       "imported": "sample.domain.model",
       "file": "sample/services/pricing.py",
       "line": 3,
-      "text": "from ..domain import model"
+      "text": "from ..domain import model",
+      "type_checking": false,
+      "lazy": false
     },
     {
       "importer": "sample.services.pricing",
       "imported": "sample.infra.cache",
       "file": "sample/services/pricing.py",
       "line": 7,
-      "text": "from sample.infra.cache import get_rate"
+      "text": "from sample.infra.cache import get_rate",
+      "type_checking": false,
+      "lazy": true
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "dynamic_import",
+      "module": "sample.infra.cache",
+      "file": "sample/infra/cache.py",
+      "line": 11,
+      "text": "importlib.import_module(\"sample.api.routes\")",
+      "target": "sample.api.routes"
     }
   ]
 }

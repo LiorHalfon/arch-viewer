@@ -1,4 +1,4 @@
-"""Aggregate a model into the view for one root (requirement A6)."""
+"""Aggregate a model into the view for one root (requirements A6-A10)."""
 
 from __future__ import annotations
 
@@ -6,13 +6,14 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from archview.model.cycles import components, find_cycles
-from archview.model.graph import Import, Kind, Model
+from archview.model.graph import Import, Kind, Model, Node
 from archview.model.layers import assign_layers
+from archview.model.metrics import DEFAULT_THRESHOLD, metrics
 
 
 @dataclass(frozen=True, slots=True)
 class ViewNode:
-    """One box in the diagram: a direct child of the root."""
+    """One box in the diagram: a direct child of the root, or an external package."""
 
     id: str
     name: str
@@ -22,17 +23,28 @@ class ViewNode:
     in_cycle: bool
     fan_in: int
     fan_out: int
+    abstract: bool = False
+    abstractness: float = 0.0
+    instability: float | None = None
+    distance: float | None = None
+    zone: str = "isolated"
 
 
 @dataclass(frozen=True, slots=True)
 class ViewEdge:
-    """All imports from one child of the root to another, counted."""
+    """All imports from one child of the root to another, counted.
+
+    `abstract`: every import lands on an abstract module (UML realisation arrow).
+    `type_checking`: every import is for type checkers only.
+    """
 
     source: str
     target: str
     count: int
     in_cycle: bool
     imports: tuple[Import, ...] = field(default_factory=tuple)
+    abstract: bool = False
+    type_checking: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,14 +65,9 @@ def _owner(module: str, children: frozenset[str]) -> str | None:
     return None
 
 
-def _module_count(model: Model, node_id: str) -> int:
-    """How many source files live in this subtree, the node itself included."""
+def _in_subtree(node_id: str, model: Model) -> list[Node]:
     prefix = node_id + "."
-    return sum(
-        1
-        for n in model.nodes
-        if n.file is not None and (n.id == node_id or n.id.startswith(prefix))
-    )
+    return [n for n in model.nodes if n.id == node_id or n.id.startswith(prefix)]
 
 
 def _grouped_imports(model: Model, children: frozenset[str]) -> dict[tuple[str, str], list[Import]]:
@@ -74,9 +81,25 @@ def _grouped_imports(model: Model, children: frozenset[str]) -> dict[tuple[str, 
     return grouped
 
 
-def build_view(model: Model, root: str) -> View:
+def _externals(model: Model, root: str) -> set[str]:
+    """External packages imported from inside `root`."""
+    kinds = {n.id: n.kind for n in model.nodes}
+    inside = frozenset({root})
+    return {
+        imp.imported
+        for imp in model.imports
+        if kinds.get(imp.imported) == "external" and _owner(imp.importer, inside)
+    }
+
+
+def build_view(
+    model: Model, root: str, externals: bool = False, threshold: float = DEFAULT_THRESHOLD
+) -> View:
+    """The children of `root` and the counted edges between them; with `externals`,
+    the third-party packages the subtree imports become boxes too."""
     by_id = {n.id: n for n in model.nodes}
-    children = frozenset(n.id for n in model.nodes if n.parent == root)
+    internal = frozenset(n.id for n in model.nodes if n.parent == root and n.kind != "external")
+    children = internal | (frozenset(_externals(model, root)) if externals else frozenset())
     grouped = _grouped_imports(model, children)
     counts = {pair: len(imports) for pair, imports in grouped.items()}
 
@@ -84,19 +107,11 @@ def build_view(model: Model, root: str) -> View:
     layer = assign_layers(children, counts)
     cycles = find_cycles(children, counts)
     cyclic = {name for cycle in cycles for name in cycle}
+    abstract_ids = {n.id for n in model.nodes if n.abstract}
 
     nodes = tuple(
-        ViewNode(
-            id=child,
-            name=child[len(root) + 1 :],
-            kind=by_id[child].kind,
-            module_count=_module_count(model, child),
-            layer=layer[child],
-            in_cycle=child in cyclic,
-            fan_in=sum(c for (_, t), c in counts.items() if t == child),
-            fan_out=sum(c for (s, _), c in counts.items() if s == child),
-        )
-        for child in sorted(children)
+        _node(model, by_id, child, root, grouped, layer[child], child in cyclic, threshold)
+        for child in sorted(children, key=lambda c: (by_id[c].kind == "external", c))
     )
     edges = tuple(
         ViewEdge(
@@ -105,10 +120,59 @@ def build_view(model: Model, root: str) -> View:
             count=len(imports),
             in_cycle=component[s] == component[t],
             imports=tuple(imports),
+            abstract=all(i.imported in abstract_ids for i in imports),
+            type_checking=all(i.type_checking for i in imports),
         )
         for (s, t), imports in sorted(grouped.items())
     )
     return View(root=root, nodes=nodes, edges=edges, cycles=cycles)
+
+
+def _node(
+    model: Model,
+    by_id: dict[str, Node],
+    node_id: str,
+    root: str,
+    grouped: dict[tuple[str, str], list[Import]],
+    layer: int,
+    in_cycle: bool,
+    threshold: float,
+) -> ViewNode:
+    node = by_id[node_id]
+    files = [n for n in _in_subtree(node.id, model) if n.file is not None]
+    abstract = sum(1 for n in files if n.abstract)
+    incoming = [i for (_, t), imps in grouped.items() if t == node.id for i in imps]
+    outgoing = [i for (s, t), imps in grouped.items() if s == node.id for i in imps]
+    internal_out = [
+        i for i in outgoing if i.imported in by_id and by_id[i.imported].kind != "external"
+    ]
+    m = metrics(
+        ca=len({i.importer for i in incoming}),
+        ce=len({i.imported for i in internal_out}),
+        abstract=abstract,
+        modules=len(files),
+        threshold=threshold,
+    )
+    if node.kind == "external":
+        return ViewNode(
+            node.id, node.id, "external", 0, layer, in_cycle, len(incoming), 0, zone="external"
+        )
+    name = node.id[len(root) + 1 :]
+    return ViewNode(
+        id=node.id,
+        name=name,
+        kind=node.kind,
+        module_count=len(files),
+        layer=layer,
+        in_cycle=in_cycle,
+        fan_in=len(incoming),
+        fan_out=len(outgoing),
+        abstract=bool(files) and abstract == len(files),
+        abstractness=m.abstractness,
+        instability=m.instability,
+        distance=m.distance,
+        zone=m.zone,
+    )
 
 
 def tangled_packages(model: Model) -> frozenset[str]:

@@ -21,11 +21,13 @@ def test_builds_a_node_for_every_package_and_module_in_the_tree(sample):
         ("sample.api.routes", "module"),
         ("sample.domain", "package"),
         ("sample.domain.model", "module"),
+        ("sample.domain.ports", "module"),
         ("sample.infra", "package"),
         ("sample.infra.cache", "module"),
         ("sample.infra.db", "module"),
         ("sample.services", "package"),
         ("sample.services.pricing", "module"),
+        ("grimp", "external"),
     ]
 
 
@@ -66,9 +68,30 @@ def test_captures_imports_written_inside_a_function(sample):
     }
 
 
-def test_ignores_stdlib_and_third_party_imports(sample):
+def test_ignores_stdlib_and_squashes_third_party_packages_into_external_nodes(sample):
     outside = {i.imported for i in sample.imports if not i.imported.startswith("sample")}
-    assert outside == set()
+    externals = [(n.id, n.parent, n.file) for n in sample.nodes if n.kind == "external"]
+
+    assert outside == {"grimp"}
+    assert externals == [("grimp", None, None)]
+
+
+def test_flags_type_checking_and_lazy_imports(sample):
+    flags = {(i.importer, i.imported): (i.type_checking, i.lazy) for i in sample.imports}
+
+    assert flags[("sample.api.routes", "sample.infra.db")] == (True, False)
+    assert flags[("sample.services.pricing", "sample.infra.cache")] == (False, True)
+    assert flags[("sample.api.routes", "sample.services.pricing")] == (False, False)
+
+
+def test_marks_modules_that_define_abstractions(sample):
+    assert [n.id for n in sample.nodes if n.abstract] == ["sample.domain.ports"]
+
+
+def test_reports_dynamic_imports_as_warnings(sample):
+    assert [(w.kind, w.file, w.line, w.target) for w in sample.warnings] == [
+        ("dynamic_import", "sample/infra/cache.py", 11, "sample.api.routes")
+    ]
 
 
 def test_does_not_leave_the_analysed_project_on_the_import_path(sample):

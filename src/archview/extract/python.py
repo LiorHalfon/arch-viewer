@@ -2,7 +2,8 @@
 
 The analysed project is parsed, never imported or executed (requirement N2):
 grimp locates the package on the path and reads the source, and the path entry
-is removed again as soon as the graph is built.
+is removed again as soon as the graph is built. A second `ast` pass per file adds
+what grimp does not report (`extract/facts.py`).
 """
 
 from __future__ import annotations
@@ -13,7 +14,10 @@ from pathlib import Path
 
 import grimp
 
-from archview.model.graph import Import, Model, Node
+from archview.extract.facts import FileFacts, scan
+from archview.model.graph import ExtractionWarning, Import, Model, Node
+
+STDLIB = frozenset(sys.stdlib_module_names) | {"__future__"}
 
 
 @contextmanager
@@ -37,8 +41,22 @@ def _source_file(module: str, source_root: Path, relative_to: Path) -> str | Non
     return None
 
 
-def _kind(module: str, graph: grimp.ImportGraph) -> str:
+def _is_internal(module: str, package: str) -> bool:
+    return module == package or module.startswith(package + ".")
+
+
+def _kind(module: str, package: str, graph: grimp.ImportGraph) -> str:
+    if not _is_internal(module, package):
+        return "external"
     return "package" if graph.find_children(module) else "module"
+
+
+def _facts(files: dict[str, str | None], base: Path) -> dict[str, FileFacts]:
+    facts = {}
+    for module, file in files.items():
+        if file is not None:
+            facts[module] = scan((base / file).read_text(errors="replace"))
+    return facts
 
 
 def build_model(package: str, source_root: Path, relative_to: Path | None = None) -> Model:
@@ -46,32 +64,72 @@ def build_model(package: str, source_root: Path, relative_to: Path | None = None
     source_root = Path(source_root).resolve()
     base = Path(relative_to).resolve() if relative_to else source_root
     with _importable(source_root):
-        graph = grimp.build_graph(package, cache_dir=None)
+        graph = grimp.build_graph(package, include_external_packages=True, cache_dir=None)
+
+    internal_first = lambda m: (not _is_internal(m, package), m)  # noqa: E731
+    modules = sorted((m for m in graph.modules if m not in STDLIB), key=internal_first)
+    files = {
+        m: _source_file(m, source_root, base) if _is_internal(m, package) else None for m in modules
+    }
+    facts = _facts(files, base)
 
     nodes = tuple(
         Node(
             id=module,
-            parent=module.rpartition(".")[0] or None,
-            kind=_kind(module, graph),
-            file=_source_file(module, source_root, base),
+            parent=(module.rpartition(".")[0] or None) if _is_internal(module, package) else None,
+            kind=_kind(module, package, graph),
+            file=files[module],
+            abstract=module in facts and facts[module].abstract,
         )
-        for module in sorted(graph.modules)
+        for module in modules
     )
-    imports = tuple(
-        sorted(
-            (
-                Import(
-                    importer=importer,
-                    imported=imported,
-                    file=_source_file(importer, source_root, base) or "",
-                    line=detail["line_number"],
-                    text=detail["line_contents"],
+    return Model(
+        project=package,
+        nodes=nodes,
+        imports=_imports(graph, package, files, facts),
+        warnings=_warnings(files, facts),
+    )
+
+
+def _imports(graph, package, files, facts) -> tuple[Import, ...]:
+    found = []
+    for importer in graph.modules:
+        if not _is_internal(importer, package):
+            continue
+        for imported in graph.find_modules_directly_imported_by(importer):
+            if imported in STDLIB:
+                continue
+            for detail in graph.get_import_details(importer=importer, imported=imported):
+                flags = facts[importer].flags(detail["line_number"]) if importer in facts else set()
+                found.append(
+                    Import(
+                        importer=importer,
+                        imported=imported,
+                        file=files.get(importer) or "",
+                        line=detail["line_number"],
+                        text=detail["line_contents"],
+                        type_checking="type_checking" in flags,
+                        lazy="lazy" in flags,
+                    )
                 )
-                for importer in graph.modules
-                for imported in graph.find_modules_directly_imported_by(importer)
-                for detail in graph.get_import_details(importer=importer, imported=imported)
-            ),
-            key=lambda i: (i.importer, i.imported, i.line),
-        )
-    )
-    return Model(project=package, nodes=nodes, imports=imports)
+    return tuple(sorted(found, key=lambda i: (i.importer, i.imported, i.line)))
+
+
+def _warnings(files, facts) -> tuple[ExtractionWarning, ...]:
+    """Dynamic imports whose target is not a stdlib module (A5)."""
+    found = []
+    for module, file_facts in sorted(facts.items()):
+        for dynamic in file_facts.dynamic:
+            if dynamic.target is not None and dynamic.target.split(".")[0] in STDLIB:
+                continue
+            found.append(
+                ExtractionWarning(
+                    kind="dynamic_import",
+                    module=module,
+                    file=files[module] or "",
+                    line=dynamic.line,
+                    text=dynamic.text,
+                    target=dynamic.target,
+                )
+            )
+    return tuple(found)

@@ -6,12 +6,13 @@ digraph "sample" {
   { rank=same; "sample.infra" "sample.services" }
   { rank=same; "sample.domain" }
   "sample.api" [label="api\n(2 modules)" shape=component style="filled" class="package"];
-  "sample.domain" [label="domain\n(2 modules)" shape=component style="filled" class="package"];
-  "sample.infra" [label="infra\n(3 modules)" fontcolor="red" shape=component style="filled" class="package cycle"];
-  "sample.services" [label="services\n(2 modules)" fontcolor="red" shape=component style="filled" class="package cycle"];
+  "sample.domain" [label="domain\n(3 modules)" shape=component style="filled" class="package zone-pain"];
+  "sample.infra" [label="infra\n(3 modules)" fontcolor="red" shape=component style="filled" class="package cycle zone-pain"];
+  "sample.services" [label="services\n(2 modules)" fontcolor="red" shape=component style="filled" class="package cycle zone-pain"];
   "sample.api" -> "sample.domain" [label="1"];
-  "sample.api" -> "sample.infra" [label="1"];
+  "sample.api" -> "sample.infra" [label="1" style="dotted" class="typing"];
   "sample.api" -> "sample.services" [label="1"];
+  "sample.infra" -> "sample.domain" [label="1" arrowhead=onormal class="abstract"];
   "sample.infra" -> "sample.services" [label="1" color="red" penwidth=2 class="cycle"];
   "sample.services" -> "sample.domain" [label="1"];
   "sample.services" -> "sample.infra" [label="1" color="red" penwidth=2 class="cycle"];

@@ -33,13 +33,16 @@ def test_serves_the_page_and_its_vendored_scripts(client):
 
 
 def test_summarises_the_project(client, repo):
-    assert client.get("/api/project").json() == {
+    summary = client.get("/api/project").json()
+
+    assert {k: summary[k] for k in ("project", "repo", "rules", "modules", "imports")} == {
         "project": "sample",
         "repo": repo.name,
         "rules": None,
-        "modules": 10,
-        "imports": 8,
+        "modules": 11,
+        "imports": 10,
     }
+    assert [w["kind"] for w in summary["warnings"]] == ["dynamic_import"]
 
 
 def test_the_top_view_carries_nodes_edges_cycles_and_dot(client):
@@ -61,7 +64,7 @@ def test_marks_packages_with_a_cycle_inside(repo):
     view = client.get("/api/view").json()
 
     assert [n["name"] for n in view["nodes"] if n["tangled"]] == ["infra"]
-    assert 'class="package tangled"' in view["dot"]
+    assert 'class="package tangled' in view["dot"]
 
 
 def test_drills_down_and_knows_the_way_back(client):
@@ -85,6 +88,7 @@ def test_serves_a_modules_source_with_its_project_imports(client):
     assert source["file"] == "sample/api/routes.py"
     assert source["text"].startswith('"""Top of the stack')
     assert [(i["line"], i["imported"]) for i in source["imports"]] == [
+        (8, "grimp"),
         (10, "sample.domain"),
         (14, "sample.infra.db"),
         (11, "sample.services.pricing"),
@@ -104,5 +108,5 @@ def test_reanalyze_picks_up_new_code(client, repo):
     summary = client.post("/api/reanalyze").json()
     view = client.get("/api/view").json()
 
-    assert summary["modules"] == 12
+    assert summary["modules"] == 13
     assert "reports" in [n["name"] for n in view["nodes"]]

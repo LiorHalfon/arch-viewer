@@ -51,6 +51,8 @@ def test_lists_the_imports_behind_an_edge(capsys):
             "file": "sample/api/routes.py",
             "line": 11,
             "text": "from sample.services import pricing",
+            "type_checking": False,
+            "lazy": False,
         }
     ]
 

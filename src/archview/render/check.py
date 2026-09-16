@@ -16,7 +16,9 @@ LABELS = {
     "forbidden": "FORBIDDEN",
     "undeclared": "UNDECLARED",
     "cycle": "CYCLE",
+    "zone": "ZONE",
 }
+ZONE_NAMES = {"pain": "the zone of pain", "useless": "the zone of uselessness"}
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:
@@ -26,6 +28,8 @@ def report_to_dict(report: Report) -> dict[str, Any]:
         "components": list(report.components),
         "problems": [_problem_dict(p) for p in report.problems],
         "warnings": [asdict(w) for w in report.warnings],
+        "metrics": {name: asdict(m) for name, m in sorted(report.metrics.items())},
+        "unused_allowances": [{"from": s, "to": t} for s, t in report.unused],
     }
 
 
@@ -39,6 +43,7 @@ def _problem_dict(problem: Problem) -> dict[str, Any]:
         "components": list(problem.components),
         "count": problem.count,
         "fails": problem.fails,
+        "baselined": problem.baselined,
         "hint": problem.hint,
         "imports": [asdict(i) for i in problem.imports],
     }
@@ -48,11 +53,13 @@ def _plural(count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
-def _headline(problem: Problem) -> str:
+def _headline(problem: Problem, report: Report) -> str:
     label = LABELS[problem.kind]
     c = problem.components
     if problem.kind == "cycle":
         return f"{label} {describe_cycle(c)} ({_plural(problem.count, 'edge')})"
+    if problem.kind == "zone":
+        return f"{label} {c[0]} is in {ZONE_NAMES[report.metrics[c[0]].zone]}"
     if problem.kind == "undeclared":
         return f"{label} {c[0]} is not in [{problem.rule}]"
     reason = "not allowed by" if problem.kind == "not_allowed" else "forbidden by"
@@ -61,11 +68,15 @@ def _headline(problem: Problem) -> str:
     )
 
 
-def _problem_lines(problem: Problem, paint) -> list[str]:
-    headline = _headline(problem)
+def _problem_lines(problem: Problem, report: Report, paint) -> list[str]:
+    headline = _headline(problem, report)
+    if not problem.fails and problem.baselined:
+        return [paint(DIM, f"known: {headline}  (in the baseline)")]
     if not problem.fails:
         headline += "  (reported only: switched off in the rules)"
     lines = [paint(RED if problem.fails else YELLOW, headline)]
+    if problem.baselined:
+        lines.append(f"  (new imports only; {problem.baselined} more are in the baseline)")
     shown = problem.imports[:EXAMPLES]
     width = max((len(f"{i.file}:{i.line}") for i in shown), default=0)
     for i in shown:
@@ -84,11 +95,14 @@ def report_to_text(report: Report, color: bool = False) -> str:
 
     lines: list[str] = []
     for problem in report.problems:
-        lines += _problem_lines(problem, paint)
+        lines += _problem_lines(problem, report, paint)
     for warning in report.warnings:
         lines.append(paint(YELLOW, f"warning: {warning.message}"))
     failing = sum(1 for p in report.problems if p.fails)
     components = _plural(len(report.components), "component")
+    known = sum(1 for p in report.problems if p.baselined)
+    if known:
+        components += f", {known} known in the baseline"
     if failing:
         lines.append(paint(RED, f"{_plural(failing, 'problem')} in {components}. exit 1"))
     else:

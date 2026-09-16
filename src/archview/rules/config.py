@@ -23,8 +23,20 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Forbidden:
+    """`source` must not import `target`. `origin` names the table that said so."""
+
     source: str
     target: str
+    origin: str = "forbidden"
+
+
+@dataclass(frozen=True, slots=True)
+class MetricRules:
+    """Optional thresholds on component metrics (requirement C9)."""
+
+    threshold: float = 0.3
+    fail_on_zones: tuple[str, ...] = ()
+    ignore: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +55,7 @@ class Config:
     package: str | None = None
     source_roots: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
+    type_checking_imports: str = "ignore"
     fail_on_violations: bool = True
     fail_on_cycles: bool = True
     allowed: dict[str, tuple[str, ...] | str] | None = None
@@ -50,12 +63,42 @@ class Config:
     exceptions: tuple[Exemption, ...] = ()
     ignored: tuple[str, ...] = ()
     components: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    layers: tuple[tuple[str, ...], ...] = ()
+    independent: tuple[tuple[str, ...], ...] = ()
+    metrics: MetricRules = field(default_factory=MetricRules)
+    baseline: str | None = None
+
+    def all_forbidden(self) -> tuple[Forbidden, ...]:
+        """`forbidden`, plus what `layers` and `independent` imply (requirement C8)."""
+        derived = [
+            Forbidden(lower, upper, "layers")
+            for i, layer in enumerate(self.layers)
+            for upper in (c for above in self.layers[:i] for c in above)
+            for lower in layer
+        ]
+        derived += [
+            Forbidden(a, b, "layers")
+            for layer in self.layers
+            for a in layer
+            for b in layer
+            if a != b
+        ]
+        derived += [
+            Forbidden(a, b, "independent")
+            for group in self.independent
+            for a in group
+            for b in group
+            if a != b
+        ]
+        return (*self.forbidden, *derived)
 
 
+ZONES = ("pain", "useless")
 TOP_KEYS = {
     "package",
     "source_roots",
     "exclude",
+    "type_checking_imports",
     "fail_on_violations",
     "fail_on_cycles",
     "allowed",
@@ -63,6 +106,10 @@ TOP_KEYS = {
     "exceptions",
     "ignored",
     "components",
+    "layers",
+    "independent",
+    "metrics",
+    "baseline",
 }
 
 
@@ -112,7 +159,56 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
         ignored=_str_list(table, "ignored", where),
         components=_components(table.get("components", {}), f"{where}.components"),
+        type_checking_imports=_choice(
+            table, "type_checking_imports", ("ignore", "include"), "ignore", where
+        ),
+        layers=_layers(table.get("layers", []), f"{where}.layers"),
+        independent=tuple(
+            _strings(group, f"{where}.independent")
+            for group in _list(table.get("independent", []), f"{where}.independent")
+        ),
+        metrics=_metrics(table.get("metrics", {}), f"{where}.metrics"),
+        baseline=_optional_str(table, "baseline", where),
     )
+
+
+def _list(value: Any, where: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ConfigError(f"[{where}] must be a list")
+    return value
+
+
+def _choice(table: dict[str, Any], key: str, options: tuple[str, ...], default: str, where: str):
+    value = table.get(key, default)
+    if value not in options:
+        raise ConfigError(f"[{where}] {key} must be one of {', '.join(map(repr, options))}")
+    return value
+
+
+def _layers(value: Any, where: str) -> tuple[tuple[str, ...], ...]:
+    """Top to bottom; an entry is a component or a list of peers that share a layer."""
+    layers = []
+    for entry in _list(value, where):
+        layers.append((entry,) if isinstance(entry, str) else _strings(entry, where))
+    return tuple(layers)
+
+
+def _metrics(value: Any, where: str) -> MetricRules:
+    if not isinstance(value, dict):
+        raise ConfigError(f"[{where}] must be a table")
+    _known_keys(value, {"threshold", "fail_on_zones", "ignore"}, where)
+    threshold = value.get("threshold", 0.3)
+    if (
+        not isinstance(threshold, int | float)
+        or isinstance(threshold, bool)
+        or not 0 <= threshold <= 1
+    ):
+        raise ConfigError(f"[{where}] threshold must be a number between 0 and 1")
+    zones = _str_list(value, "fail_on_zones", where)
+    for zone in zones:
+        if zone not in ZONES:
+            raise ConfigError(f"[{where}] fail_on_zones: unknown zone {zone!r}; use {ZONES}")
+    return MetricRules(float(threshold), zones, _str_list(value, "ignore", where))
 
 
 def _known_keys(table: dict[str, Any], known: set[str], where: str) -> None:

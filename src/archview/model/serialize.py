@@ -11,10 +11,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from archview.model.graph import Import, Model, Node
+from archview.model.graph import ExtractionWarning, Import, Model, Node
 from archview.model.view import View
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = Path(__file__).with_name("schema.json")
 
 
@@ -25,6 +25,7 @@ def model_to_dict(model: Model) -> dict[str, Any]:
         "project": model.project,
         "nodes": [asdict(n) for n in model.nodes],
         "imports": [asdict(i) for i in model.imports],
+        "warnings": [asdict(w) for w in model.warnings],
     }
 
 
@@ -39,6 +40,7 @@ def model_from_dict(data: dict[str, Any]) -> Model:
         language=data["language"],
         nodes=tuple(Node(**n) for n in data["nodes"]),
         imports=tuple(Import(**i) for i in data["imports"]),
+        warnings=tuple(ExtractionWarning(**w) for w in data["warnings"]),
     )
 
 
@@ -57,6 +59,8 @@ def view_to_dict(view: View) -> dict[str, Any]:
                 "target": e.target,
                 "count": e.count,
                 "in_cycle": e.in_cycle,
+                "abstract": e.abstract,
+                "type_checking": e.type_checking,
                 "imports": [asdict(i) for i in e.imports],
             }
             for e in view.edges

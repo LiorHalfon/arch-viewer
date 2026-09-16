@@ -1,26 +1,73 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/liorhalfon/archview/schema/model-1.json",
+  "$id": "https://github.com/liorhalfon/archview/schema/model-2.json",
   "title": "archview model",
   "description": "The interchange format: a tree of nodes plus the imports between them. Views, cycles, layers, metrics and violations are all derived from this.",
   "type": "object",
-  "required": ["schema", "language", "project", "nodes", "imports"],
+  "required": [
+    "schema",
+    "language",
+    "project",
+    "nodes",
+    "imports",
+    "warnings"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema": {"const": 1},
-    "language": {"type": "string", "description": "the extractor that produced this"},
-    "project": {"type": "string", "description": "the top-level package analysed"},
+    "schema": {
+      "const": 2
+    },
+    "language": {
+      "type": "string",
+      "description": "the extractor that produced this"
+    },
+    "project": {
+      "type": "string",
+      "description": "the top-level package analysed"
+    },
     "nodes": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "parent", "kind", "file"],
+        "required": [
+          "id",
+          "parent",
+          "kind",
+          "file",
+          "abstract"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": {"type": "string", "description": "dotted name, unique"},
-          "parent": {"type": ["string", "null"], "description": "null for the project root"},
-          "kind": {"enum": ["package", "module"]},
-          "file": {"type": ["string", "null"], "description": "source file, relative to the project root"}
+          "id": {
+            "type": "string",
+            "description": "dotted name, unique"
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "null for the project root and for externals"
+          },
+          "kind": {
+            "enum": [
+              "package",
+              "module",
+              "external"
+            ],
+            "description": "external: a third-party package, squashed into one node"
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "source file, relative to the project root"
+          },
+          "abstract": {
+            "type": "boolean",
+            "description": "defines an abstraction (Protocol, ABC, abstract methods)"
+          }
         }
       }
     },
@@ -28,14 +75,84 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["importer", "imported", "file", "line", "text"],
+        "required": [
+          "importer",
+          "imported",
+          "file",
+          "line",
+          "text",
+          "type_checking",
+          "lazy"
+        ],
         "additionalProperties": false,
         "properties": {
-          "importer": {"type": "string"},
-          "imported": {"type": "string"},
-          "file": {"type": "string"},
-          "line": {"type": "integer", "minimum": 1},
-          "text": {"type": "string", "description": "the source line, for display and for file:line jumps"}
+          "importer": {
+            "type": "string"
+          },
+          "imported": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string",
+            "description": "the source line, for display and for file:line jumps"
+          },
+          "type_checking": {
+            "type": "boolean",
+            "description": "only imported for type checkers (if TYPE_CHECKING:)"
+          },
+          "lazy": {
+            "type": "boolean",
+            "description": "written inside a function, so it runs on call, not on import"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "module",
+          "file",
+          "line",
+          "text",
+          "target"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "dynamic_import"
+            ]
+          },
+          "module": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "the module name, when it is a string literal"
+          }
         }
       }
     }

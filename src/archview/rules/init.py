@@ -13,7 +13,12 @@ from collections.abc import Iterable
 
 from archview.model.cycles import describe_cycle, find_cycles
 from archview.model.graph import Model
-from archview.rules.check import component_edges, component_map, present_components
+from archview.rules.check import (
+    checked_imports,
+    component_edges,
+    component_map,
+    present_components,
+)
 from archview.rules.config import Config
 
 BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -30,6 +35,7 @@ def _array(values: Iterable[str]) -> str:
 def infer_rules(model: Model, config: Config | None = None) -> str:
     """The text of an `archview.toml`; keeps package, exclusions and components from `config`."""
     config = config or Config()
+    model = checked_imports(model, config)
     components = component_map(config, model.project)
     present = present_components(model, components)
     edges, _ = component_edges(model, components)

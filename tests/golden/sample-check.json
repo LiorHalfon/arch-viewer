@@ -20,6 +20,7 @@
       ],
       "count": 2,
       "fails": true,
+      "baselined": 0,
       "hint": "break the cycle where it is thinnest: infra -> services (1 import) - invert that dependency or move the code.",
       "imports": [
         {
@@ -27,17 +28,69 @@
           "imported": "sample.services.pricing",
           "file": "sample/infra/db.py",
           "line": 3,
-          "text": "from sample.services import pricing"
+          "text": "from sample.services import pricing",
+          "type_checking": false,
+          "lazy": false
         },
         {
           "importer": "sample.services.pricing",
           "imported": "sample.infra.cache",
           "file": "sample/services/pricing.py",
           "line": 7,
-          "text": "from sample.infra.cache import get_rate"
+          "text": "from sample.infra.cache import get_rate",
+          "type_checking": false,
+          "lazy": true
         }
       ]
     }
   ],
-  "warnings": []
+  "warnings": [
+    {
+      "kind": "dynamic_import",
+      "message": "sample/infra/cache.py:11 importlib.import_module(\"sample.api.routes\"): dynamic import (sample.api.routes) is not checked"
+    }
+  ],
+  "metrics": {
+    "api": {
+      "ca": 0,
+      "ce": 2,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone": "main_sequence"
+    },
+    "domain": {
+      "ca": 4,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.333,
+      "distance": 0.667,
+      "zone": "pain"
+    },
+    "infra": {
+      "ca": 1,
+      "ce": 2,
+      "instability": 0.667,
+      "abstractness": 0.0,
+      "distance": 0.333,
+      "zone": "pain"
+    },
+    "sample": {
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone": "main_sequence"
+    },
+    "services": {
+      "ca": 2,
+      "ce": 2,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone": "pain"
+    }
+  },
+  "unused_allowances": []
 }

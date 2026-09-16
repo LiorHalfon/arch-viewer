@@ -13,7 +13,9 @@ from archview.extract.discover import find_packages
 from archview.extract.python import build_model
 from archview.model.filter import without_files
 from archview.model.graph import Model
-from archview.rules.config import Config, find_config, load_config
+from archview.rules.baseline import BASELINE_FILE, apply_baseline, load_baseline
+from archview.rules.check import Report, check
+from archview.rules.config import Config, ConfigError, find_config, load_config
 
 
 class ProjectError(Exception):
@@ -72,3 +74,20 @@ def _choose(packages: dict[str, Path], repo: Path, asked: str | None) -> str:
     if len(packages) > 1:
         raise ProjectError(f"several packages in {repo} ({names}); pick one with --package")
     return next(iter(packages))
+
+
+def baseline_path(project: Project) -> Path:
+    """Next to the rules file unless `baseline` names another place (relative to it)."""
+    base = project.config_path.parent if project.config_path else project.repo
+    return base / (project.config.baseline or BASELINE_FILE)
+
+
+def project_report(project: Project) -> Report:
+    """`archview check` for this project, with its baseline applied when there is one."""
+    report = check(project.model, project.config)
+    path = baseline_path(project)
+    if path.is_file():
+        report = apply_baseline(report, load_baseline(path), path.name)
+    elif project.config.baseline:
+        raise ConfigError(f"baseline {path} does not exist; `archview check --update-baseline`")
+    return report

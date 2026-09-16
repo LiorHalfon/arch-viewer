@@ -1,5 +1,7 @@
 """Deriving the view for a root: aggregation, cycles, layers, metrics."""
 
+from dataclasses import replace
+
 from archview.model.view import build_view, tangled_packages
 from tests.builders import model
 
@@ -107,3 +109,55 @@ def test_a_package_is_tangled_when_a_cycle_sits_anywhere_inside_it():
     )
 
     assert tangled_packages(m) == frozenset({"pkg", "pkg.core"})
+
+
+def test_computes_instability_abstractness_distance_and_zone_per_node():
+    m = model(
+        ("pkg.api.routes", "pkg.domain.order"),
+        ("pkg.api.views", "pkg.domain.ports"),
+        ("pkg.infra.db", "pkg.domain.ports"),
+    )
+    m = replace(m, nodes=tuple(replace(n, abstract=n.id == "pkg.domain.ports") for n in m.nodes))
+
+    view = build_view(m, "pkg")
+
+    got = {n.name: (n.instability, n.abstractness, n.distance, n.zone) for n in view.nodes}
+    assert got == {
+        "api": (1.0, 0.0, 0.0, "main_sequence"),
+        "domain": (0.0, 0.5, 0.5, "pain"),
+        "infra": (1.0, 0.0, 0.0, "main_sequence"),
+    }
+
+
+def test_marks_edges_to_abstractions_and_edges_only_for_type_checkers():
+    m = model(("pkg.api.routes", "pkg.domain.ports"), ("pkg.api.routes", "pkg.infra.db"))
+    m = replace(
+        m,
+        nodes=tuple(replace(n, abstract=n.id == "pkg.domain.ports") for n in m.nodes),
+        imports=tuple(replace(i, type_checking=i.imported == "pkg.infra.db") for i in m.imports),
+    )
+
+    edges = {e.target: (e.abstract, e.type_checking) for e in build_view(m, "pkg").edges}
+
+    assert edges == {"pkg.domain": (True, False), "pkg.infra": (False, True)}
+
+
+def test_shows_external_packages_as_boxes_only_when_asked():
+    m = model(("pkg.api.routes", "fastapi"), ("pkg.api.routes", "pkg.domain.order"))
+    m = replace(
+        m,
+        project="pkg",
+        nodes=tuple(
+            replace(n, kind="external", parent=None, file=None) if n.id == "fastapi" else n
+            for n in m.nodes
+        ),
+    )
+
+    assert [n.name for n in build_view(m, "pkg").nodes] == ["api", "domain"]
+    view = build_view(m, "pkg", externals=True)
+    assert [(n.name, n.kind) for n in view.nodes] == [
+        ("api", "package"),
+        ("domain", "package"),
+        ("fastapi", "external"),
+    ]
+    assert ("pkg.api", "fastapi") in {(e.source, e.target) for e in view.edges}

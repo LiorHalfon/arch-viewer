@@ -9,17 +9,27 @@
       "layer": 0,
       "in_cycle": false,
       "fan_in": 0,
-      "fan_out": 3
+      "fan_out": 3,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 1.0,
+      "distance": 0.0,
+      "zone": "main_sequence"
     },
     {
       "id": "sample.domain",
       "name": "domain",
       "kind": "package",
-      "module_count": 2,
+      "module_count": 3,
       "layer": 2,
       "in_cycle": false,
-      "fan_in": 2,
-      "fan_out": 0
+      "fan_in": 3,
+      "fan_out": 0,
+      "abstract": false,
+      "abstractness": 0.333,
+      "instability": 0.0,
+      "distance": 0.667,
+      "zone": "pain"
     },
     {
       "id": "sample.infra",
@@ -29,7 +39,12 @@
       "layer": 1,
       "in_cycle": true,
       "fan_in": 2,
-      "fan_out": 1
+      "fan_out": 2,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 0.5,
+      "distance": 0.5,
+      "zone": "pain"
     },
     {
       "id": "sample.services",
@@ -39,7 +54,12 @@
       "layer": 1,
       "in_cycle": true,
       "fan_in": 2,
-      "fan_out": 2
+      "fan_out": 2,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 0.5,
+      "distance": 0.5,
+      "zone": "pain"
     }
   ],
   "edges": [
@@ -48,13 +68,17 @@
       "target": "sample.domain",
       "count": 1,
       "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
       "imports": [
         {
           "importer": "sample.api.routes",
           "imported": "sample.domain",
           "file": "sample/api/routes.py",
           "line": 10,
-          "text": "from sample.domain import Order"
+          "text": "from sample.domain import Order",
+          "type_checking": false,
+          "lazy": false
         }
       ]
     },
@@ -63,13 +87,17 @@
       "target": "sample.infra",
       "count": 1,
       "in_cycle": false,
+      "abstract": false,
+      "type_checking": true,
       "imports": [
         {
           "importer": "sample.api.routes",
           "imported": "sample.infra.db",
           "file": "sample/api/routes.py",
           "line": 14,
-          "text": "from sample.infra.db import Session"
+          "text": "from sample.infra.db import Session",
+          "type_checking": true,
+          "lazy": false
         }
       ]
     },
@@ -78,13 +106,36 @@
       "target": "sample.services",
       "count": 1,
       "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
       "imports": [
         {
           "importer": "sample.api.routes",
           "imported": "sample.services.pricing",
           "file": "sample/api/routes.py",
           "line": 11,
-          "text": "from sample.services import pricing"
+          "text": "from sample.services import pricing",
+          "type_checking": false,
+          "lazy": false
+        }
+      ]
+    },
+    {
+      "source": "sample.infra",
+      "target": "sample.domain",
+      "count": 1,
+      "in_cycle": false,
+      "abstract": true,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "sample.infra.db",
+          "imported": "sample.domain.ports",
+          "file": "sample/infra/db.py",
+          "line": 12,
+          "text": "from sample.domain.ports import OrderStore",
+          "type_checking": false,
+          "lazy": true
         }
       ]
     },
@@ -93,13 +144,17 @@
       "target": "sample.services",
       "count": 1,
       "in_cycle": true,
+      "abstract": false,
+      "type_checking": false,
       "imports": [
         {
           "importer": "sample.infra.db",
           "imported": "sample.services.pricing",
           "file": "sample/infra/db.py",
           "line": 3,
-          "text": "from sample.services import pricing"
+          "text": "from sample.services import pricing",
+          "type_checking": false,
+          "lazy": false
         }
       ]
     },
@@ -108,13 +163,17 @@
       "target": "sample.domain",
       "count": 1,
       "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
       "imports": [
         {
           "importer": "sample.services.pricing",
           "imported": "sample.domain.model",
           "file": "sample/services/pricing.py",
           "line": 3,
-          "text": "from ..domain import model"
+          "text": "from ..domain import model",
+          "type_checking": false,
+          "lazy": false
         }
       ]
     },
@@ -123,13 +182,17 @@
       "target": "sample.infra",
       "count": 1,
       "in_cycle": true,
+      "abstract": false,
+      "type_checking": false,
       "imports": [
         {
           "importer": "sample.services.pricing",
           "imported": "sample.infra.cache",
           "file": "sample/services/pricing.py",
           "line": 7,
-          "text": "from sample.infra.cache import get_rate"
+          "text": "from sample.infra.cache import get_rate",
+          "type_checking": false,
+          "lazy": true
         }
       ]
     }

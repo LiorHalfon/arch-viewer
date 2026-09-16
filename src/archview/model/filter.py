@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 
 from archview.model.graph import Model
-from archview.model.patterns import matches_path
+from archview.model.patterns import matches_name, matches_path
 
 
 def without_files(model: Model, patterns: Iterable[str]) -> Model:
@@ -25,4 +25,29 @@ def without_files(model: Model, patterns: Iterable[str]) -> Model:
         imports=tuple(
             i for i in model.imports if i.importer not in dropped and i.imported not in dropped
         ),
+        warnings=tuple(w for w in model.warnings if w.module not in dropped),
     )
+
+
+TEST_NAMES = ("**.tests", "**.test", "**.test_*", "**.*_test", "**.*_tests", "**.conftest")
+
+
+def without_names(model: Model, patterns: Iterable[str]) -> Model:
+    """Drop every node whose dotted name matches a pattern (with its subtree)."""
+    patterns = tuple(patterns)
+    dropped = {n.id for n in model.nodes if any(matches_name(p, n.id) for p in patterns)}
+    if not dropped:
+        return model
+    return replace(
+        model,
+        nodes=tuple(n for n in model.nodes if n.id not in dropped),
+        imports=tuple(
+            i for i in model.imports if i.importer not in dropped and i.imported not in dropped
+        ),
+        warnings=tuple(w for w in model.warnings if w.module not in dropped),
+    )
+
+
+def without_tests(model: Model) -> Model:
+    """Hide test packages and modules by their conventional names (V10)."""
+    return without_names(model, TEST_NAMES)

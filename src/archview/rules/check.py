@@ -8,16 +8,17 @@ an agent with a small context budget.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from archview.model.cycles import find_cycles
 from archview.model.graph import Import, Model
+from archview.model.metrics import Metrics, metrics
 from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, Config
+from archview.rules.config import ALL, Config, Forbidden
 
-ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle"]
+ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone"]
 Pair = tuple[str, str]
 
 
@@ -30,6 +31,7 @@ class Problem:
     imports: tuple[Import, ...]
     hint: str
     fails: bool = True
+    baselined: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +46,8 @@ class Report:
     components: tuple[str, ...]
     problems: tuple[Problem, ...]
     warnings: tuple[Notice, ...]
+    metrics: dict[str, Metrics] = field(default_factory=dict)
+    unused: tuple[Pair, ...] = ()
 
     @property
     def failed(self) -> bool:
@@ -96,24 +100,105 @@ def present_components(model: Model, components: ComponentMap) -> tuple[str, ...
     return tuple(sorted(found))  # type: ignore[arg-type]
 
 
+def checked_imports(model: Model, config: Config) -> Model:
+    """The model as the rules see it: TYPE_CHECKING imports dropped unless included (A4)."""
+    if config.type_checking_imports == "include":
+        return model
+    return replace(model, imports=tuple(i for i in model.imports if not i.type_checking))
+
+
 def check(model: Model, config: Config) -> Report:
+    model = checked_imports(model, config)
     components = component_map(config, model.project)
     present = present_components(model, components)
     edges, used = component_edges(model, components, config)
     table = config.table
+    measured = component_metrics(model, components, edges, present, config.metrics.threshold)
 
     problems = [
         *_rule_problems(edges, present, config, table),
         *_cycle_problems(edges, present, config, table),
+        *_zone_problems(measured, config, table),
     ]
     warnings = _warnings(model, config, components, present, used, table)
-    return Report(model.project, present, tuple(problems), tuple(warnings))
+    return Report(
+        model.project,
+        present,
+        tuple(problems),
+        tuple(warnings),
+        measured,
+        _unused(edges, present, config),
+    )
+
+
+def component_metrics(
+    model: Model,
+    components: ComponentMap,
+    edges: dict[Pair, list[Import]],
+    present: tuple[str, ...],
+    threshold: float,
+) -> dict[str, Metrics]:
+    files: dict[str, list[bool]] = defaultdict(list)
+    for node in model.nodes:
+        owner = components.of(node.id) if node.file else None
+        if owner is not None:
+            files[owner].append(node.abstract)
+    result = {}
+    for c in present:
+        ca = {i.importer for (_, t), imps in edges.items() if t == c for i in imps}
+        ce = {i.imported for (s, _), imps in edges.items() if s == c for i in imps}
+        result[c] = metrics(len(ca), len(ce), sum(files[c]), len(files[c]), threshold)
+    return result
+
+
+def _unused(edges: dict[Pair, list[Import]], present: tuple[str, ...], config: Config):
+    """Allowed dependencies no import uses - candidates for tightening the rules (V7)."""
+    if config.allowed is None:
+        return ()
+    return tuple(
+        (source, target)
+        for source, targets in sorted(config.allowed.items())
+        if targets != ALL and source in present
+        for target in sorted(targets)
+        if (source, target) not in edges
+    )
+
+
+def _zone_problems(measured: dict[str, Metrics], config: Config, table: str) -> list[Problem]:
+    rules = config.metrics
+    return [
+        Problem(
+            kind="zone",
+            rule=f"{table}.metrics.fail_on_zones",
+            components=(component,),
+            count=0,
+            imports=(),
+            hint=_zone_hint(component, m),
+        )
+        for component, m in measured.items()
+        if m.zone in rules.fail_on_zones and component not in rules.ignore
+    ]
+
+
+def _zone_hint(component: str, m: Metrics) -> str:
+    numbers = f"I={m.instability}, A={m.abstractness}, D={m.distance}"
+    if m.zone == "pain":
+        return (
+            f"{component} is concrete and depended upon ({numbers}): extract interfaces "
+            "others can depend on, or move dependents away from its concrete modules."
+        )
+    return (
+        f"{component} is abstract but nothing depends on it ({numbers}): remove unused "
+        "abstractions or merge them into the code that implements them."
+    )
 
 
 def _rule_problems(
     edges: dict[Pair, list[Import]], present: tuple[str, ...], config: Config, table: str
 ) -> list[Problem]:
-    forbidden = {(f.source, f.target) for f in config.forbidden}
+    forbidden: dict[Pair, Forbidden] = {}
+    for f in config.all_forbidden():
+        forbidden.setdefault((f.source, f.target), f)
     allowed = config.allowed
     fails = config.fail_on_violations
     problems: list[Problem] = []
@@ -124,7 +209,8 @@ def _rule_problems(
                 problems.append(_undeclared(component, outgoing, table, fails))
     for (source, target), imports in edges.items():
         if (source, target) in forbidden:
-            problems.append(_forbidden(source, target, imports, table, fails))
+            origin = forbidden[(source, target)].origin
+            problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
         elif allowed is not None and source in allowed and not _may(allowed, source, target):
             problems.append(_not_allowed(source, target, imports, allowed, table, fails))
     return sorted(problems, key=lambda p: (p.components, p.kind))
@@ -150,10 +236,10 @@ def _undeclared(component: str, outgoing: list[Import], table: str, fails: bool)
     )
 
 
-def _forbidden(source: str, target: str, imports: list[Import], table: str, fails: bool) -> Problem:
+def _forbidden(source: str, target: str, imports: list[Import], rule: str, fails: bool) -> Problem:
     return Problem(
         kind="forbidden",
-        rule=f"{table}.forbidden",
+        rule=rule,
         components=(source, target),
         count=len(imports),
         imports=tuple(imports),
@@ -247,13 +333,13 @@ def _warnings(
                         f"[{table}.allowed.{component}] names {name!r}, which has no modules",
                     )
                 )
-    for f in config.forbidden:
+    for f in config.all_forbidden():
         for name in (f.source, f.target):
             if name not in known:
                 warnings.append(
                     Notice(
                         "unknown_component",
-                        f"[[{table}.forbidden]] names {name!r}, which has no modules",
+                        f"[{table}.{f.origin}] names {name!r}, which has no modules",
                     )
                 )
     for index, e in enumerate(config.exceptions):
@@ -264,6 +350,14 @@ def _warnings(
                     f"exception {e.importer} -> {e.imported} matches no import; remove it",
                 )
             )
+    for w in model.warnings:
+        target = f" ({w.target})" if w.target else ""
+        warnings.append(
+            Notice(
+                w.kind,
+                f"{w.file}:{w.line} {w.text}: dynamic import{target} is not checked",
+            )
+        )
     modules = [n.id for n in model.nodes]
     for name, pattern in components.unmatched_patterns(modules):
         warnings.append(

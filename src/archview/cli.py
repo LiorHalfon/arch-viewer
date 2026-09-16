@@ -1,4 +1,4 @@
-"""The command line: `archview graph | check | init | serve`.
+"""The command line: `archview graph | check | init | metrics | serve`.
 
 Exit codes: 0 success, 1 the check found failing problems, 2 the command could not
 run (bad arguments, unreadable rules, no package).
@@ -13,18 +13,22 @@ import socket
 import sys
 import threading
 import webbrowser
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from archview.model.cycles import describe_cycle
+from archview.model.filter import without_tests
 from archview.model.serialize import view_to_dict
 from archview.model.view import View, build_view
-from archview.project import ProjectError, open_project
+from archview.project import ProjectError, baseline_path, open_project, project_report
 from archview.render.check import report_to_dict, report_to_text
 from archview.render.dot import to_dot
+from archview.render.mermaid import to_mermaid
+from archview.rules.baseline import baseline_of
 from archview.rules.check import check
 from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
 from archview.rules.init import infer_rules
+from archview.rules.overlay import failing_imports, violating_edges
 
 USAGE_ERROR = 2
 
@@ -59,19 +63,24 @@ def _as_text(view: View) -> str:
 def _graph(args: argparse.Namespace) -> int:
     asked = args.package or (args.root.split(".")[0] if args.root else None)
     project = open_project(args.path, asked, args.config)
-    model = project.model
+    model = without_tests(project.model) if args.hide_tests else project.model
     root = args.root or project.package
     if root not in {n.id for n in model.nodes}:
         raise UsageError(f"{root} is not a module of {project.package}")
 
-    view = build_view(model, root)
+    view = build_view(model, root, externals=args.externals)
     if not view.nodes:
         raise UsageError(f"{root} has no children to show; drill into a package instead")
 
+    violations = set()
+    if project.config_path and (args.dot or args.mermaid):
+        violations = violating_edges(view, failing_imports(project_report(project)))
     if args.json:
         sys.stdout.write(json.dumps(view_to_dict(view), indent=2) + "\n")
     elif args.dot:
-        sys.stdout.write(to_dot(view))
+        sys.stdout.write(to_dot(view, violations=violations))
+    elif args.mermaid:
+        sys.stdout.write(to_mermaid(view, violations))
     else:
         sys.stdout.write(_as_text(view))
     return 0
@@ -88,7 +97,13 @@ def _check(args: argparse.Namespace) -> int:
             f"no {RULES_FILE} (or [tool.archview] in pyproject.toml) in {project.repo}; "
             "run `archview init` first"
         )
-    report = check(project.model, project.config)
+    if args.update_baseline:
+        path = baseline_path(project)
+        baseline = baseline_of(check(project.model, project.config))
+        path.write_text(baseline.to_json())
+        sys.stdout.write(f"wrote {path} ({len(baseline.entries)} known problems)\n")
+        return 0
+    report = project_report(project)
     if args.format == "json":
         sys.stdout.write(json.dumps(report_to_dict(report), indent=2) + "\n")
     else:
@@ -118,6 +133,37 @@ def _init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _metrics(args: argparse.Namespace) -> int:
+    project = open_project(args.path, args.package, args.config)
+    report = check(project.model, project.config)
+    if args.format == "json":
+        data = {name: asdict(m) for name, m in sorted(report.metrics.items())}
+        sys.stdout.write(json.dumps(data, indent=2) + "\n")
+        return 0
+    rows = [("component", "Ca", "Ce", "I", "A", "D", "zone")]
+    for name, m in sorted(report.metrics.items()):
+        rows.append(
+            (
+                name,
+                str(m.ca),
+                str(m.ce),
+                _num(m.instability),
+                _num(m.abstractness),
+                _num(m.distance),
+                m.zone,
+            )
+        )
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    for row in rows:
+        sys.stdout.write("  ".join(c.ljust(w) for c, w in zip(row, widths, strict=True)).rstrip())
+        sys.stdout.write("\n")
+    return 0
+
+
+def _num(value: float | None) -> str:
+    return "-" if value is None else f"{value:.2f}"
+
+
 def _free_port(host: str, wanted: int) -> int:
     with socket.socket() as probe:
         try:
@@ -134,6 +180,8 @@ def _serve(args: argparse.Namespace) -> int:
     from archview.server.workspace import Workspace
 
     workspace = Workspace(args.path, args.package, args.config)
+    if args.watch:
+        workspace.watch()
     port = _free_port(args.host, args.port)
     url = f"http://{args.host}:{port}/"
     summary = workspace.summary()
@@ -162,12 +210,25 @@ def build_parser() -> argparse.ArgumentParser:
     output = graph.add_mutually_exclusive_group()
     output.add_argument("--json", action="store_true", help="print the derived view as JSON")
     output.add_argument("--dot", action="store_true", help="print Graphviz DOT")
+    output.add_argument("--mermaid", action="store_true", help="print a Mermaid flowchart")
+    graph.add_argument("--externals", action="store_true", help="show third-party packages")
+    graph.add_argument("--hide-tests", action="store_true", help="leave test code out")
     graph.set_defaults(run=_graph)
 
     check_ = commands.add_parser("check", help="check the dependencies against the rules")
     _common(check_)
     check_.add_argument("--format", choices=["text", "json"], default="text")
+    check_.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="record today's failing problems so only new ones fail",
+    )
     check_.set_defaults(run=_check)
+
+    metrics = commands.add_parser("metrics", help="fan-in/out, instability, abstractness, zones")
+    _common(metrics)
+    metrics.add_argument("--format", choices=["text", "json"], default="text")
+    metrics.set_defaults(run=_metrics)
 
     init = commands.add_parser("init", help="write rules inferred from the current imports")
     _common(init)
@@ -183,6 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="127.0.0.1", help="interface to bind (default: localhost)")
     serve.add_argument("--port", type=int, default=8765, help="port (a free one if taken)")
     serve.add_argument("--no-open", action="store_true", help="do not open a browser")
+    serve.add_argument("--watch", action="store_true", help="reanalyze when files change")
     serve.set_defaults(run=_serve)
     return parser
 

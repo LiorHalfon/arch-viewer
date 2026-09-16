@@ -23,7 +23,7 @@ def test_round_trips_a_model_through_its_dict_form(sample):
 
 def test_declares_the_schema_version_and_language(sample):
     data = model_to_dict(sample)
-    assert (data["schema"], data["language"], data["project"]) == (1, "python", "sample")
+    assert (data["schema"], data["language"], data["project"]) == (2, "python", "sample")
 
 
 def test_json_matches_the_published_schema(sample):

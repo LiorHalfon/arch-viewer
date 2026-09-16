@@ -46,11 +46,7 @@ def test_init_writes_the_current_dependencies_and_switches_off_existing_cycles(r
 def test_removing_one_allowed_dependency_fails_with_file_and_line(repo, capsys):
     run(capsys, "init", str(repo))
     rules = repo / "archview.toml"
-    rules.write_text(
-        rules.read_text().replace(
-            'api = ["domain", "infra", "services"]', 'api = ["domain", "infra"]'
-        )
-    )
+    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
 
     code, out, _ = run(capsys, "check", str(repo))
 
@@ -122,3 +118,49 @@ def test_check_reads_a_rules_file_given_explicitly(repo, tmp_path, capsys):
 
     assert not (repo / "archview.toml").exists()
     assert run(capsys, "check", str(repo), "--config", str(rules))[0] == 0
+
+
+def test_update_baseline_records_known_problems_so_only_new_ones_fail(repo, capsys):
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+    assert run(capsys, "check", str(repo))[0] == 1
+
+    code, out, _ = run(capsys, "check", str(repo), "--update-baseline")
+    assert code == 0
+    assert "archview-baseline.json (1 known problems)" in out
+
+    code, out, _ = run(capsys, "check", str(repo))
+    assert code == 0
+    assert "known: VIOLATION api -> services" in out
+
+    (repo / "sample" / "api" / "views.py").write_text("from sample.services import pricing\n")
+    code, out, _ = run(capsys, "check", str(repo))
+    assert code == 1
+    assert "sample/api/views.py:1" in out
+    assert "1 more are in the baseline" in out
+
+
+def test_metrics_prints_one_row_per_component(repo, capsys):
+    code, out, _ = run(capsys, "metrics", str(repo))
+
+    assert code == 0
+    assert out.splitlines()[0].split() == ["component", "Ca", "Ce", "I", "A", "D", "zone"]
+    assert "domain     4   0   0.00  0.33  0.67  pain" in out
+
+
+def test_graph_prints_mermaid_with_violations_marked(repo, capsys):
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+
+    code, out, _ = run(capsys, "graph", str(repo), "--mermaid")
+
+    assert code == 0
+    assert "n_sample_api -. 1 ✗ .-> n_sample_services" in out
+
+
+def test_graph_can_show_external_packages(repo, capsys):
+    _, out, _ = run(capsys, "graph", str(repo), "--externals", "--json")
+
+    assert [n["id"] for n in json.loads(out)["nodes"] if n["kind"] == "external"] == ["grimp"]

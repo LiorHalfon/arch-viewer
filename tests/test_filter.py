@@ -41,3 +41,20 @@ def test_no_patterns_leaves_the_model_alone():
 def test_names_a_two_member_cycle_as_a_path_and_a_bigger_one_as_a_tangle():
     assert describe_cycle(("a", "b")) == "a -> b -> a"
     assert describe_cycle(("a", "b", "c")) == "tangle of 3: a, b, c"
+
+
+def test_hides_tests_by_their_conventional_names():
+    from archview.model.filter import without_tests
+
+    m = model(
+        ("app.api.routes", "app.domain.order"),
+        ("app.tests.test_api", "app.api.routes"),
+        ("app.api.test_routes", "app.api.routes"),
+        ("app.conftest", "app.domain.order"),
+    )
+
+    kept = without_tests(m)
+
+    assert [(i.importer, i.imported) for i in kept.imports] == [
+        ("app.api.routes", "app.domain.order")
+    ]

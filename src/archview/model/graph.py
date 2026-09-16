@@ -9,17 +9,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-Kind = Literal["package", "module"]
+Kind = Literal["package", "module", "external"]
 
 
 @dataclass(frozen=True, slots=True)
 class Node:
-    """One package or module. `parent` is None for the project root."""
+    """One package or module, or an external package squashed into one node.
+
+    `parent` is None for the project root and for externals. `abstract` means the
+    module defines an abstraction for other code to depend on (A9).
+    """
 
     id: str
     parent: str | None
     kind: Kind
     file: str | None = None
+    abstract: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +36,20 @@ class Import:
     file: str
     line: int
     text: str
+    type_checking: bool = False
+    lazy: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionWarning:
+    """Something the extractor saw but could not turn into an import (A5)."""
+
+    kind: str
+    module: str
+    file: str
+    line: int
+    text: str
+    target: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,3 +60,4 @@ class Model:
     nodes: tuple[Node, ...]
     imports: tuple[Import, ...]
     language: str = "python"
+    warnings: tuple[ExtractionWarning, ...] = ()

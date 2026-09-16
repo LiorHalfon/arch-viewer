@@ -9,7 +9,12 @@
       "layer": 0,
       "in_cycle": false,
       "fan_in": 0,
-      "fan_out": 0
+      "fan_out": 0,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": null,
+      "distance": null,
+      "zone": "isolated"
     },
     {
       "id": "sample.infra.db",
@@ -19,7 +24,12 @@
       "layer": 0,
       "in_cycle": false,
       "fan_in": 0,
-      "fan_out": 0
+      "fan_out": 0,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": null,
+      "distance": null,
+      "zone": "isolated"
     }
   ],
   "edges": [],
