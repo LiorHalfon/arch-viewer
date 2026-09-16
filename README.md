@@ -8,7 +8,7 @@ The idea in one paragraph: agents write most of the code; the human's job is to 
 
 | Path | What it is |
 |---|---|
-| `CLAUDE.md` | Context for Claude Code sessions: decisions, conventions, reading order |
+| `AGENTS.md` | Context for coding-agent sessions: decisions, conventions, reading order (`CLAUDE.md` only imports it) |
 | `docs/01-video-notes.md` | Paraphrased notes from the talk with timestamps |
 | `docs/02-requirements.md` | Requirements with IDs and priorities (analysis core, viewer, checker, agent integration, non-functional, MVP acceptance) |
 | `docs/03-reference-uncle-bob-tools.md` | How arch-view and dependency-checker actually work (formats, legend, metrics, CLI), and what to improve |
@@ -40,6 +40,6 @@ claude
 
 A good next prompt:
 
-> Read CLAUDE.md and the docs in the order it lists. Then start milestone M5 from docs/05-approach-and-roadmap.md: `archview why A B`, `deps`, `rdeps` and `cycles`, tests first, and keep `archview check` passing on this repo.
+> Read AGENTS.md and the docs in the order it lists. Then start milestone M6 from docs/05-approach-and-roadmap.md: a spike comparing tree-sitter-typescript and the TypeScript compiler API on a real frontend repo, ending in an ADR, and keep `archview check` passing on this repo.
 
 Suggested working style, borrowed from Bob (35:46–41:36): do a story or two, look at the result, reorganise, repeat — not a big up-front plan.
