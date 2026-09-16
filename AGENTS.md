@@ -68,3 +68,9 @@ uv run pytest && uv run ruff check
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff
 ```
 
+Releasing: bump `version` in `pyproject.toml`, commit, wait for CI, then
+`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. The Release workflow checks that
+the tag matches the version, reruns CI, builds, and creates the GitHub release. Minor
+bump per milestone or breaking change (rules file, JSON, flags, exit codes), patch for
+fixes; no release for docs, tests or CI.
+
