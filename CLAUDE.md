@@ -11,7 +11,7 @@ AI coding agents to a declared dependency structure.
 model (views, cycles, layers, metrics, agent queries), the checker (`rules/`, with
 layers, zones and baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`,
 `check`, `init`, `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits
-its own `archview.toml` and `tests/test_self_check.py` enforces it (there is no CI yet).
+its own `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions (`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
 **M6 (a second language: TypeScript) is next.** Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
