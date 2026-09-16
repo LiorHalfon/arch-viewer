@@ -92,3 +92,23 @@ def test_writes_module_counts_in_the_singular_when_there_is_only_one(capsys):
     _, out = run(capsys, "graph", str(FIXTURES), "--root", "sample.api")
 
     assert "(1 module," in out
+
+
+def test_a_path_without_a_command_opens_the_viewer(monkeypatch):
+    from archview import cli
+
+    seen = {}
+    monkeypatch.setattr(cli, "_serve", lambda args: seen.setdefault("path", args.path) and 0)
+
+    assert main([str(FIXTURES)]) == 0
+    assert seen["path"] == FIXTURES
+
+
+def test_no_arguments_opens_the_viewer_on_the_current_directory(monkeypatch):
+    from archview import cli
+
+    seen = {}
+    monkeypatch.setattr(cli, "_serve", lambda args: seen.setdefault("path", args.path) and 0)
+
+    assert main([]) == 0
+    assert seen["path"] == Path(".")

@@ -23,7 +23,9 @@ The idea in one paragraph: agents write most of the code; the human's job is to 
 ## Try it
 
 ```bash
-uv run archview serve ~/git/some-repo --watch             # interactive viewer in the browser
+uv tool install --editable .                              # once: `archview` on the PATH
+cd ~/git/some-repo && archview .                          # interactive viewer in the browser
+uv run archview serve ~/git/some-repo --watch             # same, redrawing on file changes
 uv run archview init ~/git/some-repo && uv run archview check ~/git/some-repo
 uv run archview graph ~/git/some-repo --root pkg --json   # machine-readable view
 uv run archview metrics ~/git/some-repo

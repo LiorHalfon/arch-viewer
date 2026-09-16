@@ -1,5 +1,12 @@
 # Using archview in a repo (requirement G3)
 
+## Install once
+
+```bash
+uv tool install --editable ~/git/arch-viewer     # puts `archview` on the PATH; edits stay live
+cd ~/git/some-repo && archview .                 # opens the viewer (same as `archview serve .`)
+```
+
 ## Adopt it
 
 ```bash

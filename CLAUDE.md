@@ -50,10 +50,14 @@ baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
 
 ## Useful commands
 
+`archview` is installed as an editable uv tool (`uv tool install --editable . --force`
+after dependency changes), so code edits here are live everywhere.
+
 ```
 uv run archview graph                              # this repo, as text
 uv run archview graph ~/git/tiny-tale-backend --root src [--json|--dot]
 uv run archview graph ~/git/tiny-tale-backend --root src.webapp    # drill down
+archview .                                        # in any repo: the viewer (short for `archview serve .`)
 uv run archview serve ~/git/tiny-tale-backend --watch   # viewer in the browser
 uv run archview graph --mermaid | --externals | --hide-tests
 uv run archview metrics                           # Ca, Ce, I, A, D, zone per component

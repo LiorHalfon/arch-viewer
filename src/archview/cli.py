@@ -1,4 +1,6 @@
-"""The command line: `archview graph | check | init | metrics | serve`.
+"""The command line: `archview [serve] [path] | graph | check | init | metrics`.
+
+`archview .` is short for `archview serve .`.
 
 Exit codes: 0 success, 1 the check found failing problems, 2 the command could not
 run (bad arguments, unreadable rules, no package).
@@ -188,6 +190,7 @@ def _serve(args: argparse.Namespace) -> int:
     sys.stdout.write(
         f"archview: {summary['project']} ({summary['modules']} modules) at {url}  (Ctrl+C stops)\n"
     )
+    sys.stdout.flush()
     if not args.no_open:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(workspace), host=args.host, port=port, log_level="warning")
@@ -245,11 +248,22 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765, help="port (a free one if taken)")
     serve.add_argument("--no-open", action="store_true", help="do not open a browser")
     serve.add_argument("--watch", action="store_true", help="reanalyze when files change")
-    serve.set_defaults(run=_serve)
+    serve.set_defaults(run=lambda args: _serve(args))
     return parser
 
 
+COMMANDS = ("graph", "check", "metrics", "init", "serve")
+
+
+def _with_default_command(argv: list[str]) -> list[str]:
+    """`archview` and `archview <path>` open the viewer (requirement V13)."""
+    if not argv or (argv[0] not in COMMANDS and not argv[0].startswith("-")):
+        return ["serve", *argv]
+    return argv
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = _with_default_command(sys.argv[1:] if argv is None else list(argv))
     args = build_parser().parse_args(argv)
     try:
         return args.run(args)
