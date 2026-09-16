@@ -7,18 +7,20 @@ AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1 is done**: `src/archview/` holds the extractor, the model and `archview graph`,
-with 43 tests, golden files and its own analysis clean of cycles. **M2 (the checker)
-is next.** Read in this order:
+**M1 and M2 are done**: `src/archview/` holds the extractor, the model, the checker
+(`rules/`) and the CLI (`graph`, `check`, `init`). The repo commits its own
+`archview.toml` and `tests/test_self_check.py` enforces it (there is no CI yet).
+**M3 (the viewer) is next.** Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
 2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M6
-3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled
+3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics
 4. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
 5. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
-6. `docs/01-video-notes.md` — the talk that started this
-7. `spike/arch_graph.py` — the original one-file spike; superseded by `src/archview/`
-8. `spike/viewer/view.py` — `uv run spike/viewer/view.py <repo>` → self-contained drill-down
+6. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks
+7. `docs/01-video-notes.md` — the talk that started this
+8. `spike/arch_graph.py` — the original one-file spike; superseded by `src/archview/`
+9. `spike/viewer/view.py` — `uv run spike/viewer/view.py <repo>` → self-contained drill-down
    HTML; still the fastest way to *look* at a repo until `archview serve` lands in M3
 
 ## Decisions already made
@@ -51,8 +53,10 @@ is next.** Read in this order:
 uv run archview graph                              # this repo, as text
 uv run archview graph ~/git/tiny-tale-backend --root src [--json|--dot]
 uv run archview graph ~/git/tiny-tale-backend --root src.webapp    # drill down
+uv run archview check [--format json]            # exit 0 pass, 1 problems, 2 could not run
+uv run archview init ~/git/tiny-tale-backend --config /tmp/tt.toml   # rules kept outside that repo
 uv run pytest && uv run ruff check
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff
 ```
 
-Not built yet: `archview check` / `init` (M2), `archview serve` (M3).
+Not built yet: `archview serve` (M3).

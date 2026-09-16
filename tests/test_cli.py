@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from archview.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -71,13 +69,12 @@ def test_summarises_layers_and_cycles_as_text_by_default(capsys):
 
 
 def test_rejects_a_root_that_is_not_in_the_project(capsys):
-    with pytest.raises(SystemExit):
-        main(["graph", str(FIXTURES), "--root", "nope.at.all"])
+    assert main(["graph", str(FIXTURES), "--root", "nope.at.all"]) == 2
 
 
 def test_rejects_a_root_that_has_no_children(capsys):
-    with pytest.raises(SystemExit):
-        main(["graph", str(FIXTURES), "--root", "sample.domain.model"])
+    assert main(["graph", str(FIXTURES), "--root", "sample.domain.model"]) == 2
+    assert "no children" in capsys.readouterr().err
 
 
 def test_asks_which_package_to_use_when_a_repo_has_several(tmp_path, capsys):
@@ -85,8 +82,8 @@ def test_asks_which_package_to_use_when_a_repo_has_several(tmp_path, capsys):
         (tmp_path / name).mkdir()
         (tmp_path / name / "__init__.py").write_text("")
 
-    with pytest.raises(SystemExit, match="alpha, beta"):
-        main(["graph", str(tmp_path)])
+    assert main(["graph", str(tmp_path)]) == 2
+    assert "alpha, beta" in capsys.readouterr().err
 
 
 def test_writes_module_counts_in_the_singular_when_there_is_only_one(capsys):

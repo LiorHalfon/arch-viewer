@@ -1,0 +1,18 @@
+# Dependency rules for `archview check`, inferred by `archview init` from the
+# imports as they are today. Delete the dependencies that should not exist; the
+# check then fails until the code matches. Agents: never edit this file to make
+# the check pass - fix the code or ask.
+
+[archview]
+package = "archview"
+exclude = []
+fail_on_violations = true
+fail_on_cycles = true
+
+[archview.allowed]
+cli = ["model", "project", "render", "rules"]
+extract = ["model"]
+model = []
+project = ["extract", "model", "rules"]
+render = ["model", "rules"]
+rules = ["model"]

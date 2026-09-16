@@ -1,0 +1,73 @@
+"""Infer a starter rules file from the dependencies as they are (requirement C6).
+
+`archview init` writes what *is*, so `archview check` passes straight away. The human
+then deletes the dependencies that should not exist, and the checker fails until the
+code matches the design.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Iterable
+
+from archview.model.cycles import describe_cycle, find_cycles
+from archview.model.graph import Model
+from archview.rules.check import component_edges, component_map, present_components
+from archview.rules.config import Config
+
+BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _key(name: str) -> str:
+    return name if BARE_KEY.match(name) else json.dumps(name)
+
+
+def _array(values: Iterable[str]) -> str:
+    return "[" + ", ".join(json.dumps(v) for v in values) + "]"
+
+
+def infer_rules(model: Model, config: Config | None = None) -> str:
+    """The text of an `archview.toml`; keeps package, exclusions and components from `config`."""
+    config = config or Config()
+    components = component_map(config, model.project)
+    present = present_components(model, components)
+    edges, _ = component_edges(model, components)
+    cycles = find_cycles(present, edges)
+
+    lines = [
+        "# Dependency rules for `archview check`, inferred by `archview init` from the",
+        "# imports as they are today. Delete the dependencies that should not exist; the",
+        "# check then fails until the code matches. Agents: never edit this file to make",
+        "# the check pass - fix the code or ask.",
+        "",
+        "[archview]",
+        f"package = {json.dumps(model.project)}",
+    ]
+    if config.source_roots:
+        lines.append(f"source_roots = {_array(config.source_roots)}")
+    lines.append(f"exclude = {_array(config.exclude)}")
+    if config.ignored:
+        lines.append(f"ignored = {_array(config.ignored)}")
+    lines.append("fail_on_violations = true")
+    lines.extend(_cycle_setting(cycles))
+    lines += ["", "[archview.allowed]"]
+    for component in present:
+        targets = sorted(t for (s, t) in edges if s == component)
+        lines.append(f"{_key(component)} = {_array(targets)}")
+    if config.components:
+        lines += ["", "[archview.components]"]
+        for name, patterns in sorted(config.components.items()):
+            lines.append(f"{_key(name)} = {_array(patterns)}")
+    return "\n".join(lines) + "\n"
+
+
+def _cycle_setting(cycles: tuple[tuple[str, ...], ...]) -> list[str]:
+    if not cycles:
+        return ["fail_on_cycles = true"]
+    listed = [describe_cycle(cycle) for cycle in cycles]
+    return [
+        f"# {len(cycles)} component cycle(s) today; set to true once they are gone:",
+        *(f"#   {cycle}" for cycle in listed),
+        "fail_on_cycles = false",
+    ]

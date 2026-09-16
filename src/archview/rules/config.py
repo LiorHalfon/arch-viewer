@@ -1,0 +1,188 @@
+"""Load and validate the rules file (requirements C1, C2, C11).
+
+The rules live in `archview.toml` under `[archview]`, or in `pyproject.toml` under
+`[tool.archview]`. Mistakes are reported with the key path and a suggestion, never
+silently ignored: a typo in a rules file would otherwise switch a rule off.
+"""
+
+from __future__ import annotations
+
+import difflib
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+RULES_FILE = "archview.toml"
+ALL = "all"
+
+
+class ConfigError(Exception):
+    """The rules file cannot be used as written."""
+
+
+@dataclass(frozen=True, slots=True)
+class Forbidden:
+    source: str
+    target: str
+
+
+@dataclass(frozen=True, slots=True)
+class Exemption:
+    """One module-level import the rules tolerate, always with a reason."""
+
+    importer: str
+    imported: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class Config:
+    path: str | None = None
+    table: str = "archview"
+    package: str | None = None
+    source_roots: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+    fail_on_violations: bool = True
+    fail_on_cycles: bool = True
+    allowed: dict[str, tuple[str, ...] | str] | None = None
+    forbidden: tuple[Forbidden, ...] = ()
+    exceptions: tuple[Exemption, ...] = ()
+    ignored: tuple[str, ...] = ()
+    components: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+
+TOP_KEYS = {
+    "package",
+    "source_roots",
+    "exclude",
+    "fail_on_violations",
+    "fail_on_cycles",
+    "allowed",
+    "forbidden",
+    "exceptions",
+    "ignored",
+    "components",
+}
+
+
+def find_config(repo: Path) -> Path | None:
+    """`archview.toml` wins; otherwise `pyproject.toml` if it has `[tool.archview]`."""
+    rules = repo / RULES_FILE
+    if rules.is_file():
+        return rules
+    pyproject = repo / "pyproject.toml"
+    if pyproject.is_file() and "archview" in _read_toml(pyproject).get("tool", {}):
+        return pyproject
+    return None
+
+
+def load_config(path: Path) -> Config:
+    data = _read_toml(path)
+    if path.name == "pyproject.toml":
+        table, where = data.get("tool", {}).get("archview"), "tool.archview"
+    else:
+        table, where = data.get("archview"), "archview"
+    if not isinstance(table, dict):
+        raise ConfigError(f"{path.name}: no [{where}] table")
+    return parse_config(table, where=where, path=path.name)
+
+
+def _read_toml(path: Path) -> dict[str, Any]:
+    try:
+        return tomllib.loads(path.read_text())
+    except OSError as error:
+        raise ConfigError(f"cannot read {path}: {error.strerror}") from error
+    except tomllib.TOMLDecodeError as error:
+        raise ConfigError(f"{path.name}: not valid TOML: {error}") from error
+
+
+def parse_config(table: dict[str, Any], where: str = "archview", path: str | None = None) -> Config:
+    _known_keys(table, TOP_KEYS, where)
+    return Config(
+        path=path,
+        table=where,
+        package=_optional_str(table, "package", where),
+        source_roots=_str_list(table, "source_roots", where),
+        exclude=_str_list(table, "exclude", where),
+        fail_on_violations=_bool(table, "fail_on_violations", where),
+        fail_on_cycles=_bool(table, "fail_on_cycles", where),
+        allowed=_allowed(table.get("allowed"), f"{where}.allowed"),
+        forbidden=_forbidden(table.get("forbidden", []), f"{where}.forbidden"),
+        exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
+        ignored=_str_list(table, "ignored", where),
+        components=_components(table.get("components", {}), f"{where}.components"),
+    )
+
+
+def _known_keys(table: dict[str, Any], known: set[str], where: str) -> None:
+    for key in sorted(table):
+        if key not in known:
+            close = difflib.get_close_matches(key, sorted(known), n=1)
+            hint = f"; did you mean {close[0]!r}?" if close else f"; known keys: {sorted(known)}"
+            raise ConfigError(f"[{where}] unknown key {key!r}{hint}")
+
+
+def _optional_str(table: dict[str, Any], key: str, where: str) -> str | None:
+    value = table.get(key)
+    if value is not None and not isinstance(value, str):
+        raise ConfigError(f"[{where}] {key} must be a string")
+    return value
+
+
+def _bool(table: dict[str, Any], key: str, where: str) -> bool:
+    value = table.get(key, True)
+    if not isinstance(value, bool):
+        raise ConfigError(f"[{where}] {key} must be true or false")
+    return value
+
+
+def _strings(value: Any, where: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ConfigError(f"[{where}] must be a list of strings")
+    return tuple(value)
+
+
+def _str_list(table: dict[str, Any], key: str, where: str) -> tuple[str, ...]:
+    return _strings(table.get(key, []), f"{where}.{key}")
+
+
+def _allowed(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ConfigError(f"[{where}] must be a table: component = [components it may import]")
+    allowed: dict[str, tuple[str, ...] | str] = {}
+    for component, targets in value.items():
+        if targets == ALL:
+            allowed[component] = ALL
+        else:
+            allowed[component] = _strings(targets, f"{where}.{component}")
+    return allowed
+
+
+def _tables(value: Any, where: str, keys: set[str]) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise ConfigError(f"[[{where}]] must be an array of tables")
+    for item in value:
+        _known_keys(item, keys, where)
+        for key in sorted(keys):
+            if not isinstance(item.get(key), str) or not item[key]:
+                raise ConfigError(f"[[{where}]] every entry needs a non-empty {key!r}")
+    return value
+
+
+def _forbidden(value: Any, where: str) -> tuple[Forbidden, ...]:
+    items = _tables(value, where, {"from", "to"})
+    return tuple(Forbidden(i["from"], i["to"]) for i in items)
+
+
+def _exceptions(value: Any, where: str) -> tuple[Exemption, ...]:
+    items = _tables(value, where, {"importer", "imported", "reason"})
+    return tuple(Exemption(i["importer"], i["imported"], i["reason"]) for i in items)
+
+
+def _components(value: Any, where: str) -> dict[str, tuple[str, ...]]:
+    if not isinstance(value, dict):
+        raise ConfigError(f"[{where}] must be a table: component = [module patterns]")
+    return {name: _strings(patterns, f"{where}.{name}") for name, patterns in value.items()}

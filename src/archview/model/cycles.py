@@ -32,3 +32,10 @@ def find_cycles(
     for node, component in components(nodes, edges).items():
         members[component].append(node)
     return tuple(sorted(tuple(sorted(g)) for g in members.values() if len(g) > 1))
+
+
+def describe_cycle(members: tuple[str, ...]) -> str:
+    """`a -> b -> a` for two members; with more, the order is not a real path, so say so."""
+    if len(members) == 2:
+        return f"{members[0]} -> {members[1]} -> {members[0]}"
+    return f"tangle of {len(members)}: {', '.join(members)}"

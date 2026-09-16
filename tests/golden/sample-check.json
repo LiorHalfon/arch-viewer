@@ -1,0 +1,43 @@
+{
+  "project": "sample",
+  "ok": false,
+  "components": [
+    "api",
+    "domain",
+    "infra",
+    "sample",
+    "services"
+  ],
+  "problems": [
+    {
+      "kind": "cycle",
+      "rule": "archview.fail_on_cycles",
+      "from": null,
+      "to": null,
+      "components": [
+        "infra",
+        "services"
+      ],
+      "count": 2,
+      "fails": true,
+      "hint": "break the cycle where it is thinnest: infra -> services (1 import) - invert that dependency or move the code.",
+      "imports": [
+        {
+          "importer": "sample.infra.db",
+          "imported": "sample.services.pricing",
+          "file": "sample/infra/db.py",
+          "line": 3,
+          "text": "from sample.services import pricing"
+        },
+        {
+          "importer": "sample.services.pricing",
+          "imported": "sample.infra.cache",
+          "file": "sample/services/pricing.py",
+          "line": 7,
+          "text": "from sample.infra.cache import get_rate"
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

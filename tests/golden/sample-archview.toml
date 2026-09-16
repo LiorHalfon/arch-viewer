@@ -1,0 +1,19 @@
+# Dependency rules for `archview check`, inferred by `archview init` from the
+# imports as they are today. Delete the dependencies that should not exist; the
+# check then fails until the code matches. Agents: never edit this file to make
+# the check pass - fix the code or ask.
+
+[archview]
+package = "sample"
+exclude = []
+fail_on_violations = true
+# 1 component cycle(s) today; set to true once they are gone:
+#   infra -> services -> infra
+fail_on_cycles = false
+
+[archview.allowed]
+api = ["domain", "infra", "services"]
+domain = []
+infra = ["services"]
+sample = ["domain"]
+services = ["domain", "infra"]
