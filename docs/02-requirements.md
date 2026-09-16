@@ -1,0 +1,129 @@
+# Requirements — Architecture Viewer + Dependency Rules Checker (Python first)
+
+Status: draft v1, 2026-08-30. Derived from the video (`01-video-notes.md`, timestamps in parentheses), Bob's real tools (`03-reference-uncle-bob-tools.md`, marked AV = arch-view, DC = dependency-checker), and Lior's decisions (marked LH). Priority: **MVP** = needed for the first useful version, **V2** = next, **Later** = idea parked.
+
+## 1. Vision
+
+A local, deterministic tool that lets a human see the modular structure of a Python code base and the direction of its dependencies at any level of detail, and lets AI coding agents be *held* to a declared dependency structure they cannot argue with. It fits a workflow where agents write most of the code: the human does the strategic work (partitioning, dependency direction) by looking at the picture (26:06–27:31), and the checker keeps the agents inside those lines (27:31–28:06).
+
+Two faces, one model:
+
+- **Viewer** — interactive, drill-down UML-ish diagram of packages/modules and where dependencies run.
+- **Checker** — a spec file that says which components may depend on which, and a fast pass/fail command for CI, pre-commit hooks and agent loops.
+
+Both read the *actual* imports from the source. Guidance never overrides reality; it is compared against it (AV: "prioritizes actual dependencies").
+
+## 2. Users and how they use it
+
+| User | Job to be done | Consequence for the tool |
+|---|---|---|
+| The human architect (Lior) | After the agents finish a story or two, look at the structure, decide how modules should be partitioned and how they should communicate, then write that down as rules (37:50–38:13). Also: learn an unfamiliar code base quickly (49:24). | Fast to launch, zero setup for the default case, drill-down in a few clicks, cycles and violations impossible to miss. |
+| AI coding agents (Claude Code and friends) | (a) Obey the rules: run the checker, read the failures, fix them by inverting a dependency / inserting an interface / splitting a module (27:48). (b) Answer questions about the structure with ground truth instead of guesses (26:18). | Non-zero exit codes; terse, actionable, machine-readable output with `file:line`; a query CLI (and later an MCP server) so agents ask the tool instead of the human. |
+| CI / pre-commit | Block merges that break the declared architecture. | Deterministic, quick (seconds), no network, no code execution, stable output. |
+
+## 3. Glossary
+
+- **Module** — one Python file (`app/services/pricing.py` → `app.services.pricing`). Leaf in the tree.
+- **Package** — a directory with modules (`app.services`). Non-leaf. Nested arbitrarily deep.
+- **Root** — the package currently being viewed; its direct children are the boxes on screen.
+- **Component** — an architectural unit named in the rules file. By default the direct children of the project's top-level package (DC: "second namespace segment"), optionally defined explicitly by patterns (AV `:component-rules`).
+- **Dependency / edge** — module A imports something from module B (statically). Aggregated edges between children of the root carry a count and the list of concrete module-level imports behind them.
+- **Dependency direction** — edges point from the importer to the imported. Bob's rule: low-level (near IO) depends on high-level (far from IO), never the reverse (swarm-forge architect prompt).
+- **Layer** — the vertical rank a box gets from the topological order of the dependency graph (AV). Not to be confused with a *declared* layer in a rules file.
+- **Cycle** — a strongly connected set of two or more nodes at the current level.
+- **Abstract module** — a module that defines an abstraction (`typing.Protocol`, `abc.ABC`/`ABCMeta`, `@abstractmethod`) (AV/DC: `defprotocol`, `defmulti`).
+- **Violation** — an actual dependency the rules do not allow (or forbid), or a cycle when cycles are forbidden.
+
+## 4. Functional requirements — analysis core (shared by viewer and checker)
+
+| ID | Requirement | Pri | Source |
+|---|---|---|---|
+| A1 | Build the module-level import graph of a Python project **statically** (no importing/executing the target code), from `import x`, `from x import y`, relative imports, imports nested in functions/classes, and `__init__.py` re-exports attributed to the package. | MVP | AV, LH |
+| A2 | Resolve `from pkg import name` correctly whether `name` is a submodule or an attribute (the edge goes to `pkg.name` only if it is a module). | MVP | research (pyreverse/pytestarch get this wrong) |
+| A3 | Ignore third-party and stdlib imports by default; optionally include them as squashed nodes ("externals") for a boundary view. | MVP / V2 | AV (project namespaces only) |
+| A4 | Treat `if TYPE_CHECKING:` imports as configurable: excluded by default from rule checking, visible in the viewer as a distinct edge style. | V2 | research (grimp/tach offer the toggle) |
+| A5 | Detect dynamic imports (`importlib.import_module("...")`, `__import__`) on a best-effort basis and report them as **warnings**, never silently drop them. | V2 | DC (dynamic lookups → warnings) |
+| A6 | Represent the package tree (root → packages → modules) so any node can be a root; aggregate edges between the children of any root from all imports in their subtrees, with counts and the underlying module-level imports (`importer`, `imported`, `file`, `line`, source text). | MVP | AV drill-down; 27:12 |
+| A7 | Find cycles at every level (strongly connected components among the children of a root) and mark nodes and edges that take part in them. | MVP | AV legend; 27:54 |
+| A8 | Compute layers: remove a minimal (or good-enough) set of cycle-causing edges, topologically order the rest, high-level importers at the top, most depended-upon at the bottom; peers side by side; removed edges still shown. Deterministic ordering (stable sort by name). | MVP | AV layer rationale |
+| A9 | Mark abstract modules/packages (see glossary) and classify edges as `direct` or `abstract` (target is abstract). | V2 | AV/DC |
+| A10 | Compute Bob's component metrics: fan-in, fan-out, instability `I`, abstractness `A`, distance `D = |A + I − 1|`, zone (healthy / pain / useless) with a configurable threshold (default 0.3). | V2 | DC |
+| A11 | Exclusions: configurable directories/patterns (tests, migrations, generated code) and ignored components. | MVP | DC `:ignored-components` |
+| A12 | Export the full model as JSON (tree, edges with details, cycles, layers, components, metrics, violations) — the single interchange format the viewer, the checker, exports and agents all consume. | MVP | AV `--out/--in-edn`, `--no-gui` |
+| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design) / Later (impl) | LH |
+| A14 | Speed: full analysis of a few thousand modules in seconds; per-view aggregation instantaneous. Optional on-disk cache. | MVP | 16:18 (checks must not make agents slower than humans) |
+
+## 5. Functional requirements — viewer
+
+| ID | Requirement | Pri | Source |
+|---|---|---|---|
+| V1 | Show the children of the current root as UML component-style boxes, laid out in layers (A8), with the package name and module count. | MVP | 27:03–27:10; AV |
+| V2 | Show where dependencies run between those boxes: direction and count. AV uses top/bottom "triangles" plus hover popups instead of drawing every arrow; the Python version may draw arrows for small views and fall back to indicators when the view is dense. | MVP | 27:10; AV legend |
+| V3 | Inspect an edge: list the concrete module→module imports behind it with `file:line`, click to open the source at that line. | MVP | AV hover popup; agents need the same data |
+| V4 | Drill down: click a package → it becomes the root. Breadcrumb / back button restores the previous root **and its scroll/zoom position**. Unlimited depth. | MVP | 27:12–27:25; AV navigation |
+| V5 | Leaf → code: click a module → its source opens in a panel (read-only, syntax-highlighted, import lines highlighted). | MVP | 27:16–27:20 |
+| V6 | Cycles are unmissable: red names for subtrees containing a cycle, red edges/indicators for cyclic dependencies, and a list of cycles in `a → b → c → a` form for the current view. | MVP | AV legend |
+| V7 | Violations overlay: edges that break the rules file are styled distinctly (e.g. red dashed) and listed; optionally show allowed-but-unused rules. | V2 | 27:31; AV V2 "guidance vs actual diff" |
+| V8 | Abstract modules/packages are visually distinct (AV: green), and edges to abstractions use the UML closed-triangle arrowhead. | V2 | AV legend |
+| V9 | Reanalyze: a button (and/or file watching) rescans and redraws the current view without losing navigation state. | V2 | AV `Reanalyze` |
+| V10 | Filters and focus: hide tests/externals, focus a node and its neighbours, "what reaches X" (impact), collapse/expand packages in place. | V2 | dependency-cruiser `--focus/--reaches`; Nx graph |
+| V11 | Metrics panel per node (A10), with zone colouring. | V2 | DC |
+| V12 | Export the current view as SVG/PNG (for PRs and docs) and as Mermaid/DOT (for markdown). | V2 | AV V2 "export and CI" |
+| V13 | Launch with one command from the project root (`archview .` / `uv run archview`), opens in the browser, works offline, no accounts, no telemetry. | MVP | LH (Claude Code workflow) |
+| V14 | Handles a view of a few hundred boxes interactively; larger views are automatically collapsed to packages. | MVP | — |
+
+## 6. Functional requirements — checker
+
+| ID | Requirement | Pri | Source |
+|---|---|---|---|
+| C1 | A small, human- and agent-writable **rules file** in the repo (working name `archview.toml`, or a `[tool.archview]` table in `pyproject.toml`) declaring: `allowed` dependencies per component (with `"all"` wildcard), `forbidden` edges, `exceptions` at module level, `ignored` components, `fail_on_violations`, `fail_on_cycles`. | MVP | 27:34–27:46; DC config |
+| C2 | Components default to the direct sub-packages of the project package; optional explicit mapping (pattern → component) for flat layouts or grouping. | MVP | DC discovery; AV `:component-rules` |
+| C3 | `archview check` compares actual aggregated edges with the rules and exits non-zero on any violation (and on cycles when `fail_on_cycles`). Self-dependencies are always allowed. | MVP | 27:48; DC |
+| C4 | Every violation names the rule, the components, the count, and at least one concrete `importer_module:line → imported_module`, plus a one-line remedy hint (invert the dependency, introduce an interface owned by the higher-level module, split the module, move the code). | MVP | 27:54–28:00; swarm-forge architect prompt |
+| C5 | Output formats: coloured text for humans, `--format json` for agents/CI, optionally GitHub Actions annotations. | MVP (text+json) / V2 | DC `--format edn`, deptrac formatters |
+| C6 | `archview init` infers a starter rules file from the current dependencies (like DC `--init` / tach `sync`), so adoption on an existing repo takes one command; re-running with `--force` regenerates. | MVP | DC `--init` |
+| C7 | Baseline mode: record known violations so legacy debt does not block, while any *new* violation fails. | V2 | dependency-cruiser / deptrac baselines |
+| C8 | Optional ordered `layers` rule ("api → services → domain → infra…") and `independent` sibling rules as sugar over allowed/forbidden. | V2 | import-linter contracts; ArchUnit |
+| C9 | Metrics report with optional thresholds (e.g. fail if a component enters the zone of pain). | V2 | DC metrics |
+| C10 | Runs in < a few seconds on a typical service repo so it can sit in a pre-commit hook and in the agent's fix-it loop. | MVP | 16:52–17:25 |
+| C11 | Config evolution: unknown/legacy keys produce a clear error with a hint, not silent acceptance. | V2 | DC |
+
+## 7. Agent integration
+
+| ID | Requirement | Pri | Source |
+|---|---|---|---|
+| G1 | A query CLI agents can call: `archview graph --root pkg --json`, `archview why A B` (shortest import chain), `archview deps M` / `archview rdeps M` (direct dependencies / dependents), `archview cycles`. | MVP (graph, why) / V2 | 26:18–26:32 (interrogating agents about structure) |
+| G2 | An MCP server exposing the same queries so Claude Code can ask the tool directly. | V2 | LH (Claude Code workflow) |
+| G3 | A ready-made snippet for `CLAUDE.md` / a hook so that `archview check` must pass before an agent hands off; checker messages are written to be read by an agent with a small context budget (terse, no decoration in `--format json`). | MVP | 12:33–15:14 (deterministic tools beat steering) |
+| G4 | The checker never auto-fixes; it reports. The agent (or human) decides how to restore the dependency direction. | MVP | 27:48–28:06 |
+
+## 8. Non-functional requirements
+
+- **N1 Deterministic.** Same source → byte-identical JSON and identical layout; sorting is by name everywhere ties exist. Required for CI diffs and for agents.
+- **N2 Static only.** Never import or execute the analysed project (safety, speed, no side effects).
+- **N3 Local & offline.** No network calls; no hosted viewer (unlike tach's `--web`).
+- **N4 Python target.** Analyse Python 3.11+ code; the tool itself runs on 3.12+. Install with `uv tool install` / `uvx` or as a dev dependency.
+- **N5 Permissive dependencies only** (MIT/BSD/Apache/EPL-2.0 for ELK); no GPL/AGPL/non-commercial libraries in the runtime path.
+- **N6 Tested the way Bob builds tools**: unit tests for the core, a small fixture project with relative imports, re-exports, `TYPE_CHECKING` imports, a dynamic import and a cycle; golden JSON tests; high coverage; small functions (his notes: cyclomatic complexity ≤ 5 where practical).
+- **N7 Dogfooding.** Run it on `tiny-tale-backend` from the first milestone; the fixture for the viewer should be a real repo, read-only, like Bob's empire-2025.
+- **N8 Clean separation** inside the tool itself: extraction (Python-specific) → model (language-agnostic) → analysis (layers, cycles, metrics, rules) → presentation (CLI, JSON, DOT, web). The tool must pass its own checker.
+
+## 9. Out of scope (for now)
+
+Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git history/hotspots (CodeCharta/CodeScene territory), multi-repo graphs, LLM-generated descriptions of components (CodeBoarding does this; not deterministic), auto-refactoring.
+
+## 10. Open decisions for the Claude Code sessions
+
+1. **Viewer stack**: Graphviz-in-the-browser (fastest, matches import-linter's `explore`) vs React + ELK + React Flow (more app-like, better for V2 interactions). See `05-approach-and-roadmap.md`.
+2. **Rules format**: a minimal `allowed`-map (DC style, agent-friendly) vs adopting import-linter contract semantics so existing `.importlinter` files work. Recommendation: DC-style first, import-linter import/export later.
+3. **Edge granularity for `__init__` re-exports**: attribute to the package (grimp default) vs resolve to the defining module (needs symbol resolution, e.g. scip-python). Start with grimp's behaviour; revisit if re-exports hide real dependencies.
+4. **Name**: working name `archview` (package/CLI). Bob's tool is `arch-view`; pick something distinct before publishing.
+5. **Component definition for flat packages**: default = sub-packages; decide on the pattern syntax for explicit components (glob vs regex).
+
+## 11. Acceptance for the MVP (definition of done)
+
+- `uvx archview .` on `tiny-tale-backend` opens a browser view of the top-level packages in layers, with dependency counts, drill-down to files, source panel, and any cycles listed — in under 10 seconds from cold.
+- `archview init` writes a rules file that `archview check` passes; deleting one allowed edge makes `archview check` fail with exit code 1 and a message pointing at a `file:line`.
+- `archview check --format json` output is stable across runs and parseable by a script.
+- `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
+- The tool's own package passes `archview check` with a rules file committed in the repo.

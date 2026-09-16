@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/liorhalfon/archview/schema/model-1.json",
+  "title": "archview model",
+  "description": "The interchange format: a tree of nodes plus the imports between them. Views, cycles, layers, metrics and violations are all derived from this.",
+  "type": "object",
+  "required": ["schema", "language", "project", "nodes", "imports"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "language": {"type": "string", "description": "the extractor that produced this"},
+    "project": {"type": "string", "description": "the top-level package analysed"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "parent", "kind", "file"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "description": "dotted name, unique"},
+          "parent": {"type": ["string", "null"], "description": "null for the project root"},
+          "kind": {"enum": ["package", "module"]},
+          "file": {"type": ["string", "null"], "description": "source file, relative to the project root"}
+        }
+      }
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["importer", "imported", "file", "line", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "importer": {"type": "string"},
+          "imported": {"type": "string"},
+          "file": {"type": "string"},
+          "line": {"type": "integer", "minimum": 1},
+          "text": {"type": "string", "description": "the source line, for display and for file:line jumps"}
+        }
+      }
+    }
+  }
+}

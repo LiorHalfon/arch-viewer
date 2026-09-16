@@ -1,0 +1,143 @@
+{
+  "root": "sample",
+  "nodes": [
+    {
+      "id": "sample.api",
+      "name": "api",
+      "kind": "package",
+      "module_count": 2,
+      "layer": 0,
+      "in_cycle": false,
+      "fan_in": 0,
+      "fan_out": 3
+    },
+    {
+      "id": "sample.domain",
+      "name": "domain",
+      "kind": "package",
+      "module_count": 2,
+      "layer": 2,
+      "in_cycle": false,
+      "fan_in": 2,
+      "fan_out": 0
+    },
+    {
+      "id": "sample.infra",
+      "name": "infra",
+      "kind": "package",
+      "module_count": 3,
+      "layer": 1,
+      "in_cycle": true,
+      "fan_in": 2,
+      "fan_out": 1
+    },
+    {
+      "id": "sample.services",
+      "name": "services",
+      "kind": "package",
+      "module_count": 2,
+      "layer": 1,
+      "in_cycle": true,
+      "fan_in": 2,
+      "fan_out": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": "sample.api",
+      "target": "sample.domain",
+      "count": 1,
+      "in_cycle": false,
+      "imports": [
+        {
+          "importer": "sample.api.routes",
+          "imported": "sample.domain",
+          "file": "sample/api/routes.py",
+          "line": 10,
+          "text": "from sample.domain import Order"
+        }
+      ]
+    },
+    {
+      "source": "sample.api",
+      "target": "sample.infra",
+      "count": 1,
+      "in_cycle": false,
+      "imports": [
+        {
+          "importer": "sample.api.routes",
+          "imported": "sample.infra.db",
+          "file": "sample/api/routes.py",
+          "line": 14,
+          "text": "from sample.infra.db import Session"
+        }
+      ]
+    },
+    {
+      "source": "sample.api",
+      "target": "sample.services",
+      "count": 1,
+      "in_cycle": false,
+      "imports": [
+        {
+          "importer": "sample.api.routes",
+          "imported": "sample.services.pricing",
+          "file": "sample/api/routes.py",
+          "line": 11,
+          "text": "from sample.services import pricing"
+        }
+      ]
+    },
+    {
+      "source": "sample.infra",
+      "target": "sample.services",
+      "count": 1,
+      "in_cycle": true,
+      "imports": [
+        {
+          "importer": "sample.infra.db",
+          "imported": "sample.services.pricing",
+          "file": "sample/infra/db.py",
+          "line": 3,
+          "text": "from sample.services import pricing"
+        }
+      ]
+    },
+    {
+      "source": "sample.services",
+      "target": "sample.domain",
+      "count": 1,
+      "in_cycle": false,
+      "imports": [
+        {
+          "importer": "sample.services.pricing",
+          "imported": "sample.domain.model",
+          "file": "sample/services/pricing.py",
+          "line": 3,
+          "text": "from ..domain import model"
+        }
+      ]
+    },
+    {
+      "source": "sample.services",
+      "target": "sample.infra",
+      "count": 1,
+      "in_cycle": true,
+      "imports": [
+        {
+          "importer": "sample.services.pricing",
+          "imported": "sample.infra.cache",
+          "file": "sample/services/pricing.py",
+          "line": 7,
+          "text": "from sample.infra.cache import get_rate"
+        }
+      ]
+    }
+  ],
+  "cycles": [
+    [
+      "sample.infra",
+      "sample.services"
+    ]
+  ]
+}

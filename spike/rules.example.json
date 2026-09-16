@@ -1,0 +1,9 @@
+{"allowed": {"cli": ["application", "configuration", "ui"],
+             "api": ["application", "configuration"],
+             "contracts": ["application", "domain"],
+             "configuration": ["adapters", "application"],
+             "adapters": ["application"],
+             "ui": ["application"],
+             "application": ["domain"],
+             "domain": []},
+ "fail_on_cycles": true}

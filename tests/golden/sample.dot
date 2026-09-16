@@ -1,0 +1,18 @@
+digraph "sample" {
+  rankdir=TB; newrank=true; splines=true; nodesep=0.5; ranksep=0.9;
+  node [shape=box style="rounded,filled" fontname="Helvetica" fillcolor="#e2ecf7" color="#7890a0"];
+  edge [color="#556677" fontname="Helvetica" fontsize=9];
+  { rank=same; "sample.api" }
+  { rank=same; "sample.infra" "sample.services" }
+  { rank=same; "sample.domain" }
+  "sample.api" [label="api\n(2 modules)"];
+  "sample.domain" [label="domain\n(2 modules)"];
+  "sample.infra" [label="infra\n(3 modules)" fontcolor="red"];
+  "sample.services" [label="services\n(2 modules)" fontcolor="red"];
+  "sample.api" -> "sample.domain" [label="1"];
+  "sample.api" -> "sample.infra" [label="1"];
+  "sample.api" -> "sample.services" [label="1"];
+  "sample.infra" -> "sample.services" [label="1" color="red" penwidth=2];
+  "sample.services" -> "sample.domain" [label="1"];
+  "sample.services" -> "sample.infra" [label="1" color="red" penwidth=2];
+}

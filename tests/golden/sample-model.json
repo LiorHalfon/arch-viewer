@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "language": "python",
+  "project": "sample",
+  "nodes": [
+    {
+      "id": "sample",
+      "parent": null,
+      "kind": "package",
+      "file": "sample/__init__.py"
+    },
+    {
+      "id": "sample.api",
+      "parent": "sample",
+      "kind": "package",
+      "file": "sample/api/__init__.py"
+    },
+    {
+      "id": "sample.api.routes",
+      "parent": "sample.api",
+      "kind": "module",
+      "file": "sample/api/routes.py"
+    },
+    {
+      "id": "sample.domain",
+      "parent": "sample",
+      "kind": "package",
+      "file": "sample/domain/__init__.py"
+    },
+    {
+      "id": "sample.domain.model",
+      "parent": "sample.domain",
+      "kind": "module",
+      "file": "sample/domain/model.py"
+    },
+    {
+      "id": "sample.infra",
+      "parent": "sample",
+      "kind": "package",
+      "file": "sample/infra/__init__.py"
+    },
+    {
+      "id": "sample.infra.cache",
+      "parent": "sample.infra",
+      "kind": "module",
+      "file": "sample/infra/cache.py"
+    },
+    {
+      "id": "sample.infra.db",
+      "parent": "sample.infra",
+      "kind": "module",
+      "file": "sample/infra/db.py"
+    },
+    {
+      "id": "sample.services",
+      "parent": "sample",
+      "kind": "package",
+      "file": "sample/services/__init__.py"
+    },
+    {
+      "id": "sample.services.pricing",
+      "parent": "sample.services",
+      "kind": "module",
+      "file": "sample/services/pricing.py"
+    }
+  ],
+  "imports": [
+    {
+      "importer": "sample",
+      "imported": "sample.domain.model",
+      "file": "sample/__init__.py",
+      "line": 3,
+      "text": "from sample.domain.model import Order"
+    },
+    {
+      "importer": "sample.api.routes",
+      "imported": "sample.domain",
+      "file": "sample/api/routes.py",
+      "line": 10,
+      "text": "from sample.domain import Order"
+    },
+    {
+      "importer": "sample.api.routes",
+      "imported": "sample.infra.db",
+      "file": "sample/api/routes.py",
+      "line": 14,
+      "text": "from sample.infra.db import Session"
+    },
+    {
+      "importer": "sample.api.routes",
+      "imported": "sample.services.pricing",
+      "file": "sample/api/routes.py",
+      "line": 11,
+      "text": "from sample.services import pricing"
+    },
+    {
+      "importer": "sample.domain",
+      "imported": "sample.domain.model",
+      "file": "sample/domain/__init__.py",
+      "line": 1,
+      "text": "from sample.domain.model import Order"
+    },
+    {
+      "importer": "sample.infra.db",
+      "imported": "sample.services.pricing",
+      "file": "sample/infra/db.py",
+      "line": 3,
+      "text": "from sample.services import pricing"
+    },
+    {
+      "importer": "sample.services.pricing",
+      "imported": "sample.domain.model",
+      "file": "sample/services/pricing.py",
+      "line": 3,
+      "text": "from ..domain import model"
+    },
+    {
+      "importer": "sample.services.pricing",
+      "imported": "sample.infra.cache",
+      "file": "sample/services/pricing.py",
+      "line": 7,
+      "text": "from sample.infra.cache import get_rate"
+    }
+  ]
+}
