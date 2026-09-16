@@ -1,0 +1,26 @@
+{
+  "from": "sample.api",
+  "to": "sample.infra",
+  "found": true,
+  "direct": [],
+  "chain": [
+    {
+      "importer": "sample.api.routes",
+      "imported": "sample.services.pricing",
+      "file": "sample/api/routes.py",
+      "line": 11,
+      "text": "from sample.services import pricing",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "sample.services.pricing",
+      "imported": "sample.infra.cache",
+      "file": "sample/services/pricing.py",
+      "line": 7,
+      "text": "from sample.infra.cache import get_rate",
+      "type_checking": false,
+      "lazy": true
+    }
+  ]
+}

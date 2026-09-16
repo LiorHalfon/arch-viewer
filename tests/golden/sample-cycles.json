@@ -1,0 +1,52 @@
+{
+  "root": "sample",
+  "cycles": [
+    {
+      "level": "sample",
+      "members": [
+        "sample.infra",
+        "sample.services"
+      ],
+      "path": [
+        "sample.infra",
+        "sample.services",
+        "sample.infra"
+      ],
+      "missed": [],
+      "steps": [
+        {
+          "from": "sample.infra",
+          "to": "sample.services",
+          "count": 1,
+          "imports": [
+            {
+              "importer": "sample.infra.db",
+              "imported": "sample.services.pricing",
+              "file": "sample/infra/db.py",
+              "line": 3,
+              "text": "from sample.services import pricing",
+              "type_checking": false,
+              "lazy": false
+            }
+          ]
+        },
+        {
+          "from": "sample.services",
+          "to": "sample.infra",
+          "count": 1,
+          "imports": [
+            {
+              "importer": "sample.services.pricing",
+              "imported": "sample.infra.cache",
+              "file": "sample/services/pricing.py",
+              "line": 7,
+              "text": "from sample.infra.cache import get_rate",
+              "type_checking": false,
+              "lazy": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
