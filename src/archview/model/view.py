@@ -109,3 +109,15 @@ def build_view(model: Model, root: str) -> View:
         for (s, t), imports in sorted(grouped.items())
     )
     return View(root=root, nodes=nodes, edges=edges, cycles=cycles)
+
+
+def tangled_packages(model: Model) -> frozenset[str]:
+    """Packages that have a cycle among their children, or anywhere further down (V6)."""
+    with_cycles = [
+        n.id for n in model.nodes if n.kind == "package" and build_view(model, n.id).cycles
+    ]
+    tangled: set[str] = set()
+    for package in with_cycles:
+        parts = package.split(".")
+        tangled.update(".".join(parts[: i + 1]) for i in range(len(parts)))
+    return frozenset(tangled)

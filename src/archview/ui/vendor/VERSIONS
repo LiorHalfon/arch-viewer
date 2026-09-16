@@ -1,0 +1,2 @@
+@viz-js/viz        3.30.0   MIT           viz-global.js (copied from spike/viewer/vendor)
+highlight.js       11.11.1  BSD-3-Clause  highlight.min.js, hljs-github*.min.css (cdnjs build, common languages)

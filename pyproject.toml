@@ -7,8 +7,10 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Lior Halfon" }]
 dependencies = [
+    "fastapi>=0.141.1",
     "grimp>=3.16",
     "networkx>=3.4",
+    "uvicorn>=0.53.0",
 ]
 
 [project.scripts]
@@ -19,6 +21,7 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.14",
     "jsonschema>=4.23",
+    "httpx2>=2.13.0",
 ]
 
 [build-system]
@@ -41,3 +44,5 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Starlette's own test client, not our code.
+filterwarnings = ["ignore:The anyio.abc.BlockingPortal alias:DeprecationWarning"]

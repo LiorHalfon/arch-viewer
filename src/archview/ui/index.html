@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>archview</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='1' width='6' height='5' rx='1' fill='%235b7fa6'/><rect x='9' y='10' width='6' height='5' rx='1' fill='%235b7fa6'/><path d='M4 6v6h5' stroke='%235b7fa6' fill='none' stroke-width='1.5'/></svg>">
+  <link rel="stylesheet" href="/ui/vendor/hljs-github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="/ui/vendor/hljs-github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="#" id="home" title="Top of the project">archview</a>
+    <nav class="crumbs" id="crumbs" aria-label="Current package"></nav>
+    <div class="stats" id="stats"></div>
+    <div class="tools">
+      <button id="up" title="Up one level (u)" aria-label="Up one level">&uarr;</button>
+      <span class="sep"></span>
+      <button id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">&minus;</button>
+      <button id="zoom-fit" title="Fit to window (0)">Fit</button>
+      <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <span class="sep"></span>
+      <button id="reanalyze" title="Re-read the source and the rules (r)">Reanalyze</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="canvas">
+      <div class="stage" id="stage"><div id="graph" class="graph"><p class="hint">Loading&hellip;</p></div></div>
+      <footer class="cycles" id="cycles" hidden></footer>
+    </section>
+    <aside class="panel" id="panel" hidden>
+      <div class="panel-head">
+        <div class="panel-title" id="panel-title"></div>
+        <button class="close" id="panel-close" title="Close (Esc)" aria-label="Close panel">&times;</button>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="/ui/vendor/viz-global.js"></script>
+  <script src="/ui/vendor/highlight.min.js"></script>
+  <script src="/ui/app.js"></script>
+</body>
+</html>

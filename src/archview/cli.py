@@ -1,4 +1,4 @@
-"""The command line: `archview graph | check | init`.
+"""The command line: `archview graph | check | init | serve`.
 
 Exit codes: 0 success, 1 the check found failing problems, 2 the command could not
 run (bad arguments, unreadable rules, no package).
@@ -9,7 +9,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import sys
+import threading
+import webbrowser
 from dataclasses import replace
 from pathlib import Path
 
@@ -115,6 +118,34 @@ def _init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _free_port(host: str, wanted: int) -> int:
+    with socket.socket() as probe:
+        try:
+            probe.bind((host, wanted))
+        except OSError:
+            probe.bind((host, 0))
+        return probe.getsockname()[1]
+
+
+def _serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from archview.server.app import create_app
+    from archview.server.workspace import Workspace
+
+    workspace = Workspace(args.path, args.package, args.config)
+    port = _free_port(args.host, args.port)
+    url = f"http://{args.host}:{port}/"
+    summary = workspace.summary()
+    sys.stdout.write(
+        f"archview: {summary['project']} ({summary['modules']} modules) at {url}  (Ctrl+C stops)\n"
+    )
+    if not args.no_open:
+        threading.Timer(0.8, webbrowser.open, args=(url,)).start()
+    uvicorn.run(create_app(workspace), host=args.host, port=port, log_level="warning")
+    return 0
+
+
 def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("path", nargs="?", default=Path("."), type=Path, help="repo to analyse")
     parser.add_argument("--package", help="top-level package (default: the only one found)")
@@ -146,6 +177,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--exclude", action="append", default=[], metavar="GLOB", help="file glob to leave out"
     )
     init.set_defaults(run=_init)
+
+    serve = commands.add_parser("serve", help="open the interactive viewer in the browser")
+    _common(serve)
+    serve.add_argument("--host", default="127.0.0.1", help="interface to bind (default: localhost)")
+    serve.add_argument("--port", type=int, default=8765, help="port (a free one if taken)")
+    serve.add_argument("--no-open", action="store_true", help="do not open a browser")
+    serve.set_defaults(run=_serve)
     return parser
 
 

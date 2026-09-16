@@ -2,7 +2,7 @@
 
 from archview.model.view import build_view
 from archview.render.dot import to_dot
-from tests.test_view import model
+from tests.builders import model
 
 
 def test_puts_the_nodes_of_one_layer_on_the_same_rank():
@@ -28,8 +28,8 @@ def test_draws_cyclic_edges_in_red():
 
     dot = to_dot(view)
 
-    assert '"pkg.a" -> "pkg.b" [label="1" color="red" penwidth=2]' in dot
-    assert '"pkg.b" -> "pkg.a" [label="1" color="red" penwidth=2]' in dot
+    assert '"pkg.a" -> "pkg.b" [label="1" color="red" penwidth=2 class="cycle"]' in dot
+    assert '"pkg.b" -> "pkg.a" [label="1" color="red" penwidth=2 class="cycle"]' in dot
 
 
 def test_is_valid_input_for_graphviz():
@@ -39,3 +39,23 @@ def test_is_valid_input_for_graphviz():
 
     assert dot.startswith('digraph "pkg" {')
     assert dot.rstrip().endswith("}")
+
+
+def test_draws_packages_as_uml_components_and_modules_as_plain_boxes():
+    view = build_view(model(("pkg.api.routes", "pkg.main")), "pkg")
+
+    dot = to_dot(view)
+
+    assert (
+        '"pkg.api" [label="api\\n(1 module)" shape=component style="filled" class="package"]' in dot
+    )
+    assert '"pkg.main" [label="main" fillcolor="#f7f7f7" penwidth=2 class="module"]' in dot
+
+
+def test_marks_a_package_with_a_cycle_somewhere_inside_it():
+    view = build_view(model(("pkg.api.routes", "pkg.domain.model")), "pkg")
+
+    dot = to_dot(view, tangled={"pkg.api"})
+
+    assert 'label="api \u27f2\\n(1 module)" fontcolor="red"' in dot
+    assert 'class="package tangled"' in dot

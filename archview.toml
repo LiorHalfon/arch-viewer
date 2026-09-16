@@ -10,9 +10,10 @@ fail_on_violations = true
 fail_on_cycles = true
 
 [archview.allowed]
-cli = ["model", "project", "render", "rules"]
+cli = ["model", "project", "render", "rules", "server"]
 extract = ["model"]
 model = []
 project = ["extract", "model", "rules"]
 render = ["model", "rules"]
 rules = ["model"]
+server = ["model", "project", "render"]

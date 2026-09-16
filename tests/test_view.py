@@ -1,6 +1,6 @@
 """Deriving the view for a root: aggregation, cycles, layers, metrics."""
 
-from archview.model.view import build_view
+from archview.model.view import build_view, tangled_packages
 from tests.builders import model
 
 
@@ -97,3 +97,13 @@ def test_keeps_the_concrete_imports_behind_each_edge():
         ("pkg.api.routes", "pkg.domain.model", "pkg/api/routes.py", 1),
         ("pkg.api.views", "pkg.domain.model", "pkg/api/views.py", 2),
     ]
+
+
+def test_a_package_is_tangled_when_a_cycle_sits_anywhere_inside_it():
+    m = model(
+        ("pkg.core.a.x", "pkg.core.b.y"),
+        ("pkg.core.b.y", "pkg.core.a.x"),
+        ("pkg.api.routes", "pkg.core.a.x"),
+    )
+
+    assert tangled_packages(m) == frozenset({"pkg", "pkg.core"})

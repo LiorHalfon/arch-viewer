@@ -1,0 +1,189 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #d9dee5;
+  --text: #1d232b;
+  --muted: #5f6b7a;
+  --accent: #2f6fb3;
+  --pkg-fill: #e3ecf6;
+  --pkg-stroke: #7a93ad;
+  --mod-fill: #ffffff;
+  --mod-stroke: #9aa6b4;
+  --edge: #6b7785;
+  --danger: #c62828;
+  --danger-soft: #fdecea;
+  --warn: #9a6700;
+  --mark: #fff3bf;
+  --focus: #e8f0fa;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --line: 18px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171b;
+    --surface: #1b1f24;
+    --border: #2e353d;
+    --text: #e3e7ec;
+    --muted: #97a2af;
+    --accent: #6ea8e8;
+    --pkg-fill: #22303f;
+    --pkg-stroke: #5d7a99;
+    --mod-fill: #1f242a;
+    --mod-stroke: #56616d;
+    --edge: #8793a0;
+    --danger: #ff6b6b;
+    --danger-soft: #3a1f1f;
+    --warn: #e3b341;
+    --mark: #3d3514;
+    --focus: #1f2a36;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; border-color: var(--border); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* header */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.brand { font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: -.01em; }
+.crumbs { display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; font-family: var(--mono); font-size: 13px; }
+.crumbs a { color: var(--accent); text-decoration: none; cursor: pointer; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs .sep { color: var(--muted); padding: 0 5px; }
+.crumbs .here { font-weight: 600; }
+.stats { color: var(--muted); font-size: 12px; white-space: nowrap; margin-left: auto; }
+.stats .bad { color: var(--danger); font-weight: 600; }
+.stats .warn { color: var(--warn); font-weight: 600; }
+.tools { display: flex; align-items: center; gap: 4px; }
+.tools .sep { width: 8px; }
+
+/* layout */
+main {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 0;
+}
+main.with-panel { grid-template-columns: 1fr minmax(360px, 38vw); }
+.canvas { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
+.stage { overflow: auto; min-height: 0; }
+.graph { padding: 24px; width: max-content; min-width: 100%; }
+.graph svg { display: block; margin: 0 auto; }
+.hint { color: var(--muted); }
+
+/* the diagram, restyled from Graphviz's output */
+.graph svg > g > polygon { fill: transparent; stroke: none; }
+.graph .node { cursor: pointer; }
+.graph .node polygon, .graph .node path { transition: stroke-width .1s; }
+.graph .node.package polygon, .graph .node.package path, .graph .node.package polyline { fill: var(--pkg-fill); stroke: var(--pkg-stroke); }
+.graph .node.module polygon, .graph .node.module path { fill: var(--mod-fill); stroke: var(--mod-stroke); }
+.graph .node text { fill: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.graph .node text + text { fill: var(--muted); }
+.graph .node.cycle text:first-of-type, .graph .node.tangled text:first-of-type { fill: var(--danger); font-weight: 600; }
+.graph .node.cycle polygon, .graph .node.cycle path { stroke: var(--danger); }
+.graph .node:hover polygon, .graph .node:hover path, .graph .node.selected polygon, .graph .node.selected path { stroke-width: 2.5; stroke: var(--accent); }
+.graph .edge { cursor: pointer; }
+.graph .edge path { stroke: var(--edge); }
+.graph .edge polygon { fill: var(--edge); stroke: var(--edge); }
+.graph .edge text { fill: var(--muted); font-size: 10px; }
+.graph .edge.cycle path { stroke: var(--danger); }
+.graph .edge.cycle polygon { fill: var(--danger); stroke: var(--danger); }
+.graph .edge.cycle text { fill: var(--danger); }
+.graph .edge path.hit, .graph .edge.cycle path.hit, .graph .edge:hover path.hit { stroke: transparent; stroke-width: 14; fill: none; }
+.graph .edge:hover path:not(.hit), .graph .edge.selected path:not(.hit) { stroke: var(--accent); stroke-width: 2.5; }
+.graph .edge:hover polygon, .graph .edge.selected polygon { fill: var(--accent); stroke: var(--accent); }
+.graph svg.focusing .edge:not(.related) { opacity: .12; }
+.graph svg.focusing .node:not(.related) { opacity: .45; }
+.graph svg.focusing .edge.related text { fill: var(--text); font-weight: 600; }
+
+/* cycles footer */
+.cycles {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 8px 14px;
+  max-height: 30vh;
+  overflow: auto;
+}
+.cycles h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; color: var(--danger); }
+.cycles ul { margin: 0; padding: 0; list-style: none; }
+.cycles li { font-family: var(--mono); font-size: 12px; padding: 2px 0; cursor: pointer; }
+.cycles li:hover { color: var(--accent); }
+
+/* side panel */
+.panel {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  min-height: 0;
+}
+.panel[hidden] { display: none; }
+.panel-head { display: flex; align-items: flex-start; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.panel-title { flex: 1; min-width: 0; }
+.panel-title h2 { font-size: 15px; margin: 0; word-break: break-word; }
+.panel-title .sub { color: var(--muted); font-size: 12px; font-family: var(--mono); word-break: break-all; }
+.close { border: none; font-size: 20px; line-height: 1; padding: 0 4px; background: transparent; }
+.panel-body { overflow: auto; padding: 12px 14px; min-height: 0; }
+.panel-body.code { padding: 0; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 12px; font-size: 13px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+.panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+.imports { list-style: none; margin: 0; padding: 0; }
+.imports li { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; cursor: pointer; }
+.imports li:hover { border-color: var(--accent); background: var(--focus); }
+.imports .where { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.imports .text { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.imports .target { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.links { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; }
+.links li { padding: 2px 0; cursor: pointer; }
+.links li:hover { color: var(--accent); }
+.links .n { color: var(--muted); }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 9px; background: var(--danger-soft); color: var(--danger); vertical-align: 1px; }
+
+/* source view */
+.source { position: relative; font-family: var(--mono); font-size: 12px; line-height: var(--line); display: grid; grid-template-columns: auto 1fr; min-width: max-content; }
+.source .gutter { text-align: right; color: var(--muted); padding: 8px 10px 8px 12px; user-select: none; border-right: 1px solid var(--border); position: relative; z-index: 1; }
+.source .gutter span { display: block; cursor: pointer; }
+.source .gutter span.imp { color: var(--accent); font-weight: 600; }
+.source pre { margin: 0; padding: 8px 14px; position: relative; z-index: 1; }
+.source pre code.hljs { background: transparent; padding: 0; overflow: visible; font: inherit; }
+.source .mark { position: absolute; left: 0; right: 0; height: var(--line); background: var(--focus); z-index: 0; }
+.source .mark.target { background: var(--mark); }
+
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 6px 14px; border-radius: 6px; font-size: 13px; z-index: 10; }
+
+@media (max-width: 760px) {
+  .stats { display: none; }
+  main.with-panel { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  .panel { border-left: none; border-top: 1px solid var(--border); }
+}
