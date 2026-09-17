@@ -1,6 +1,6 @@
 [project]
 name = "archview"
-version = "0.1.0"
+version = "0.1.1"
 description = "Architecture viewer and dependency-rules checker for Python code bases"
 readme = "README.md"
 requires-python = ">=3.12"
