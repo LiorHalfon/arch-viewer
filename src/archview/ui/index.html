@@ -11,6 +11,7 @@
 </head>
 <body>
   <header class="bar">
+    <button id="tree-toggle" class="icon" title="Files (t)" aria-label="Show or hide the files" aria-controls="tree" aria-expanded="false">&#9776;</button>
     <a class="brand" href="#" id="home" title="Top of the project">archview</a>
     <nav class="crumbs" id="crumbs" aria-label="Current package"></nav>
     <div class="stats" id="stats"></div>
@@ -47,6 +48,10 @@
   </header>
 
   <main id="main">
+    <aside class="tree" id="tree" aria-label="Files" hidden>
+      <div class="tree-head" id="tree-head"></div>
+      <div class="tree-body" id="tree-body"></div>
+    </aside>
     <section class="canvas">
       <div class="stage-wrap">
         <div class="stage" id="stage"><div id="graph" class="graph"><p class="hint">Loading&hellip;</p></div></div>

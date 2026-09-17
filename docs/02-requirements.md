@@ -71,6 +71,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | V12 | Export the current view as SVG/PNG (for PRs and docs) and as Mermaid/DOT (for markdown). | V2 | AV V2 "export and CI" |
 | V13 | Launch with one command from the project root (`archview .` / `uv run archview`), opens in the browser, works offline, no accounts, no telemetry. | MVP | LH (Claude Code workflow) |
 | V14 | Handles a view of a few hundred boxes interactively; larger views are automatically collapsed to packages. | MVP | — |
+| V15 | File drawer: a hideable panel on the left lists the packages (folders) and modules (files) under the current root, with a `..` row to go up. Clicking a folder makes it the root, clicking a file opens its source; folders expand in place. Follows Hide tests. | V2 | LH |
 
 ## 6. Functional requirements — checker
 
@@ -133,7 +134,7 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A14. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
-| Viewer | V1–V9, V11–V13. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
+| Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
 | Checker | C1–C4, C6–C11. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 

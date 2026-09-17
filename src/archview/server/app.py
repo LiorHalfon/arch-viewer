@@ -1,4 +1,4 @@
-"""The local HTTP API and the static UI (requirements V1-V13).
+"""The local HTTP API and the static UI (requirements V1-V15).
 
 Bound to localhost by the CLI, no network calls, and the only files it reads are
 the ones the model already lists as source files.
@@ -33,6 +33,10 @@ def create_app(workspace: Workspace) -> FastAPI:
     @app.get("/api/view")
     def view(root: str | None = None, externals: bool = False, hide_tests: bool = False) -> dict:
         return found(lambda: workspace.view(root, externals, hide_tests))
+
+    @app.get("/api/tree")
+    def tree(root: str | None = None, hide_tests: bool = False) -> dict:
+        return found(lambda: workspace.tree(root, hide_tests))
 
     @app.get("/api/check")
     def check() -> dict:

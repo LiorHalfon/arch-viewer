@@ -103,6 +103,8 @@ main {
   min-height: 0;
 }
 main.with-panel { grid-template-columns: 1fr minmax(360px, 38vw); }
+main.with-tree { grid-template-columns: minmax(200px, 260px) 1fr; }
+main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minmax(360px, 38vw); }
 .canvas { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
 .stage { overflow: auto; }
 .graph { padding: 24px; width: max-content; min-width: 100%; }
@@ -203,6 +205,38 @@ body.zones .graph .node.package.zone-useless polygon, body.zones .graph .node.pa
 .notes .focus-bar button { font-size: 12px; padding: 1px 8px; }
 .notes section + section { margin-top: 6px; }
 
+/* file drawer */
+button.icon { border-color: transparent; background: transparent; padding: 1px 7px; font-size: 16px; line-height: 1; color: var(--muted); }
+button.icon.on { color: var(--text); }
+button.icon:hover { border-color: var(--accent); }
+.tree {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  min-height: 0;
+}
+.tree[hidden] { display: none; }
+.tree-head { padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-body { overflow: auto; padding: 4px 0; min-height: 0; }
+.tree-body .hint { padding: 0 12px; font-size: 12px; }
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree .row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 2px 10px 2px calc(6px + var(--depth) * 14px);
+  font-family: var(--mono); font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.tree .row:hover { background: var(--focus); }
+.tree .row.current { background: var(--focus); box-shadow: inset 2px 0 var(--accent); font-weight: 600; }
+.tree .row .name { overflow: hidden; text-overflow: ellipsis; }
+.tree .twisty { width: 12px; flex: none; text-align: center; color: var(--muted); font-size: 10px; }
+.tree .twisty[data-toggle]:hover { color: var(--accent); }
+.tree .sw { flex: none; width: 12px; height: 9px; }
+.tree .row.abstract .sw { background: var(--abs-fill); border-color: var(--abs-stroke); }
+.tree .row.tangled .name { color: var(--danger); font-weight: 600; }
+.tree .row.up .name { color: var(--muted); }
+
 /* side panel */
 .panel {
   border-left: 1px solid var(--border);
@@ -269,6 +303,9 @@ table.metrics tbody tr:hover { background: var(--focus); }
 
 @media (max-width: 760px) {
   .stats { display: none; }
-  main.with-panel { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  main { position: relative; }
+  main.with-panel, main.with-tree, main.with-tree.with-panel { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  main.with-tree:not(.with-panel) { grid-template-rows: 1fr; }
+  .tree { position: absolute; inset: 0 auto 0 0; width: min(280px, 80vw); z-index: 4; box-shadow: 4px 0 12px rgb(0 0 0 / .15); }
   .panel { border-left: none; border-top: 1px solid var(--border); }
 }

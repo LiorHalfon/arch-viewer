@@ -14,7 +14,10 @@ const state = {
   zoom: 1,
   natural: { w: 0, h: 0 },
   sticky: null,         // {ids, label} while a focus is pinned
-  options: { tests: false, externals: false, zones: false, legend: true },
+  trees: new Map(),     // "root|tests" -> tree payload
+  expanded: new Set(),  // package ids opened in place in the file drawer
+  source: null,         // module whose source is in the panel
+  options: { tests: false, externals: false, zones: false, legend: true, tree: true },
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -59,6 +62,10 @@ function applyOptions() {
   $("opt-legend").checked = state.options.legend;
   document.body.classList.toggle("zones", state.options.zones);
   $("legend").hidden = !state.options.legend;
+  $("tree").hidden = !state.options.tree;
+  $("main").classList.toggle("with-tree", state.options.tree);
+  $("tree-toggle").setAttribute("aria-expanded", String(state.options.tree));
+  $("tree-toggle").classList.toggle("on", state.options.tree);
 }
 
 function viewQuery(root) {
@@ -112,6 +119,7 @@ async function show(root, { keepPanel = false, refit = false } = {}) {
   if (!keepPanel) closePanel();
   draw(view);
   notes();
+  drawTree();
   const place = state.places.get(root);
   setZoom(place ? place.zoom : fitZoom(), false);
   const stage = $("stage");
@@ -294,6 +302,74 @@ function reach(start, forward) {
   return seen;
 }
 
+// ---------- file drawer (V15) ----------
+
+async function drawTree() {
+  if (!state.options.tree || !state.root) return;
+  const root = state.root;
+  const key = `${root}|${state.options.tests}`;
+  if (!state.trees.has(key)) {
+    const q = new URLSearchParams({ root });
+    if (state.options.tests) q.set("hide_tests", "true");
+    try {
+      state.trees.set(key, await api(`/api/tree?${q}`));
+    } catch (error) {
+      $("tree-body").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
+      return;
+    }
+  }
+  if (root !== state.root) return;
+  renderTree(state.trees.get(key));
+}
+
+function treeRows(nodes, depth) {
+  return nodes.map((node) => {
+    const pkg = node.kind === "package";
+    const open = pkg && state.expanded.has(node.id);
+    const classes = ["row", node.kind, node.abstract && "abstract", node.tangled && "tangled", node.id === state.source && "current"].filter(Boolean).join(" ");
+    const twisty = pkg
+      ? `<span class="twisty" data-toggle="${esc(node.id)}" role="button" aria-label="${open ? "Collapse" : "Expand"} ${esc(node.name)}">${open ? "▾" : "▸"}</span>`
+      : '<span class="twisty"></span>';
+    const hint = pkg ? `open ${node.id}` : `source of ${node.id}`;
+    return `<li role="treeitem"${pkg ? ` aria-expanded="${open}"` : ""}>
+      <div class="${classes}" style="--depth:${depth}" data-id="${esc(node.id)}" data-kind="${node.kind}" title="${esc(hint)}">${twisty}<span class="sw sw-${pkg ? "pkg" : "mod"}"></span><span class="name">${esc(node.name)}${pkg ? "/" : ".py"}</span></div>
+      ${open ? `<ul role="group">${treeRows(node.children, depth + 1)}</ul>` : ""}
+    </li>`;
+  }).join("");
+}
+
+function renderTree(tree) {
+  const body = $("tree-body");
+  const scroll = body.scrollTop;
+  $("tree-head").innerHTML = `<span class="name" title="${esc(tree.id)}">${esc(tree.name)}/</span>`;
+  const up = tree.parent
+    ? `<li><div class="row up" style="--depth:0" data-up="${esc(tree.parent)}" title="Up to ${esc(tree.parent)} (u)"><span class="twisty"></span><span class="name">..</span></div></li>`
+    : "";
+  body.innerHTML = tree.children.length || up
+    ? `<ul role="tree">${up}${treeRows(tree.children, 0)}</ul>`
+    : '<p class="hint">Empty.</p>';
+  body.scrollTop = scroll;
+  body.onclick = (e) => {
+    const toggle = e.target.closest("[data-toggle]");
+    if (toggle) {
+      const id = toggle.dataset.toggle;
+      if (!state.expanded.delete(id)) state.expanded.add(id);
+      return renderTree(tree);
+    }
+    const row = e.target.closest(".row");
+    if (!row) return;
+    if (row.dataset.up) return go(row.dataset.up);
+    return row.dataset.kind === "package" ? go(row.dataset.id) : openSource(row.dataset.id);
+  };
+}
+
+function toggleTree() {
+  state.options.tree = !state.options.tree;
+  saveOptions();
+  applyOptions();
+  drawTree();
+}
+
 // ---------- zoom ----------
 
 function fitZoom() {
@@ -324,6 +400,7 @@ function setZoom(zoom, keepCentre = true) {
 // ---------- panel ----------
 
 function openPanel(titleHtml, bodyHtml, code = false) {
+  if (!code && state.source) { state.source = null; drawTree(); }
   $("main").classList.add("with-panel");
   $("panel").hidden = false;
   $("panel-title").innerHTML = titleHtml;
@@ -337,6 +414,7 @@ function openPanel(titleHtml, bodyHtml, code = false) {
 function closePanel() {
   $("main").classList.remove("with-panel");
   $("panel").hidden = true;
+  if (state.source) { state.source = null; drawTree(); }
   document.querySelectorAll("#graph .selected").forEach((g) => g.classList.remove("selected"));
 }
 
@@ -439,6 +517,8 @@ async function openSource(module, line = null) {
     return;
   }
   select(`#graph g.node[data-id="${CSS.escape(module)}"]`);
+  state.source = module;
+  drawTree();
   const lines = source.text.split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   const byLine = new Map();
@@ -610,6 +690,7 @@ async function exportView(format) {
 async function refresh(summary, message) {
   state.project = summary;
   state.views.clear();
+  state.trees.clear();
   rulesButton();
   let root = state.root;
   while (root) {
@@ -660,6 +741,7 @@ function rulesButton() {
 // ---------- wiring ----------
 
 function bind() {
+  $("tree-toggle").onclick = toggleTree;
   $("home").onclick = (e) => { e.preventDefault(); go(state.project.project); };
   $("up").onclick = () => state.view && state.view.parent && go(state.view.parent);
   $("zoom-in").onclick = () => setZoom(state.zoom * 1.25);
@@ -700,6 +782,7 @@ function bind() {
       "-": () => $("zoom-out").click(),
       "0": () => $("zoom-fit").click(),
       r: reanalyze,
+      t: toggleTree,
     };
     if (keys[e.key]) { e.preventDefault(); keys[e.key](); }
   });

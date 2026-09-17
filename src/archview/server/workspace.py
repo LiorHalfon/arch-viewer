@@ -152,6 +152,31 @@ class Workspace:
             return to_mermaid(view, violating_edges(view, self._failing))
         raise NotFound(f"unknown export format {fmt!r}")
 
+    def tree(self, root: str | None, hide_tests: bool = False) -> dict[str, Any]:
+        """The packages and modules under a root, nested, packages first (V15)."""
+        root = root or self.project.package
+        model = self._model(hide_tests)
+        by_id = {n.id: n for n in model.nodes}
+        if root not in self._parents or root not in by_id:
+            raise NotFound(f"{root} is not a package of {self.project.package}")
+        children: dict[str, list] = {}
+        for node in model.nodes:
+            if node.parent:
+                children.setdefault(node.parent, []).append(node)
+
+        def item(node) -> dict[str, Any]:
+            kids = sorted(children.get(node.id, ()), key=lambda n: (n.kind != "package", n.id))
+            return {
+                "id": node.id,
+                "name": node.id.rsplit(".", 1)[-1],
+                "kind": node.kind,
+                "abstract": node.abstract,
+                "tangled": node.id in self._tangled,
+                "children": [item(k) for k in kids],
+            }
+
+        return {**item(by_id[root]), "parent": by_id[root].parent}
+
     def source(self, module: str) -> dict[str, Any]:
         node = next((n for n in self.project.model.nodes if n.id == module), None)
         if node is None or node.file is None:

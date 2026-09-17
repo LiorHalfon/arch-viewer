@@ -82,6 +82,61 @@ def test_a_module_or_unknown_root_is_not_a_view(client):
     assert client.get("/api/view", params={"root": "nope"}).status_code == 404
 
 
+def test_the_tree_nests_the_subtree_of_a_root_packages_first(client):
+    tree = client.get("/api/tree").json()
+
+    def shape(node):
+        return (node["name"], node["kind"], [shape(c) for c in node["children"]])
+
+    assert tree["id"] == "sample"
+    assert tree["parent"] is None
+    assert [shape(c) for c in tree["children"]] == [
+        ("api", "package", [("routes", "module", [])]),
+        ("domain", "package", [("model", "module", []), ("ports", "module", [])]),
+        ("infra", "package", [("cache", "module", []), ("db", "module", [])]),
+        ("services", "package", [("pricing", "module", [])]),
+    ]
+
+
+def test_the_tree_of_a_subpackage_knows_its_parent_and_flags(repo):
+    (repo / "sample" / "infra" / "cache.py").write_text("from sample.infra import db\n")
+    (repo / "sample" / "infra" / "db.py").write_text("from sample.infra import cache\n")
+    (repo / "sample" / "infra" / "zz.py").write_text("")
+    (repo / "sample" / "infra" / "sub").mkdir()
+    (repo / "sample" / "infra" / "sub" / "__init__.py").write_text("")
+    (repo / "sample" / "infra" / "sub" / "leaf.py").write_text("")
+    client = TestClient(create_app(Workspace(repo)))
+
+    top = client.get("/api/tree").json()
+    infra = client.get("/api/tree", params={"root": "sample.infra"}).json()
+
+    assert [c["name"] for c in top["children"] if c["tangled"]] == ["infra"]
+    assert infra["parent"] == "sample"
+    assert [(c["name"], c["kind"]) for c in infra["children"]] == [
+        ("sub", "package"),
+        ("cache", "module"),
+        ("db", "module"),
+        ("zz", "module"),
+    ]
+    domain = client.get("/api/tree", params={"root": "sample.domain"}).json()
+    assert [c["name"] for c in domain["children"] if c["abstract"]] == ["ports"]
+
+
+def test_the_tree_can_hide_tests_and_rejects_unknown_roots(repo):
+    (repo / "sample" / "tests").mkdir()
+    (repo / "sample" / "tests" / "__init__.py").write_text("")
+    (repo / "sample" / "tests" / "test_api.py").write_text("from sample.api import routes\n")
+    client = TestClient(create_app(Workspace(repo)))
+
+    def names(**params):
+        return [c["name"] for c in client.get("/api/tree", params=params).json()["children"]]
+
+    assert "tests" in names()
+    assert "tests" not in names(hide_tests=True)
+    assert client.get("/api/tree", params={"root": "sample.infra.db"}).status_code == 404
+    assert client.get("/api/tree", params={"root": "nope"}).status_code == 404
+
+
 def test_serves_a_modules_source_with_its_project_imports(client):
     source = client.get("/api/source", params={"module": "sample.api.routes"}).json()
 
