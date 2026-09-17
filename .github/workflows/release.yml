@@ -1,10 +1,11 @@
 name: Release
 
 # Push a tag like v0.2.0 after bumping `version` in pyproject.toml. The release is
-# created only if the tag matches that version and the CI checks pass.
+# created only if the tag matches that version and the CI checks pass. The release
+# then moves the floating tag v0.2 to it, so `@v0.2` always means the latest 0.2.x.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 jobs:
   version:
@@ -42,3 +43,8 @@ jobs:
             gh release create "${GITHUB_REF_NAME}" dist/* --verify-tag --generate-notes \
               --title "archview ${GITHUB_REF_NAME#v}"
           fi
+      - name: Move the floating minor tag
+        run: |
+          minor="${GITHUB_REF_NAME%.*}"
+          git tag -f "${minor}" "${GITHUB_SHA}"
+          git push -f origin "refs/tags/${minor}"

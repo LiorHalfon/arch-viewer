@@ -70,7 +70,7 @@ UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, th
 
 Releasing: bump `version` in `pyproject.toml`, commit, wait for CI, then
 `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. The Release workflow checks that
-the tag matches the version, reruns CI, builds, and creates the GitHub release. Minor
-bump per milestone or breaking change (rules file, JSON, flags, exit codes), patch for
-fixes; no release for docs, tests or CI.
+the tag matches the version, reruns CI, builds, creates the GitHub release, and moves the
+floating `vX.Y` tag to it. Minor bump per milestone or breaking change (rules file, JSON,
+flags, exit codes), patch for fixes; no release for docs, tests or CI.
 

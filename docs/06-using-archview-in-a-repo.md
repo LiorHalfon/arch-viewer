@@ -7,6 +7,15 @@ uv tool install --editable ~/git/arch-viewer     # puts `archview` on the PATH; 
 cd ~/git/some-repo && archview .                 # opens the viewer (same as `archview serve .`)
 ```
 
+Without a checkout, install a release from GitHub. The floating tag `v0.1` always
+points at the latest 0.1.x release; a minor bump (0.2.0) gets its own `v0.2`. A moved
+tag is only picked up on reinstall or with `uvx --refresh`:
+
+```bash
+uv tool install --reinstall git+https://github.com/LiorHalfon/arch-viewer@v0.1
+uvx --refresh --from git+https://github.com/LiorHalfon/arch-viewer@v0.1 archview check
+```
+
 ## Adopt it
 
 ```bash
