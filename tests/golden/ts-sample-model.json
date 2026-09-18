@@ -1,0 +1,379 @@
+{
+  "schema": 3,
+  "language": "typescript",
+  "separator": "/",
+  "project": "ts-sample",
+  "nodes": [
+    {
+      "id": "ts-sample",
+      "parent": null,
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/app",
+      "parent": "ts-sample",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/app/index.tsx",
+      "parent": "ts-sample/app",
+      "kind": "module",
+      "file": "app/index.tsx",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/app/screens",
+      "parent": "ts-sample/app",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/app/screens/Home.tsx",
+      "parent": "ts-sample/app/screens",
+      "kind": "module",
+      "file": "app/screens/Home.tsx",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/app/screens/Home.web.tsx",
+      "parent": "ts-sample/app/screens",
+      "kind": "module",
+      "file": "app/screens/Home.web.tsx",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components",
+      "parent": "ts-sample",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components/Button.tsx",
+      "parent": "ts-sample/components",
+      "kind": "module",
+      "file": "components/Button.tsx",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components/Transitions",
+      "parent": "ts-sample/components",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components/Transitions/Transitions",
+      "parent": "ts-sample/components/Transitions",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components/Transitions/Transitions.tsx",
+      "parent": "ts-sample/components/Transitions",
+      "kind": "module",
+      "file": "components/Transitions/Transitions.tsx",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components/Transitions/Transitions/Fade.tsx",
+      "parent": "ts-sample/components/Transitions/Transitions",
+      "kind": "module",
+      "file": "components/Transitions/Transitions/Fade.tsx",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/components/index.ts",
+      "parent": "ts-sample/components",
+      "kind": "module",
+      "file": "components/index.ts",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/domain",
+      "parent": "ts-sample",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/domain/Repository.ts",
+      "parent": "ts-sample/domain",
+      "kind": "module",
+      "file": "domain/Repository.ts",
+      "abstract": true
+    },
+    {
+      "id": "ts-sample/domain/order.ts",
+      "parent": "ts-sample/domain",
+      "kind": "module",
+      "file": "domain/order.ts",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/domain/types.ts",
+      "parent": "ts-sample/domain",
+      "kind": "module",
+      "file": "domain/types.ts",
+      "abstract": true
+    },
+    {
+      "id": "ts-sample/services",
+      "parent": "ts-sample",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/services/__mocks__",
+      "parent": "ts-sample/services",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/services/__mocks__/pricing.ts",
+      "parent": "ts-sample/services/__mocks__",
+      "kind": "module",
+      "file": "services/__mocks__/pricing.ts",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/services/pricing.test.ts",
+      "parent": "ts-sample/services",
+      "kind": "module",
+      "file": "services/pricing.test.ts",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/services/pricing.ts",
+      "parent": "ts-sample/services",
+      "kind": "module",
+      "file": "services/pricing.ts",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/utils",
+      "parent": "ts-sample",
+      "kind": "package",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/utils/format.ts",
+      "parent": "ts-sample/utils",
+      "kind": "module",
+      "file": "utils/format.ts",
+      "abstract": false
+    },
+    {
+      "id": "ts-sample/utils/legacy.js",
+      "parent": "ts-sample/utils",
+      "kind": "module",
+      "file": "utils/legacy.js",
+      "abstract": false
+    },
+    {
+      "id": "@tanstack/react-query",
+      "parent": null,
+      "kind": "external",
+      "file": null,
+      "abstract": false
+    },
+    {
+      "id": "react",
+      "parent": null,
+      "kind": "external",
+      "file": null,
+      "abstract": false
+    }
+  ],
+  "imports": [
+    {
+      "importer": "ts-sample/app/index.tsx",
+      "imported": "ts-sample/app/screens/Home.tsx",
+      "file": "app/index.tsx",
+      "line": 4,
+      "text": "export const loadHome = () => import(\"@/app/screens/Home\");",
+      "type_checking": false,
+      "lazy": true
+    },
+    {
+      "importer": "ts-sample/app/index.tsx",
+      "imported": "ts-sample/components/index.ts",
+      "file": "app/index.tsx",
+      "line": 1,
+      "text": "import { Button } from \"@/components\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/app/index.tsx",
+      "imported": "ts-sample/utils/format.ts",
+      "file": "app/index.tsx",
+      "line": 2,
+      "text": "import { format } from \"@/utils/format\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/app/screens/Home.tsx",
+      "imported": "ts-sample/domain/order.ts",
+      "file": "app/screens/Home.tsx",
+      "line": 2,
+      "text": "import { total } from \"@/domain/order\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/app/screens/Home.tsx",
+      "imported": "ts-sample/domain/types.ts",
+      "file": "app/screens/Home.tsx",
+      "line": 1,
+      "text": "import type { Order } from \"@/domain/types\";",
+      "type_checking": true,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/app/screens/Home.web.tsx",
+      "imported": "ts-sample/app/screens/Home.tsx",
+      "file": "app/screens/Home.web.tsx",
+      "line": 1,
+      "text": "import Home from \"./Home\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/components/Button.tsx",
+      "imported": "@tanstack/react-query",
+      "file": "components/Button.tsx",
+      "line": 1,
+      "text": "import { useQuery } from \"@tanstack/react-query\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/components/Button.tsx",
+      "imported": "ts-sample/utils/legacy.js",
+      "file": "components/Button.tsx",
+      "line": 9,
+      "text": "return require(\"../utils/legacy.js\");",
+      "type_checking": false,
+      "lazy": true
+    },
+    {
+      "importer": "ts-sample/components/Transitions/Transitions.tsx",
+      "imported": "ts-sample/components/Transitions/Transitions/Fade.tsx",
+      "file": "components/Transitions/Transitions.tsx",
+      "line": 1,
+      "text": "import { Fade } from \"./Transitions/Fade\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/components/Transitions/Transitions/Fade.tsx",
+      "imported": "react",
+      "file": "components/Transitions/Transitions/Fade.tsx",
+      "line": 1,
+      "text": "import React from \"react\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/components/index.ts",
+      "imported": "ts-sample/components/Button.tsx",
+      "file": "components/index.ts",
+      "line": 1,
+      "text": "export { Button } from \"./Button\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/components/index.ts",
+      "imported": "ts-sample/components/Transitions/Transitions.tsx",
+      "file": "components/index.ts",
+      "line": 2,
+      "text": "export * from \"./Transitions/Transitions\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/domain/Repository.ts",
+      "imported": "ts-sample/domain/types.ts",
+      "file": "domain/Repository.ts",
+      "line": 1,
+      "text": "import type { Order } from \"./types\";",
+      "type_checking": true,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/domain/order.ts",
+      "imported": "ts-sample/domain/types.ts",
+      "file": "domain/order.ts",
+      "line": 1,
+      "text": "import type { Order } from \"./types\";",
+      "type_checking": true,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/domain/order.ts",
+      "imported": "ts-sample/services/pricing.ts",
+      "file": "domain/order.ts",
+      "line": 2,
+      "text": "import { discount } from \"@/services/pricing\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/services/pricing.test.ts",
+      "imported": "ts-sample/services/pricing.ts",
+      "file": "services/pricing.test.ts",
+      "line": 1,
+      "text": "import { discount } from \"./pricing\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/services/pricing.ts",
+      "imported": "ts-sample/domain/order.ts",
+      "file": "services/pricing.ts",
+      "line": 1,
+      "text": "import { total } from \"@/domain/order\";",
+      "type_checking": false,
+      "lazy": false
+    },
+    {
+      "importer": "ts-sample/services/pricing.ts",
+      "imported": "ts-sample/domain/types.ts",
+      "file": "services/pricing.ts",
+      "line": 2,
+      "text": "import type { Order } from \"@/domain/types\";",
+      "type_checking": true,
+      "lazy": false
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "dynamic_import",
+      "module": "ts-sample/app/index.tsx",
+      "file": "app/index.tsx",
+      "line": 7,
+      "text": "return import(name);",
+      "target": null
+    },
+    {
+      "kind": "unresolved_import",
+      "module": "ts-sample/utils/format.ts",
+      "file": "utils/format.ts",
+      "line": 3,
+      "text": "import { nope } from \"@/utils/missing\";",
+      "target": "@/utils/missing"
+    }
+  ]
+}

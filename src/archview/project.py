@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from archview.extract import typescript
 from archview.extract.discover import find_packages
 from archview.extract.python import build_model
 from archview.model.filter import without_files
@@ -20,6 +21,10 @@ from archview.rules.config import Config, ConfigError, find_config, load_config
 
 class ProjectError(Exception):
     """The repo cannot be analysed as asked."""
+
+
+class SeveralPackages(ProjectError):
+    """More than one top-level Python package, and none was named."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +42,8 @@ def open_project(
     package: str | None = None,
     config_path: Path | None = None,
     config: Config | None = None,
+    language: str | None = None,
+    tsconfig: str | None = None,
 ) -> Project:
     """Analyse `repo` with the rules at `config_path`, found in the repo, or given as `config`."""
     repo = Path(repo).expanduser().resolve()
@@ -45,10 +52,37 @@ def open_project(
     path = config_path or find_config(repo)
     if config is None:
         config = load_config(path) if path else Config()
+    tsconfig = tsconfig or config.tsconfig
+    if _language(repo, config, language, tsconfig) == "typescript":
+        model = _typescript_model(repo, config, package or config.package, tsconfig)
+        return Project(
+            repo, model.project, repo, config, path, without_files(model, config.exclude)
+        )
     packages = _packages(repo, config)
     name = _choose(packages, repo, package or config.package)
     model = build_model(name, packages[name], relative_to=repo)
     return Project(repo, name, packages[name], config, path, without_files(model, config.exclude))
+
+
+def _language(repo: Path, config: Config, asked: str | None, tsconfig: str | None) -> str:
+    """`--language`, then the rules file; else a tsconfig means TypeScript."""
+    chosen = asked or config.language
+    if chosen:
+        return chosen
+    return "typescript" if tsconfig or (repo / "tsconfig.json").is_file() else "python"
+
+
+def _typescript_model(repo: Path, config: Config, name: str | None, tsconfig: str | None) -> Model:
+    if len(config.source_roots) > 1:
+        raise ProjectError(
+            "a TypeScript project has one source root; "
+            f"source_roots lists {len(config.source_roots)}"
+        )
+    root = config.source_roots[0] if config.source_roots else None
+    try:
+        return typescript.extract(repo, name, tsconfig, root)
+    except typescript.ExtractionError as error:
+        raise ProjectError(str(error)) from None
 
 
 def _packages(repo: Path, config: Config) -> dict[str, Path]:
@@ -72,7 +106,7 @@ def _choose(packages: dict[str, Path], repo: Path, asked: str | None) -> str:
     if not packages:
         raise ProjectError(f"no Python package found in {repo}")
     if len(packages) > 1:
-        raise ProjectError(f"several packages in {repo} ({names}); pick one with --package")
+        raise SeveralPackages(f"several packages in {repo} ({names}); pick one with --package")
     return next(iter(packages))
 
 

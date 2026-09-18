@@ -9,6 +9,7 @@ root, prefixed by the project and keeping the file extension, split by '/'.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -203,3 +204,37 @@ def _imported(target: Target, ids: dict[str, str], project: str) -> str | None:
     if target.kind == "external" and target.name and target.name != project:
         return target.name  # a package importing itself by name would clash with the root
     return None
+
+
+def project_name(repo: Path) -> str:
+    """`package.json` name without its `@scope/`; else the directory name."""
+    try:
+        data = json.loads((repo / "package.json").read_text())
+    except (OSError, ValueError):
+        data = None
+    name = data.get("name") if isinstance(data, dict) else None
+    return name.rpartition("/")[2] if isinstance(name, str) and name else repo.name
+
+
+def find_tsconfigs(repo: Path, limit: int = 5) -> list[str]:
+    """`tsconfig.json` files below `repo`, outside node_modules and hidden directories."""
+    found = []
+    for directory, subdirs, files in os.walk(repo):
+        subdirs[:] = sorted(d for d in subdirs if d != "node_modules" and not d.startswith("."))
+        if "tsconfig.json" in files:
+            found.append((Path(directory) / "tsconfig.json").relative_to(repo).as_posix())
+    return sorted(found)[:limit]
+
+
+def extract(
+    repo: Path, name: str | None = None, tsconfig: str | None = None, source_root: str | None = None
+) -> Model:
+    """The model of the TypeScript project at `repo`; `tsconfig` is relative to `repo`."""
+    repo = Path(repo).resolve()
+    wanted = tsconfig or "tsconfig.json"
+    if not (repo / wanted).is_file():
+        found = find_tsconfigs(repo)
+        hint = f"; found {', '.join(found)} - pick one with --tsconfig" if found else ""
+        raise ExtractionError(f"no {wanted} in {repo}{hint}")
+    facts = read_facts(repo, repo / wanted)
+    return build_model(facts, name or project_name(repo), source_root)

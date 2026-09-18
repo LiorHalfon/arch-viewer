@@ -33,7 +33,14 @@ from archview.model.query import (
 )
 from archview.model.serialize import view_to_dict
 from archview.model.view import View, build_view
-from archview.project import ProjectError, baseline_path, open_project, project_report
+from archview.project import (
+    Project,
+    ProjectError,
+    SeveralPackages,
+    baseline_path,
+    open_project,
+    project_report,
+)
 from archview.render.check import report_to_dict, report_to_text
 from archview.render.dot import to_dot
 from archview.render.mermaid import to_mermaid
@@ -82,8 +89,7 @@ def _as_text(view: View) -> str:
 
 
 def _graph(args: argparse.Namespace) -> int:
-    asked = args.package or (args.root.split(".")[0] if args.root else None)
-    project = open_project(args.path, asked, args.config)
+    project = _open(args, [args.root] if args.root else None)
     model = without_tests(project.model) if args.hide_tests else project.model
     root = args.root or project.package
     if root not in {n.id for n in model.nodes}:
@@ -160,8 +166,22 @@ def _hook_input() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _open(args: argparse.Namespace, names: list[str] | None = None) -> Project:
+    """The project; with several Python packages, the first name may pick one."""
+    options = {"language": args.language, "tsconfig": args.tsconfig}
+    try:
+        return open_project(args.path, args.package, args.config, **options)
+    except SeveralPackages:
+        if args.package or not names:
+            raise
+    try:
+        return open_project(args.path, names[0].split(".")[0], args.config, **options)
+    except ProjectError:
+        raise ProjectError(f"several packages in {args.path}; pick one with --package") from None
+
+
 def _rules_project(args: argparse.Namespace):
-    project = open_project(args.path, args.package, args.config)
+    project = _open(args)
     if project.config_path is None:
         raise UsageError(
             f"no {RULES_FILE} (or [tool.archview] in pyproject.toml) in {project.repo}; "
@@ -172,17 +192,7 @@ def _rules_project(args: argparse.Namespace):
 
 def _query_model(args: argparse.Namespace, names: list[str]) -> Model:
     """The model the queries run on; the package may be named by the first query name."""
-    try:
-        project = open_project(args.path, args.package, args.config)
-    except ProjectError:
-        if args.package or not names:
-            raise
-        try:
-            project = open_project(args.path, names[0].split(".")[0], args.config)
-        except ProjectError:
-            raise ProjectError(
-                f"several packages in {args.path}; pick one with --package"
-            ) from None
+    project = _open(args, names)
     model = without_tests(project.model) if args.hide_tests else project.model
     return runtime_only(model) if args.runtime_only else model
 
@@ -235,8 +245,10 @@ def _init(args: argparse.Namespace) -> int:
     config = load_config(existing) if existing else Config()
     if args.exclude:
         config = replace(config, exclude=tuple(dict.fromkeys((*config.exclude, *args.exclude))))
+    if args.tsconfig:
+        config = replace(config, tsconfig=args.tsconfig)
 
-    project = open_project(repo, args.package, config=config)
+    project = open_project(repo, args.package, config=config, language=args.language)
     text = infer_rules(project.model, config)
     if args.stdout:
         sys.stdout.write(text)
@@ -248,7 +260,7 @@ def _init(args: argparse.Namespace) -> int:
 
 
 def _metrics(args: argparse.Namespace) -> int:
-    project = open_project(args.path, args.package, args.config)
+    project = _open(args)
     report = check(project.model, project.config)
     if args.format == "json":
         data = {name: asdict(m) for name, m in sorted(report.metrics.items())}
@@ -313,6 +325,10 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("path", nargs="?", default=Path("."), type=Path, help="repo to analyse")
     parser.add_argument("--package", help="top-level package (default: the only one found)")
     parser.add_argument("--config", type=Path, help=f"rules file (default: ./{RULES_FILE})")
+    parser.add_argument(
+        "--language", choices=["python", "typescript"], help="default: typescript if tsconfig.json"
+    )
+    parser.add_argument("--tsconfig", help="tsconfig to read, relative to the repo")
 
 
 def _query_options(parser: argparse.ArgumentParser) -> None:
@@ -320,7 +336,9 @@ def _query_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--format", choices=["text", "json"], default="text")
     parser.add_argument("--hide-tests", action="store_true", help="leave test code out")
     parser.add_argument(
-        "--runtime-only", action="store_true", help="leave out TYPE_CHECKING imports"
+        "--runtime-only",
+        action="store_true",
+        help="leave out imports only type checkers see (TYPE_CHECKING, import type)",
     )
 
 
