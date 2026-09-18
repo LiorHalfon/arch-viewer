@@ -21,10 +21,12 @@ const state = {
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const short = (id) => id.split(".").pop();
+const sep = () => state.project.separator;
+const inProject = (id) => id === state.project.project || id.startsWith(state.project.project + sep());
+const short = (id) => (inProject(id) ? id.split(sep()).pop() : id);
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
-const parentOf = (id) => (id.includes(".") ? id.slice(0, id.lastIndexOf(".")) : null);
+const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
 const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 
 async function api(path, options) {
@@ -132,9 +134,9 @@ async function show(root, { keepPanel = false, refit = false } = {}) {
 function crumbs(root) {
   const el = $("crumbs");
   el.innerHTML = "";
-  const parts = root.split(".");
+  const parts = root.split(sep());
   parts.forEach((part, i) => {
-    const id = parts.slice(0, i + 1).join(".");
+    const id = parts.slice(0, i + 1).join(sep());
     if (i) el.insertAdjacentHTML("beforeend", '<span class="sep">/</span>');
     if (id === root) {
       el.insertAdjacentHTML("beforeend", `<span class="here">${esc(part)}</span>`);
@@ -656,7 +658,7 @@ function download(name, blob) {
 
 async function exportView(format) {
   $("export-menu").open = false;
-  const base = state.root.replaceAll(".", "-");
+  const base = state.root.replaceAll(sep(), "-");
   if (format === "svg" || format === "png") {
     const svgText = state.viz.renderString(state.view.dot, { format: "svg" });
     if (format === "svg") return download(`${base}.svg`, new Blob([svgText], { type: "image/svg+xml" }));

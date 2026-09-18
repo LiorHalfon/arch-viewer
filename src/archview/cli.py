@@ -305,7 +305,7 @@ def _serve(args: argparse.Namespace) -> int:
     from archview.server.app import create_app
     from archview.server.workspace import Workspace
 
-    workspace = Workspace(args.path, args.package, args.config)
+    workspace = Workspace(args.path, args.package, args.config, args.language, args.tsconfig)
     if args.watch:
         workspace.watch()
     port = _free_port(args.host, args.port)
