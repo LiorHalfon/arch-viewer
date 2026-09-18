@@ -1,12 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/liorhalfon/archview/schema/model-2.json",
+  "$id": "https://github.com/liorhalfon/archview/schema/model-3.json",
   "title": "archview model",
   "description": "The interchange format: a tree of nodes plus the imports between them. Views, cycles, layers, metrics and violations are all derived from this.",
   "type": "object",
   "required": [
     "schema",
     "language",
+    "separator",
     "project",
     "nodes",
     "imports",
@@ -15,15 +16,19 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": 2
+      "const": 3
     },
     "language": {
       "type": "string",
       "description": "the extractor that produced this"
     },
+    "separator": {
+      "enum": [".", "/"],
+      "description": "splits a node id into its ancestors: '.' for Python, '/' for TypeScript"
+    },
     "project": {
       "type": "string",
-      "description": "the top-level package analysed"
+      "description": "the top-level package or TypeScript project analysed"
     },
     "nodes": {
       "type": "array",
@@ -40,7 +45,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "dotted name, unique"
+            "description": "unique; its ancestors are the prefixes ending before a separator"
           },
           "parent": {
             "type": [
@@ -105,11 +110,11 @@
           },
           "type_checking": {
             "type": "boolean",
-            "description": "only imported for type checkers (if TYPE_CHECKING:)"
+            "description": "only for type checkers: under if TYPE_CHECKING: (Python), import type (TypeScript)"
           },
           "lazy": {
             "type": "boolean",
-            "description": "written inside a function, so it runs on call, not on import"
+            "description": "runs on call, not on import: inside a function (Python, require), import() (TypeScript)"
           }
         }
       }
@@ -130,7 +135,8 @@
         "properties": {
           "kind": {
             "enum": [
-              "dynamic_import"
+              "dynamic_import",
+              "unresolved_import"
             ]
           },
           "module": {
@@ -151,7 +157,7 @@
               "string",
               "null"
             ],
-            "description": "the module name, when it is a string literal"
+            "description": "the imported name or specifier, when it is a string literal"
           }
         }
       }

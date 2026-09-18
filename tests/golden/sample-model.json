@@ -1,6 +1,7 @@
 {
-  "schema": 2,
+  "schema": 3,
   "language": "python",
+  "separator": ".",
   "project": "sample",
   "nodes": [
     {
