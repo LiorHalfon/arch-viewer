@@ -116,3 +116,14 @@ def test_rejects_a_file_without_the_archview_table(tmp_path):
 def test_reports_a_rules_file_that_does_not_exist(tmp_path):
     with pytest.raises(ConfigError, match="cannot read"):
         load_config(tmp_path / "archview.toml")
+
+
+def test_reads_the_language_and_tsconfig():
+    config = parse_config({"language": "typescript", "tsconfig": "server/tsconfig.json"})
+
+    assert (config.language, config.tsconfig) == ("typescript", "server/tsconfig.json")
+
+
+def test_rejects_an_unknown_language():
+    with pytest.raises(ConfigError, match="language must be one of 'python', 'typescript'"):
+        parse_config({"language": "java"})

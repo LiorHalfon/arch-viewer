@@ -36,7 +36,7 @@ def infer_rules(model: Model, config: Config | None = None) -> str:
     """The text of an `archview.toml`; keeps package, exclusions and components from `config`."""
     config = config or Config()
     model = checked_imports(model, config)
-    components = component_map(config, model.project)
+    components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
     edges, _ = component_edges(model, components)
     cycles = find_cycles(present, edges)
@@ -50,6 +50,10 @@ def infer_rules(model: Model, config: Config | None = None) -> str:
         "[archview]",
         f"package = {json.dumps(model.project)}",
     ]
+    if model.language != "python":
+        lines.append(f"language = {json.dumps(model.language)}")
+    if config.tsconfig:
+        lines.append(f"tsconfig = {json.dumps(config.tsconfig)}")
     if config.source_roots:
         lines.append(f"source_roots = {_array(config.source_roots)}")
     lines.append(f"exclude = {_array(config.exclude)}")

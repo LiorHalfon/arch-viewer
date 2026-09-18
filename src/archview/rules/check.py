@@ -54,8 +54,8 @@ class Report:
         return any(p.fails for p in self.problems)
 
 
-def component_map(config: Config, project: str) -> ComponentMap:
-    return ComponentMap(project, config.components, frozenset(config.ignored))
+def component_map(config: Config, project: str, sep: str) -> ComponentMap:
+    return ComponentMap(project, sep, config.components, frozenset(config.ignored))
 
 
 def component_edges(
@@ -111,7 +111,7 @@ def checked_imports(model: Model, config: Config) -> Model:
 
 def check(model: Model, config: Config) -> Report:
     model = checked_imports(model, config)
-    components = component_map(config, model.project)
+    components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
     edges, used = component_edges(model, components, config)
     table = config.table

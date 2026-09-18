@@ -3,6 +3,7 @@
 from archview.rules.check import check
 from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, Config, Exemption, Forbidden
+from archview.rules.init import infer_rules
 from tests.builders import model
 
 LAYERED = model(
@@ -174,13 +175,47 @@ def test_explicit_components_group_modules_by_pattern():
 
 
 def test_the_most_specific_component_pattern_wins():
-    components = ComponentMap("app", {"infra": ("app.infra",), "cache": ("app.infra.cache",)})
+    components = ComponentMap("app", ".", {"infra": ("app.infra",), "cache": ("app.infra.cache",)})
 
     assert components.of("app.infra.cache.redis") == "cache"
     assert components.of("app.infra.db") == "infra"
     assert components.of("app.api") == "api"
     assert components.of("app") == "app"
     assert components.of("other.thing") is None
+
+
+def test_components_of_a_slash_separated_project_include_root_files():
+    m = model(
+        ("app/components/ui/Button.tsx", "app/utils/format.ts"),
+        ("app/i18n.ts", "app/components/ui/Button.tsx"),
+        sep="/",
+    )
+    config = Config(allowed={"components": (), "utils": (), "i18n.ts": ("components",)})
+
+    assert kinds(check(m, config)) == [("not_allowed", ("components", "utils"))]
+
+
+def test_slash_separated_component_patterns_and_exceptions():
+    components = ComponentMap("app", "/", {"ui": ("app/components/ui",)})
+    m = model(("app/components/ui/Button.tsx", "app/utils/format.ts"), sep="/")
+    config = Config(
+        allowed={"components": (), "utils": ()},
+        exceptions=(Exemption("app/components/**", "app/utils/format.ts", "legacy"),),
+    )
+
+    assert components.of("app/components/ui/Button.tsx") == "ui"
+    assert components.of("app/components/Card.tsx") == "components"
+    assert components.of("app") == "app"
+    assert kinds(check(m, config)) == []
+
+
+def test_init_quotes_file_components_and_records_the_language():
+    m = model(("app/i18n.ts", "app/utils/format.ts"), sep="/")
+
+    text = infer_rules(m)
+
+    assert 'language = "typescript"' in text
+    assert '"i18n.ts" = ["utils"]' in text
 
 
 def test_uses_the_pyproject_table_name_in_rules():

@@ -53,6 +53,8 @@ class Config:
     path: str | None = None
     table: str = "archview"
     package: str | None = None
+    language: str | None = None
+    tsconfig: str | None = None
     source_roots: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
     type_checking_imports: str = "ignore"
@@ -94,8 +96,11 @@ class Config:
 
 
 ZONES = ("pain", "useless")
+LANGUAGES = ("python", "typescript")
 TOP_KEYS = {
     "package",
+    "language",
+    "tsconfig",
     "source_roots",
     "exclude",
     "type_checking_imports",
@@ -150,6 +155,8 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         path=path,
         table=where,
         package=_optional_str(table, "package", where),
+        language=_language(table, where),
+        tsconfig=_optional_str(table, "tsconfig", where),
         source_roots=_str_list(table, "source_roots", where),
         exclude=_str_list(table, "exclude", where),
         fail_on_violations=_bool(table, "fail_on_violations", where),
@@ -223,6 +230,13 @@ def _optional_str(table: dict[str, Any], key: str, where: str) -> str | None:
     value = table.get(key)
     if value is not None and not isinstance(value, str):
         raise ConfigError(f"[{where}] {key} must be a string")
+    return value
+
+
+def _language(table: dict[str, Any], where: str) -> str | None:
+    value = _optional_str(table, "language", where)
+    if value is not None and value not in LANGUAGES:
+        raise ConfigError(f"[{where}] language must be one of {', '.join(map(repr, LANGUAGES))}")
     return value
 
 
