@@ -33,7 +33,7 @@ Read in this order:
 - Extraction via **grimp** (BSD-2). Do not write a custom import resolver.
 - Rules file: `archview.toml` with an `allowed` map per component (dependency-checker style); `archview init` infers it.
 - Viewer: local web UI; Graphviz-WASM (`@viz-js/viz`) for the MVP, ELK + React Flow only if interactions demand it.
-- Static analysis only — never import or execute the analysed project. No network. Permissive licences only.
+- Static analysis only — never import or execute the analysed project's sources, though reading TypeScript does run that repo's own `typescript` compiler. No network. Permissive licences only.
 - Working name `archview` for the package and CLI.
 
 ## Conventions

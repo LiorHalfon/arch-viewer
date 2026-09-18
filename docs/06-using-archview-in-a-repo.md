@@ -30,6 +30,12 @@ project's own dependencies installed (`npm install`): archview uses the repo's
   `"myapp/features/**"`, and file components are quoted keys (`"i18n.ts" = []`).
 - `type_checking_imports` applies to `import type`.
 
+Loading the repo's `typescript` means running code from its `node_modules` (the one
+carve-out from "static analysis only", N2; the repo's own sources are parsed, never
+executed). Analyse repos you trust, as you would before running `npm install` or
+`tsc` in them. In a hoisted monorepo the package need not be in that package's own
+`node_modules` — the lookup walks up the directories, as Node's does.
+
 A stray root `tsconfig.json` in an otherwise-Python repo (a monorepo with a JS
 frontend, say) is enough to make archview read it as TypeScript; say `language =
 "python"` or `--language python` to override. This is a footgun worth knowing about

@@ -1,6 +1,7 @@
 """The Node half: what `typescript.mjs` reports for the fixture project (ADR 0010)."""
 
 import json
+import subprocess
 
 import pytest
 
@@ -115,6 +116,59 @@ def test_records_the_line_and_its_text(facts):
 
 
 @requires_typescript
+def test_a_wrapped_import_is_recorded_whole_not_by_its_first_line(facts):
+    button = imports_of(facts, "components/Button.tsx")["@tanstack/react-query"]
+
+    assert (button["line"], button["text"]) == (
+        1,
+        'import { useMutation, useQuery, } from "@tanstack/react-query";',
+    )
+
+
+@requires_typescript
+def test_a_pathological_statement_is_truncated(tmp_path):
+    (tmp_path / "node_modules").symlink_to(TS_SAMPLE / "node_modules")
+    (tmp_path / "tsconfig.json").write_text(json.dumps({"include": ["*.ts"]}))
+    names = ",\n".join(f"  name{i} as renamed{i}" for i in range(40))
+    (tmp_path / "a.ts").write_text(f"import {{\n{names},\n}} from './b';\n")
+
+    text = read_facts(tmp_path, tmp_path / "tsconfig.json")["files"][0]["imports"][0]["text"]
+
+    assert len(text) == 200
+    assert text.startswith("import { name0 as renamed0, name1 as renamed1,")
+    assert text.endswith("…")
+
+
+@requires_typescript
+def test_a_referenced_sibling_package_outside_the_repo_is_not_a_file_of_this_one(tmp_path):
+    (tmp_path / "core" / "src").mkdir(parents=True)
+    (tmp_path / "core" / "src" / "x.ts").write_text("export const x = 1;\n")
+    (tmp_path / "core" / "tsconfig.json").write_text(
+        json.dumps({"compilerOptions": {"composite": True}, "include": ["src"]})
+    )
+    app = tmp_path / "app"
+    (app / "src").mkdir(parents=True)
+    (app / "node_modules").symlink_to(TS_SAMPLE / "node_modules")
+    (app / "src" / "a.ts").write_text(
+        'import { x } from "../../core/src/x";\nexport const a = x;\n'
+    )
+    (app / "tsconfig.json").write_text(
+        json.dumps(
+            {
+                "compilerOptions": {"composite": True},
+                "include": ["src"],
+                "references": [{"path": "../core"}],
+            }
+        )
+    )
+
+    facts = read_facts(app, app / "tsconfig.json")
+
+    assert [f["file"] for f in facts["files"]] == ["src/a.ts"]
+    assert facts["files"][0]["imports"][0]["resolved"] == "../core/src/x.ts"
+
+
+@requires_typescript
 def test_abstract_means_an_abstract_class_or_only_type_exports(facts):
     abstract = {f["file"]: f["abstract"] for f in facts["files"]}
 
@@ -157,4 +211,17 @@ def test_no_node_on_the_path_is_an_error(monkeypatch, tmp_path):
     monkeypatch.setattr(typescript.shutil, "which", lambda _: None)
 
     with pytest.raises(ExtractionError, match="node not found on PATH"):
+        read_facts(tmp_path, tmp_path / "tsconfig.json")
+
+
+def test_a_wedged_node_run_times_out_instead_of_hanging(monkeypatch, tmp_path):
+    monkeypatch.setattr(typescript.shutil, "which", lambda _: "/usr/bin/node")
+
+    def hang(*args, **kwargs):
+        assert kwargs["timeout"] == typescript.TIMEOUT
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(typescript.subprocess, "run", hang)
+
+    with pytest.raises(ExtractionError, match=r"did not finish within 120s"):
         read_facts(tmp_path, tmp_path / "tsconfig.json")

@@ -102,7 +102,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 ## 8. Non-functional requirements
 
 - **N1 Deterministic.** Same source → byte-identical JSON and identical layout; sorting is by name everywhere ties exist. Required for CI diffs and for agents.
-- **N2 Static only.** Never import or execute the analysed project (safety, speed, no side effects).
+- **N2 Static only.** Never import or execute the analysed project's own source (safety, speed, no side effects). One carve-out, from M6: to read TypeScript, archview loads and runs the **compiler** from the analysed repo's `node_modules` (`typescript`), because tsc's resolution is what makes a tsconfig mean what it says. The repo's sources are parsed, never executed, but analysing an untrusted repo does run that repo's installed `typescript`.
 - **N3 Local & offline.** No network calls; no hosted viewer (unlike tach's `--web`).
 - **N4 Python target.** Analyse Python 3.11+ code; the tool itself runs on 3.12+. Install with `uv tool install` / `uvx` or as a dev dependency.
 - **N5 Permissive dependencies only** (MIT/BSD/Apache/EPL-2.0 for ELK); no GPL/AGPL/non-commercial libraries in the runtime path.
@@ -130,11 +130,11 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-16, after M5)
+## 12. Implementation status (2026-09-17, after M6)
 
 | Area | Built | Not yet |
 |---|---|---|
-| Analysis | A1–A14. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
+| Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
 | Checker | C1–C4, C6–C11. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |

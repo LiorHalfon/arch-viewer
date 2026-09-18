@@ -86,6 +86,19 @@ def test_root_config_files_are_left_out_before_the_source_root_is_chosen():
     assert [n.id for n in m.nodes] == ["p", "p/a.ts"]
 
 
+def test_a_file_outside_the_repo_is_never_a_module_and_never_the_source_root():
+    m = build_model(
+        facts(
+            ("src/a.ts", [fact("../../core/src/x", resolved="../core/src/x.ts")]),
+            ("../core/src/x.ts", []),
+        ),
+        "app",
+    )
+
+    assert [n.id for n in m.nodes] == ["app", "app/a.ts", "../core"]
+    assert [(i.importer, i.imported) for i in m.imports] == [("app/a.ts", "../core")]
+
+
 def test_a_given_source_root_drops_the_files_outside_it():
     m = build_model(
         facts(("src/a.ts", [fact("../scripts/x", resolved="scripts/x.ts")]), ("scripts/x.ts", [])),

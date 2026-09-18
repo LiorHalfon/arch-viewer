@@ -1,4 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+} from "@tanstack/react-query";
 
 interface Props {
   label: string;
@@ -11,6 +14,7 @@ function legacyIcon() {
 
 export function Button({ label }: Props) {
   useQuery({ queryKey: [label] });
+  useMutation({ mutationKey: [label] });
   return (
     <button>
       {label}

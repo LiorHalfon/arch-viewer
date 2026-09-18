@@ -30,7 +30,9 @@ NON_CODE = re.compile(
     re.IGNORECASE,
 )
 ROOT_CONFIG = re.compile(r"^[^/]*\.config\.[^/]+$")  # vite.config.ts, next.config.mjs
+OUTSIDE = "../"  # a `references` sibling package: an external, never a module of this repo
 SCRIPT = Path(__file__).with_name("typescript.mjs")
+TIMEOUT = 120  # seconds; a wedged toolchain must not hang `check` in CI or the watcher
 
 
 class ExtractionError(Exception):
@@ -48,9 +50,18 @@ def read_facts(repo: Path, tsconfig: Path) -> dict[str, Any]:
     node = shutil.which("node")
     if node is None:
         raise ExtractionError("node not found on PATH; archview needs Node.js to read TypeScript")
-    done = subprocess.run(
-        [node, str(SCRIPT), str(repo), str(tsconfig)], capture_output=True, text=True, check=False
-    )
+    try:
+        done = subprocess.run(
+            [node, str(SCRIPT), str(repo), str(tsconfig)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise ExtractionError(
+            f"{SCRIPT.name} did not finish within {TIMEOUT}s on {repo}; check the tsconfig"
+        ) from None
     if done.returncode != 0:
         raise ExtractionError(done.stderr.strip() or f"{SCRIPT.name} exited with {done.returncode}")
     try:
@@ -126,7 +137,11 @@ def _below(file: str, root: str) -> bool:
 def build_model(facts: dict[str, Any], project: str, source_root: str | None = None) -> Model:
     """The model of one TypeScript project; `source_root` (relative to the repo) is
     found with `find_source_root` when not given, and files outside it are left out."""
-    files = {f["file"]: f for f in facts["files"] if not ROOT_CONFIG.match(f["file"])}
+    files = {
+        f["file"]: f
+        for f in facts["files"]
+        if not ROOT_CONFIG.match(f["file"]) and not f["file"].startswith(OUTSIDE)
+    }
     targets = {
         (file, index): classify(fact)
         for file, entry in files.items()

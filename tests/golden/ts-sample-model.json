@@ -200,7 +200,7 @@
       "imported": "ts-sample/app/screens/Home.tsx",
       "file": "app/index.tsx",
       "line": 4,
-      "text": "export const loadHome = () => import(\"@/app/screens/Home\");",
+      "text": "import(\"@/app/screens/Home\")",
       "type_checking": false,
       "lazy": true
     },
@@ -254,7 +254,7 @@
       "imported": "@tanstack/react-query",
       "file": "components/Button.tsx",
       "line": 1,
-      "text": "import { useQuery } from \"@tanstack/react-query\";",
+      "text": "import { useMutation, useQuery, } from \"@tanstack/react-query\";",
       "type_checking": false,
       "lazy": false
     },
@@ -262,8 +262,8 @@
       "importer": "ts-sample/components/Button.tsx",
       "imported": "ts-sample/utils/legacy.js",
       "file": "components/Button.tsx",
-      "line": 9,
-      "text": "return require(\"../utils/legacy.js\");",
+      "line": 12,
+      "text": "require(\"../utils/legacy.js\")",
       "type_checking": false,
       "lazy": true
     },
@@ -364,7 +364,7 @@
       "module": "ts-sample/app/index.tsx",
       "file": "app/index.tsx",
       "line": 7,
-      "text": "return import(name);",
+      "text": "import(name)",
       "target": null
     },
     {

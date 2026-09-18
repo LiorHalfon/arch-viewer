@@ -30,6 +30,12 @@ const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2)
 const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
 const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 const WARNING_LABELS = { dynamic_import: "dynamic import", unresolved_import: "unresolved import" };
+const GRAMMARS = { ts: "typescript", tsx: "typescript", mts: "typescript", cts: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript" };
+// The highlight.js grammar for one file; an unknown one would throw, so fall back.
+const grammarOf = (file) => {
+  const name = GRAMMARS[String(file || "").split(".").pop().toLowerCase()] || "python";
+  return window.hljs && hljs.getLanguage(name) ? name : "plaintext";
+};
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -548,8 +554,9 @@ async function openSource(module, line = null) {
     if (!warnedLines.has(w.line)) warnedLines.set(w.line, []);
     warnedLines.get(w.line).push(w);
   });
+  const grammar = grammarOf(source.file);
   const highlighted = window.hljs
-    ? hljs.highlight(source.text, { language: "python", ignoreIllegals: true }).value
+    ? hljs.highlight(source.text, { language: grammar, ignoreIllegals: true }).value
     : esc(source.text);
   const gutter = lines.map((_, i) => {
     const n = i + 1;
@@ -568,7 +575,7 @@ async function openSource(module, line = null) {
   const flags = source.abstract ? ' <span class="badge abs">abstract</span>' : "";
   const body = openPanel(
     `<h2>${esc(short(module))}${flags}</h2><div class="sub">${esc(source.file)}${line ? `:${line}` : ""}</div>`,
-    `<div class="source">${marks}<div class="gutter">${gutter}</div><pre><code class="hljs language-python">${highlighted}</code></pre></div>`,
+    `<div class="source">${marks}<div class="gutter">${gutter}</div><pre><code class="hljs language-${grammar}">${highlighted}</code></pre></div>`,
     true,
   );
   body.querySelectorAll(".gutter span.imp").forEach((span) => {

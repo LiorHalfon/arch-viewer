@@ -77,6 +77,22 @@ def test_graph_why_and_init_work_on_the_fixture(capsys):
     assert 'package = "ts-sample"' in rules
     assert 'language = "typescript"' in rules
     assert 'domain = ["services"]' in rules
+    assert "source_roots" not in rules  # the fixture has no src/ layout to pin
+
+
+@requires_typescript
+def test_init_pins_the_inferred_source_root_of_a_src_layout_project(tmp_path, capsys):
+    (tmp_path / "node_modules").symlink_to(TS_SAMPLE / "node_modules")
+    (tmp_path / "src" / "api").mkdir(parents=True)
+    (tmp_path / "package.json").write_text(json.dumps({"name": "@acme/proj"}))
+    (tmp_path / "tsconfig.json").write_text(json.dumps({"include": ["src"]}))
+    (tmp_path / "src" / "api" / "a.ts").write_text("export const a = 1;\n")
+
+    assert main(["init", str(tmp_path), "--stdout"]) == 0
+    rules = capsys.readouterr().out
+
+    assert 'package = "proj"' in rules
+    assert 'source_roots = ["src"]' in rules
 
 
 def test_a_missing_tsconfig_lists_the_ones_found(tmp_path):

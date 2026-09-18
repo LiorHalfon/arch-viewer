@@ -14,6 +14,7 @@ import { builtinModules, createRequire } from "node:module";
 const CODE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 const DECLARATION = /\.d\.(ts|mts|cts)$/;
 const NO_INPUTS = 18003; // a solution-style tsconfig lists no files of its own
+const STATEMENT = 200; // the evidence line in `check`, `why` and the viewer; never a whole file
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
@@ -126,17 +127,24 @@ function allTypeOnly(clause) {
   );
 }
 
+// The whole statement on one line: a wrapped `import {\n  one,\n  two,\n} from "./b";`
+// reads as `import { one, two } from "./b";`, truncated so one pathological statement
+// cannot bloat the JSON.
+function statementText(node, source) {
+  const text = source.text.slice(node.getStart(source), node.end).replace(/\s+/g, " ").trim();
+  return text.length > STATEMENT ? `${text.slice(0, STATEMENT - 1)}…` : text;
+}
+
 function scan(file, options, resolve) {
   const text = fs.readFileSync(file, "utf8");
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
-  const lines = text.split(/\r?\n/);
   const imports = [];
   const exported = { types: false, values: false };
   let abstractClass = false;
 
   const add = (node, literal, typeOnly, lazy) => {
     const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-    const common = { line, text: lines[line - 1].trim(), type_only: typeOnly, lazy };
+    const common = { line, text: statementText(node, source), type_only: typeOnly, lazy };
     if (!literal) {
       imports.push({ specifier: null, resolved: null, ...common, dynamic: true, builtin: false, alias: false });
       return;
@@ -190,7 +198,14 @@ const owners = new Map(); // file -> the compiler options of the first tsconfig 
 for (const parsed of projects(real(configPath)).values()) {
   for (const name of parsed.fileNames) {
     const file = real(name);
-    const skipped = !CODE.test(file) || DECLARATION.test(file) || file.split(path.sep).includes("node_modules");
+    // A `references` entry can point at a sibling package (`{"path": "../core"}`); its
+    // files are outside the repo, and an import of one is an external, not a module.
+    const outside = rel(file).startsWith("../");
+    const skipped =
+      outside ||
+      !CODE.test(file) ||
+      DECLARATION.test(file) ||
+      file.split(path.sep).includes("node_modules");
     if (!skipped && !owners.has(file)) owners.set(file, parsed.options);
   }
 }

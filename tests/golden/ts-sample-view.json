@@ -156,8 +156,8 @@
           "importer": "ts-sample/components/Button.tsx",
           "imported": "ts-sample/utils/legacy.js",
           "file": "components/Button.tsx",
-          "line": 9,
-          "text": "return require(\"../utils/legacy.js\");",
+          "line": 12,
+          "text": "require(\"../utils/legacy.js\")",
           "type_checking": false,
           "lazy": true
         }

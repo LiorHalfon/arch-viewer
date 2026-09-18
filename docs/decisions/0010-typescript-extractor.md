@@ -43,7 +43,10 @@ directories of the same name. Everything above the extractor split ids on '.'.
 
 ## Consequences
 
-archview needs Node.js and an installed project to read TypeScript. The model JSON is
+archview needs Node.js and an installed project to read TypeScript. That bends N2: the
+analysed repo's own `typescript` is loaded and run in the Node subprocess (its sources
+are still only parsed), so analysing an untrusted repo runs code from its `node_modules`.
+The model JSON is
 schema 3 for both languages. Rules files for TypeScript name components as the
 directories and root files below the source root (`"i18n.ts" = [...]`), and
 `[components]` patterns use '/'. A whole-workspace monorepo model, `.vue`/`.svelte`
