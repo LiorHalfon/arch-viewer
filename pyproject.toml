@@ -36,7 +36,7 @@ line-length = 100
 target-version = "py312"
 # The fixture project is deliberately odd code, pinned by line number in the golden
 # files; `spike/` is exploratory and not held to the product's standards.
-extend-exclude = ["tests/fixtures", "spike"]
+extend-exclude = ["tests/fixtures", "spike", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
