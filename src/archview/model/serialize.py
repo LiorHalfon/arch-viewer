@@ -14,7 +14,7 @@ from typing import Any
 from archview.model.graph import ExtractionWarning, Import, Model, Node
 from archview.model.view import View
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = Path(__file__).with_name("schema.json")
 
 
@@ -22,6 +22,7 @@ def model_to_dict(model: Model) -> dict[str, Any]:
     return {
         "schema": SCHEMA_VERSION,
         "language": model.language,
+        "separator": model.separator,
         "project": model.project,
         "nodes": [asdict(n) for n in model.nodes],
         "imports": [asdict(i) for i in model.imports],
@@ -38,6 +39,7 @@ def model_from_dict(data: dict[str, Any]) -> Model:
     return Model(
         project=data["project"],
         language=data["language"],
+        separator=data["separator"],
         nodes=tuple(Node(**n) for n in data["nodes"]),
         imports=tuple(Import(**i) for i in data["imports"]),
         warnings=tuple(ExtractionWarning(**w) for w in data["warnings"]),

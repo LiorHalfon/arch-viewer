@@ -54,10 +54,14 @@ class ExtractionWarning:
 
 @dataclass(frozen=True, slots=True)
 class Model:
-    """Everything an extractor produces; every view is derived from this."""
+    """Everything an extractor produces; every view is derived from this.
+
+    `separator` splits a node id into its ancestors: '.' for Python, '/' for TypeScript.
+    """
 
     project: str
     nodes: tuple[Node, ...]
     imports: tuple[Import, ...]
     language: str = "python"
     warnings: tuple[ExtractionWarning, ...] = ()
+    separator: str = "."

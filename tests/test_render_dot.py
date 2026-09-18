@@ -106,3 +106,12 @@ def test_mermaid_flowchart_has_every_box_and_counted_edge():
     assert "  n_pkg_api -. 1 .-> n_pkg_infra" in text
     assert "  n_pkg_infra -. 1 ✗ .-> n_pkg_domain" in text
     assert "  class n_pkg_domain abstract" in text
+
+
+def test_quotes_ids_with_slashes_dots_and_at_signs():
+    m = model(("app/ui/Button.web.tsx", "app/@scope/x.ts"), sep="/")
+
+    dot = to_dot(build_view(m, "app"))
+
+    assert '"app/ui" -> "app/@scope" [label="1"' in dot
+    assert '  "app/ui" [label="ui\\n(1 module)"' in dot

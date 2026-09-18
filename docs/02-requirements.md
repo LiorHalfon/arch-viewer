@@ -1,4 +1,4 @@
-# Requirements — Architecture Viewer + Dependency Rules Checker (Python first)
+# Requirements — Architecture Viewer + Dependency Rules Checker (Python and TypeScript)
 
 Status: draft v1, 2026-08-30. Derived from the video (`01-video-notes.md`, timestamps in parentheses), Bob's real tools (`03-reference-uncle-bob-tools.md`, marked AV = arch-view, DC = dependency-checker), and Lior's decisions (marked LH). Priority: **MVP** = needed for the first useful version, **V2** = next, **Later** = idea parked.
 
@@ -50,8 +50,9 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | A10 | Compute Bob's component metrics: fan-in, fan-out, instability `I`, abstractness `A`, distance `D = |A + I − 1|`, zone (healthy / pain / useless) with a configurable threshold (default 0.3). | V2 | DC |
 | A11 | Exclusions: configurable directories/patterns (tests, migrations, generated code) and ignored components. | MVP | DC `:ignored-components` |
 | A12 | Export the full model as JSON (tree, edges with details, cycles, layers, components, metrics, violations) — the single interchange format the viewer, the checker, exports and agents all consume. | MVP | AV `--out/--in-edn`, `--no-gui` |
-| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design) / Later (impl) | LH |
+| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design) / M6 (impl, ADR 0010) | LH |
 | A14 | Speed: full analysis of a few thousand modules in seconds; per-view aggregation instantaneous. Optional on-disk cache. | MVP | 16:18 (checks must not make agents slower than humans) |
+| A15 | TypeScript extractor: tsc's own resolution (paths, extends, references), ids that keep file extensions split by '/', type-only and lazy flags, unresolved-import warnings. Needs Node and the project's installed typescript. | M6 | LH |
 
 ## 5. Functional requirements — viewer
 
@@ -101,7 +102,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 ## 8. Non-functional requirements
 
 - **N1 Deterministic.** Same source → byte-identical JSON and identical layout; sorting is by name everywhere ties exist. Required for CI diffs and for agents.
-- **N2 Static only.** Never import or execute the analysed project (safety, speed, no side effects).
+- **N2 Static only.** Never import or execute the analysed project's own source (safety, speed, no side effects). One carve-out, from M6: to read TypeScript, archview loads and runs the **compiler** from the analysed repo's `node_modules` (`typescript`), because tsc's resolution is what makes a tsconfig mean what it says. The repo's sources are parsed, never executed, but analysing an untrusted repo does run that repo's installed `typescript`.
 - **N3 Local & offline.** No network calls; no hosted viewer (unlike tach's `--web`).
 - **N4 Python target.** Analyse Python 3.11+ code; the tool itself runs on 3.12+. Install with `uv tool install` / `uvx` or as a dev dependency.
 - **N5 Permissive dependencies only** (MIT/BSD/Apache/EPL-2.0 for ELK); no GPL/AGPL/non-commercial libraries in the runtime path.
@@ -129,11 +130,11 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-16, after M5)
+## 12. Implementation status (2026-09-17, after M6)
 
 | Area | Built | Not yet |
 |---|---|---|
-| Analysis | A1–A14. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
+| Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
 | Checker | C1–C4, C6–C11. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
@@ -145,3 +146,5 @@ records imports, not line numbers.
 Clarified during M5 (ADR 0009): the queries run on the filtered model, not on grimp;
 `why` prefers direct imports over a chain; `deps` leaves out third-party packages
 unless asked.
+
+M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on storygenerator.

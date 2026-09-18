@@ -1,22 +1,24 @@
 # arch-viewer
 
-An architecture viewer + dependency-rules checker for Python code bases, inspired by Uncle Bob's
+An architecture viewer + dependency-rules checker for Python and TypeScript code bases, inspired by Uncle Bob's
 arch-view / dependency-checker (Clojure). Two faces, one model: an interactive drill-down diagram of
 packages/modules with dependency direction and cycles, and a deterministic `check` command that holds
 AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1–M5 are done**: `src/archview/` holds the extractor (grimp + an `ast` pass), the
-model (views, cycles, layers, metrics, agent queries), the checker (`rules/`, with
-layers, zones and baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`,
-`check`, `init`, `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits
-its own `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions (`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
-**M6 (a second language: TypeScript) is next.** Read in this order:
+**M1–M6 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
+Python, the TypeScript compiler API for TypeScript, ADR 0010), the model (views,
+cycles, layers, metrics, agent queries), the checker (`rules/`, with layers, zones
+and baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
+`metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits its own
+`archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions
+(`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
+Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
 2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M6
-3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook
+3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor
 4. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
 5. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
 6. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks
@@ -26,12 +28,12 @@ its own `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actio
 
 ## Decisions already made
 
-- Python code bases first; the model JSON and everything above the extractor stay language-agnostic (TypeScript later).
+- Python and TypeScript (M6, ADR 0010); the model JSON and everything above the extractors stay language-agnostic.
 - Scope = viewer **and** checker, sharing one analysis core.
 - Extraction via **grimp** (BSD-2). Do not write a custom import resolver.
 - Rules file: `archview.toml` with an `allowed` map per component (dependency-checker style); `archview init` infers it.
 - Viewer: local web UI; Graphviz-WASM (`@viz-js/viz`) for the MVP, ELK + React Flow only if interactions demand it.
-- Static analysis only — never import or execute the analysed project. No network. Permissive licences only.
+- Static analysis only — never import or execute the analysed project's sources, though reading TypeScript does run that repo's own `typescript` compiler. No network. Permissive licences only.
 - Working name `archview` for the package and CLI.
 
 ## Conventions
@@ -64,6 +66,8 @@ uv run archview metrics                           # Ca, Ce, I, A, D, zone per co
 uv run archview check [--format json] [--update-baseline]   # exit 0 pass, 1 problems, 2 could not run
 uv run archview why cli networkx                   # also: deps X, rdeps X, cycles [--root X]
 uv run archview init ~/git/tiny-tale-backend --config /tmp/tt.toml   # rules kept outside that repo
+uv run archview graph ~/git/storygenerator         # TypeScript (needs node + npm install there)
+npm ci --prefix tests/fixtures/ts-sample           # once, for the TypeScript tests
 uv run pytest && uv run ruff check
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff
 ```

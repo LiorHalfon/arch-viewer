@@ -1,0 +1,220 @@
+{
+  "root": "ts-sample",
+  "nodes": [
+    {
+      "id": "ts-sample/app",
+      "name": "app",
+      "kind": "package",
+      "module_count": 3,
+      "layer": 0,
+      "in_cycle": false,
+      "fan_in": 0,
+      "fan_out": 4,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 1.0,
+      "distance": 0.0,
+      "zone": "main_sequence"
+    },
+    {
+      "id": "ts-sample/components",
+      "name": "components",
+      "kind": "package",
+      "module_count": 4,
+      "layer": 1,
+      "in_cycle": false,
+      "fan_in": 1,
+      "fan_out": 1,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 0.5,
+      "distance": 0.5,
+      "zone": "pain"
+    },
+    {
+      "id": "ts-sample/domain",
+      "name": "domain",
+      "kind": "package",
+      "module_count": 3,
+      "layer": 1,
+      "in_cycle": true,
+      "fan_in": 4,
+      "fan_out": 1,
+      "abstract": false,
+      "abstractness": 0.667,
+      "instability": 0.333,
+      "distance": 0.0,
+      "zone": "main_sequence"
+    },
+    {
+      "id": "ts-sample/services",
+      "name": "services",
+      "kind": "package",
+      "module_count": 3,
+      "layer": 1,
+      "in_cycle": true,
+      "fan_in": 1,
+      "fan_out": 2,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 0.667,
+      "distance": 0.333,
+      "zone": "pain"
+    },
+    {
+      "id": "ts-sample/utils",
+      "name": "utils",
+      "kind": "package",
+      "module_count": 2,
+      "layer": 2,
+      "in_cycle": false,
+      "fan_in": 2,
+      "fan_out": 0,
+      "abstract": false,
+      "abstractness": 0.0,
+      "instability": 0.0,
+      "distance": 1.0,
+      "zone": "pain"
+    }
+  ],
+  "edges": [
+    {
+      "source": "ts-sample/app",
+      "target": "ts-sample/components",
+      "count": 1,
+      "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "ts-sample/app/index.tsx",
+          "imported": "ts-sample/components/index.ts",
+          "file": "app/index.tsx",
+          "line": 1,
+          "text": "import { Button } from \"@/components\";",
+          "type_checking": false,
+          "lazy": false
+        }
+      ]
+    },
+    {
+      "source": "ts-sample/app",
+      "target": "ts-sample/domain",
+      "count": 2,
+      "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "ts-sample/app/screens/Home.tsx",
+          "imported": "ts-sample/domain/order.ts",
+          "file": "app/screens/Home.tsx",
+          "line": 2,
+          "text": "import { total } from \"@/domain/order\";",
+          "type_checking": false,
+          "lazy": false
+        },
+        {
+          "importer": "ts-sample/app/screens/Home.tsx",
+          "imported": "ts-sample/domain/types.ts",
+          "file": "app/screens/Home.tsx",
+          "line": 1,
+          "text": "import type { Order } from \"@/domain/types\";",
+          "type_checking": true,
+          "lazy": false
+        }
+      ]
+    },
+    {
+      "source": "ts-sample/app",
+      "target": "ts-sample/utils",
+      "count": 1,
+      "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "ts-sample/app/index.tsx",
+          "imported": "ts-sample/utils/format.ts",
+          "file": "app/index.tsx",
+          "line": 2,
+          "text": "import { format } from \"@/utils/format\";",
+          "type_checking": false,
+          "lazy": false
+        }
+      ]
+    },
+    {
+      "source": "ts-sample/components",
+      "target": "ts-sample/utils",
+      "count": 1,
+      "in_cycle": false,
+      "abstract": false,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "ts-sample/components/Button.tsx",
+          "imported": "ts-sample/utils/legacy.js",
+          "file": "components/Button.tsx",
+          "line": 12,
+          "text": "require(\"../utils/legacy.js\")",
+          "type_checking": false,
+          "lazy": true
+        }
+      ]
+    },
+    {
+      "source": "ts-sample/domain",
+      "target": "ts-sample/services",
+      "count": 1,
+      "in_cycle": true,
+      "abstract": false,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "ts-sample/domain/order.ts",
+          "imported": "ts-sample/services/pricing.ts",
+          "file": "domain/order.ts",
+          "line": 2,
+          "text": "import { discount } from \"@/services/pricing\";",
+          "type_checking": false,
+          "lazy": false
+        }
+      ]
+    },
+    {
+      "source": "ts-sample/services",
+      "target": "ts-sample/domain",
+      "count": 2,
+      "in_cycle": true,
+      "abstract": false,
+      "type_checking": false,
+      "imports": [
+        {
+          "importer": "ts-sample/services/pricing.ts",
+          "imported": "ts-sample/domain/order.ts",
+          "file": "services/pricing.ts",
+          "line": 1,
+          "text": "import { total } from \"@/domain/order\";",
+          "type_checking": false,
+          "lazy": false
+        },
+        {
+          "importer": "ts-sample/services/pricing.ts",
+          "imported": "ts-sample/domain/types.ts",
+          "file": "services/pricing.ts",
+          "line": 2,
+          "text": "import type { Order } from \"@/domain/types\";",
+          "type_checking": true,
+          "lazy": false
+        }
+      ]
+    }
+  ],
+  "cycles": [
+    [
+      "ts-sample/domain",
+      "ts-sample/services"
+    ]
+  ]
+}

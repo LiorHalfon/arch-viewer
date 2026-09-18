@@ -161,3 +161,26 @@ def test_shows_external_packages_as_boxes_only_when_asked():
         ("fastapi", "external"),
     ]
     assert ("pkg.api", "fastapi") in {(e.source, e.target) for e in view.edges}
+
+
+def test_slash_separated_ids_with_dotted_file_names_are_their_own_nodes():
+    m = model(
+        ("app/api/routes.ts", "app/domain/order.ts"),
+        ("app/api/Button.web.tsx", "app/api/Button.tsx"),
+        sep="/",
+    )
+
+    top = build_view(m, "app")
+    api = build_view(m, "app/api")
+
+    assert [(e.source, e.target, e.count) for e in top.edges] == [("app/api", "app/domain", 1)]
+    assert [n.name for n in api.nodes] == ["Button.tsx", "Button.web.tsx", "routes.ts"]
+    assert [(e.source, e.target) for e in api.edges] == [
+        ("app/api/Button.web.tsx", "app/api/Button.tsx")
+    ]
+
+
+def test_tangled_packages_are_found_with_slash_separated_ids():
+    m = model(("app/a/x.ts", "app/b/y.ts"), ("app/b/y.ts", "app/a/x.ts"), sep="/")
+
+    assert tangled_packages(m) == frozenset({"app"})

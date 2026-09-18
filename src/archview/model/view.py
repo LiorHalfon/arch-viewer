@@ -9,6 +9,7 @@ from archview.model.cycles import components, find_cycles
 from archview.model.graph import Import, Kind, Model, Node
 from archview.model.layers import assign_layers
 from archview.model.metrics import DEFAULT_THRESHOLD, metrics
+from archview.model.names import ancestors, within
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,27 +56,21 @@ class View:
     cycles: tuple[tuple[str, ...], ...]
 
 
-def _owner(module: str, children: frozenset[str]) -> str | None:
+def _owner(module: str, children: frozenset[str], sep: str) -> str | None:
     """The child of the root that `module` belongs to, if any."""
-    parts = module.split(".")
-    for i in range(len(parts)):
-        candidate = ".".join(parts[: i + 1])
-        if candidate in children:
-            return candidate
-    return None
+    return next((c for c in ancestors(module, sep) if c in children), None)
 
 
 def _in_subtree(node_id: str, model: Model) -> list[Node]:
-    prefix = node_id + "."
-    return [n for n in model.nodes if n.id == node_id or n.id.startswith(prefix)]
+    return [n for n in model.nodes if within(n.id, node_id, model.separator)]
 
 
 def _grouped_imports(model: Model, children: frozenset[str]) -> dict[tuple[str, str], list[Import]]:
     """Every import in the root's subtree, rolled up to the pair of children it connects."""
     grouped: dict[tuple[str, str], list[Import]] = defaultdict(list)
     for imp in model.imports:
-        source = _owner(imp.importer, children)
-        target = _owner(imp.imported, children)
+        source = _owner(imp.importer, children, model.separator)
+        target = _owner(imp.imported, children, model.separator)
         if source is not None and target is not None and source != target:
             grouped[(source, target)].append(imp)
     return grouped
@@ -88,7 +83,7 @@ def _externals(model: Model, root: str) -> set[str]:
     return {
         imp.imported
         for imp in model.imports
-        if kinds.get(imp.imported) == "external" and _owner(imp.importer, inside)
+        if kinds.get(imp.imported) == "external" and _owner(imp.importer, inside, model.separator)
     }
 
 
@@ -182,6 +177,5 @@ def tangled_packages(model: Model) -> frozenset[str]:
     ]
     tangled: set[str] = set()
     for package in with_cycles:
-        parts = package.split(".")
-        tangled.update(".".join(parts[: i + 1]) for i in range(len(parts)))
+        tangled.update(ancestors(package, model.separator))
     return frozenset(tangled)

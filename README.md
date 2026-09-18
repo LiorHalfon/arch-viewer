@@ -1,6 +1,6 @@
 # arch-viewer
 
-Project brief for an **architecture viewer + dependency-rules checker for Python code bases**, inspired by the tool Uncle Bob describes in [LIVE: Uncle Bob on Software Fundamentals in the Age of AI](https://www.youtube.com/watch?v=zcLPGC-tvgk) (26:55–28:06) and by his real implementations, [unclebob/arch-view](https://github.com/unclebob/arch-view) and [unclebob/dependency-checker](https://github.com/unclebob/dependency-checker).
+Project brief for an **architecture viewer + dependency-rules checker for Python and TypeScript code bases**, inspired by the tool Uncle Bob describes in [LIVE: Uncle Bob on Software Fundamentals in the Age of AI](https://www.youtube.com/watch?v=zcLPGC-tvgk) (26:55–28:06) and by his real implementations, [unclebob/arch-view](https://github.com/unclebob/arch-view) and [unclebob/dependency-checker](https://github.com/unclebob/dependency-checker).
 
 The idea in one paragraph: agents write most of the code; the human's job is to *see* the modular structure and decide how modules should be partitioned and which way dependencies run; a spec file captures that decision and a fast deterministic checker keeps the agents inside it. This repo contains the requirements, the research on what exists, a recommended approach, and the tool itself: milestones M1–M4 are built (graph, checker, browser viewer, metrics, baseline); agent queries (M5) are next.
 

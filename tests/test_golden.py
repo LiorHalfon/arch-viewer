@@ -12,7 +12,9 @@ import pytest
 from archview.extract.python import build_model
 from archview.model.serialize import dumps, view_to_dict
 from archview.model.view import build_view
+from archview.project import open_project
 from archview.render.dot import to_dot
+from tests.typescript_support import TS_SAMPLE, requires_typescript
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GOLDEN = Path(__file__).parent / "golden"
@@ -47,3 +49,11 @@ def test_dot_matches_the_golden_file(sample):
 def test_drilled_down_view_matches_the_golden_file(sample):
     view = build_view(sample, "sample.infra")
     check("sample-infra-view.json", json.dumps(view_to_dict(view), indent=2) + "\n")
+
+
+@requires_typescript
+def test_typescript_model_and_view_match_the_golden_files():
+    model = open_project(TS_SAMPLE).model
+    check("ts-sample-model.json", dumps(model))
+    view = build_view(model, "ts-sample")
+    check("ts-sample-view.json", json.dumps(view_to_dict(view), indent=2) + "\n")

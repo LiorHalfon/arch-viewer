@@ -21,11 +21,21 @@ const state = {
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const short = (id) => id.split(".").pop();
+const sep = () => state.project.separator;
+const fileSuffix = () => (state.project.language === "python" ? ".py" : "");
+const inProject = (id) => id === state.project.project || id.startsWith(state.project.project + sep());
+const short = (id) => (inProject(id) ? id.split(sep()).pop() : id);
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
-const parentOf = (id) => (id.includes(".") ? id.slice(0, id.lastIndexOf(".")) : null);
+const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
 const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
+const WARNING_LABELS = { dynamic_import: "dynamic import", unresolved_import: "unresolved import" };
+const GRAMMARS = { ts: "typescript", tsx: "typescript", mts: "typescript", cts: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript" };
+// The highlight.js grammar for one file; an unknown one would throw, so fall back.
+const grammarOf = (file) => {
+  const name = GRAMMARS[String(file || "").split(".").pop().toLowerCase()] || "python";
+  return window.hljs && hljs.getLanguage(name) ? name : "plaintext";
+};
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -132,9 +142,9 @@ async function show(root, { keepPanel = false, refit = false } = {}) {
 function crumbs(root) {
   const el = $("crumbs");
   el.innerHTML = "";
-  const parts = root.split(".");
+  const parts = root.split(sep());
   parts.forEach((part, i) => {
-    const id = parts.slice(0, i + 1).join(".");
+    const id = parts.slice(0, i + 1).join(sep());
     if (i) el.insertAdjacentHTML("beforeend", '<span class="sep">/</span>');
     if (id === root) {
       el.insertAdjacentHTML("beforeend", `<span class="here">${esc(part)}</span>`);
@@ -147,13 +157,22 @@ function crumbs(root) {
   });
 }
 
+function warningSummary(warnings) {
+  const byKind = {};
+  warnings.forEach((w) => { byKind[w.kind] = (byKind[w.kind] || 0) + 1; });
+  return Object.keys(byKind)
+    .sort()
+    .map((kind) => plural(byKind[kind], WARNING_LABELS[kind] || kind.replace(/_/g, " ")))
+    .join(" · ");
+}
+
 function stats(view) {
   const parts = [plural(view.nodes.length, "box", "boxes"), plural(view.edges.length, "dependency", "dependencies")];
   parts.push(view.cycles.length ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>` : "no cycles");
   const violations = view.edges.filter((e) => e.violation).length;
   if (violations) parts.push(`<span class="bad">${plural(violations, "rule break")}</span>`);
-  const warnings = state.project.warnings.length;
-  if (warnings) parts.push(`<button class="link" id="show-warnings" title="Dynamic imports the analysis cannot follow">⚠ ${plural(warnings, "dynamic import")}</button>`);
+  const warnings = state.project.warnings;
+  if (warnings.length) parts.push(`<button class="link" id="show-warnings" title="Imports the analysis could not resolve or follow">⚠ ${warningSummary(warnings)}</button>`);
   $("stats").innerHTML = parts.join(" · ");
   const button = $("show-warnings");
   if (button) button.onclick = openWarnings;
@@ -332,7 +351,7 @@ function treeRows(nodes, depth) {
       : '<span class="twisty"></span>';
     const hint = pkg ? `open ${node.id}` : `source of ${node.id}`;
     return `<li role="treeitem"${pkg ? ` aria-expanded="${open}"` : ""}>
-      <div class="${classes}" style="--depth:${depth}" data-id="${esc(node.id)}" data-kind="${node.kind}" title="${esc(hint)}">${twisty}<span class="sw sw-${pkg ? "pkg" : "mod"}"></span><span class="name">${esc(node.name)}${pkg ? "/" : ".py"}</span></div>
+      <div class="${classes}" style="--depth:${depth}" data-id="${esc(node.id)}" data-kind="${node.kind}" title="${esc(hint)}">${twisty}<span class="sw sw-${pkg ? "pkg" : "mod"}"></span><span class="name">${esc(node.name)}${pkg ? "/" : fileSuffix()}</span></div>
       ${open ? `<ul role="group">${treeRows(node.children, depth + 1)}</ul>` : ""}
     </li>`;
   }).join("");
@@ -508,6 +527,10 @@ function openNode(node) {
   });
 }
 
+function warningTooltip(w) {
+  return w.kind === "unresolved_import" ? "unresolved import: not resolved" : "dynamic import: not followed";
+}
+
 async function openSource(module, line = null) {
   let source;
   try {
@@ -526,9 +549,14 @@ async function openSource(module, line = null) {
     if (!byLine.has(i.line)) byLine.set(i.line, []);
     byLine.get(i.line).push(i);
   });
-  const warned = new Set(source.warnings.map((w) => w.line));
+  const warnedLines = new Map();
+  source.warnings.forEach((w) => {
+    if (!warnedLines.has(w.line)) warnedLines.set(w.line, []);
+    warnedLines.get(w.line).push(w);
+  });
+  const grammar = grammarOf(source.file);
   const highlighted = window.hljs
-    ? hljs.highlight(source.text, { language: "python", ignoreIllegals: true }).value
+    ? hljs.highlight(source.text, { language: grammar, ignoreIllegals: true }).value
     : esc(source.text);
   const gutter = lines.map((_, i) => {
     const n = i + 1;
@@ -537,7 +565,8 @@ async function openSource(module, line = null) {
       const title = imports.map((x) => `imports ${x.imported}${x.violation ? " (breaks a rule)" : ""}`).join("\n");
       return `<span class="imp" data-line="${n}" title="${esc(title)} (click to open)">${n}</span>`;
     }
-    return warned.has(n) ? `<span title="dynamic import: not followed">${n}⚠</span>` : `<span>${n}</span>`;
+    const atLine = warnedLines.get(n);
+    return atLine ? `<span title="${esc(atLine.map(warningTooltip).join(" · "))}">${n}⚠</span>` : `<span>${n}</span>`;
   }).join("");
   const bar = (n, cls) => `<div class="mark ${cls}" style="top:calc(8px + ${n - 1} * var(--line))"></div>`;
   const marks = [...byLine.entries()].map(([n, imps]) => bar(n, imps.some((x) => x.violation) ? "target" : "")).join("")
@@ -546,7 +575,7 @@ async function openSource(module, line = null) {
   const flags = source.abstract ? ' <span class="badge abs">abstract</span>' : "";
   const body = openPanel(
     `<h2>${esc(short(module))}${flags}</h2><div class="sub">${esc(source.file)}${line ? `:${line}` : ""}</div>`,
-    `<div class="source">${marks}<div class="gutter">${gutter}</div><pre><code class="hljs language-python">${highlighted}</code></pre></div>`,
+    `<div class="source">${marks}<div class="gutter">${gutter}</div><pre><code class="hljs language-${grammar}">${highlighted}</code></pre></div>`,
     true,
   );
   body.querySelectorAll(".gutter span.imp").forEach((span) => {
@@ -558,14 +587,19 @@ async function openSource(module, line = null) {
   }
 }
 
+function warningTarget(w) {
+  if (w.kind === "unresolved_import") return `could not resolve ${esc(w.target)}`;
+  return w.target ? `target ${esc(w.target)}` : "target not a literal";
+}
+
 function openWarnings() {
   const warnings = state.project.warnings;
   const body = openPanel(
-    `<h2>Dynamic imports</h2><div class="sub">not followed by the analysis or the checker</div>`,
+    `<h2>Extraction warnings</h2><div class="sub">not resolved or followed by the analysis or the checker</div>`,
     `<ul class="imports">${warnings.map((w, n) => `<li data-n="${n}">
-        <div class="where">${esc(w.file)}:${w.line}</div>
+        <div class="where">${esc(w.file)}:${w.line} <span class="badge flag">${esc(WARNING_LABELS[w.kind] || w.kind)}</span></div>
         <div class="text">${esc(w.text)}</div>
-        <div class="target">${w.target ? `target ${esc(w.target)}` : "target not a literal"}</div></li>`).join("")}</ul>`,
+        <div class="target">${warningTarget(w)}</div></li>`).join("")}</ul>`,
   );
   body.querySelectorAll(".imports li").forEach((li) => {
     const w = warnings[Number(li.dataset.n)];
@@ -656,7 +690,7 @@ function download(name, blob) {
 
 async function exportView(format) {
   $("export-menu").open = false;
-  const base = state.root.replaceAll(".", "-");
+  const base = state.root.replaceAll(sep(), "-");
   if (format === "svg" || format === "png") {
     const svgText = state.viz.renderString(state.view.dot, { format: "svg" });
     if (format === "svg") return download(`${base}.svg`, new Blob([svgText], { type: "image/svg+xml" }));

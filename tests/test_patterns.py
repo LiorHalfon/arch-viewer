@@ -20,7 +20,24 @@ from archview.model.patterns import matches_name, matches_path
     ],
 )
 def test_matches_dotted_names_and_their_subtrees(pattern, name, expected):
-    assert matches_name(pattern, name) is expected
+    assert matches_name(pattern, name, ".") is expected
+
+
+@pytest.mark.parametrize(
+    ("pattern", "name", "expected"),
+    [
+        ("app/components", "app/components/ui/Button.tsx", True),
+        ("app/components", "app/components.tsx", False),
+        ("app/components/**", "app/components/ui/Button.tsx", True),
+        ("app/*.ts", "app/i18n.ts", True),
+        ("app/*.ts", "app/utils/format.ts", False),
+        ("**/*.test.*", "app/services/pricing.test.ts", True),
+        ("**/*.test.*", "app/services/pricing.ts", False),
+        ("**/__mocks__", "app/services/__mocks__/pricing.ts", True),
+    ],
+)
+def test_matches_slash_separated_names_and_their_subtrees(pattern, name, expected):
+    assert matches_name(pattern, name, "/") is expected
 
 
 @pytest.mark.parametrize(

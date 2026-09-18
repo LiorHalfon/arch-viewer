@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import asdict
@@ -10,6 +11,7 @@ from typing import Any
 
 from archview.model.filter import without_tests
 from archview.model.graph import Model
+from archview.model.names import last
 from archview.model.serialize import view_to_dict
 from archview.model.view import View, build_view, tangled_packages
 from archview.project import Project, baseline_path, open_project, project_report
@@ -21,14 +23,36 @@ from archview.rules.overlay import failing_imports, violating_edges
 
 POLL_SECONDS = 1.0
 
+SOURCE_SUFFIXES = {
+    "python": (".py",),
+    "typescript": (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"),
+}
+
+
+def source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
+    """Files to watch below `root`, skipping node_modules and hidden directories."""
+    found: list[Path] = []
+    for directory, subdirs, files in os.walk(root):
+        subdirs[:] = [d for d in subdirs if d != "node_modules" and not d.startswith(".")]
+        found.extend(Path(directory) / f for f in files if f.endswith(suffixes))
+    return sorted(found)
+
 
 class NotFound(Exception):
     pass
 
 
 class Workspace:
-    def __init__(self, repo: Path, package: str | None = None, config_path: Path | None = None):
+    def __init__(
+        self,
+        repo: Path,
+        package: str | None = None,
+        config_path: Path | None = None,
+        language: str | None = None,
+        tsconfig: str | None = None,
+    ):
         self._args = (repo, package, config_path)
+        self._options = {"language": language, "tsconfig": tsconfig}
         self._lock = threading.RLock()
         self.generation = 0
         self.watching = False
@@ -39,7 +63,7 @@ class Workspace:
 
     def reload(self) -> None:
         """Re-read the source, the rules and the baseline; views are rebuilt on demand."""
-        project = open_project(*self._args)
+        project = open_project(*self._args, **self._options)
         report, rules_error = None, None
         if project.config_path is not None:
             try:
@@ -67,8 +91,9 @@ class Workspace:
 
     def _signature(self) -> tuple:
         project = self.project
-        roots = [project.source_root / project.package]
-        files = sorted(p for root in roots for p in root.rglob("*.py"))
+        language = project.model.language
+        root = project.repo if language == "typescript" else project.source_root / project.package
+        files = source_files(root, SOURCE_SUFFIXES.get(language, (".py",)))
         extra = [p for p in (project.config_path, baseline_path(project)) if p and p.is_file()]
         return tuple((str(p), p.stat().st_mtime_ns) for p in (*files, *extra) if p.exists())
 
@@ -98,6 +123,8 @@ class Workspace:
         return {
             "project": project.package,
             "repo": project.repo.name,
+            "language": project.model.language,
+            "separator": project.model.separator,
             "rules": project.config_path.name if project.config_path else None,
             "rules_error": self.rules_error,
             "modules": sum(1 for n in project.model.nodes if n.file),
@@ -168,7 +195,7 @@ class Workspace:
             kids = sorted(children.get(node.id, ()), key=lambda n: (n.kind != "package", n.id))
             return {
                 "id": node.id,
-                "name": node.id.rsplit(".", 1)[-1],
+                "name": last(node.id, model.separator),
                 "kind": node.kind,
                 "abstract": node.abstract,
                 "tangled": node.id in self._tangled,

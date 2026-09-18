@@ -252,3 +252,21 @@ def test_cycles_can_be_limited_to_a_subtree():
     )
 
     assert [c.level for c in all_cycles(m, root="pkg.c")] == ["pkg.c"]
+
+
+def test_queries_work_on_slash_separated_ids():
+    m = model(
+        ("app/api/routes.ts", "app/domain/order.ts"),
+        ("app/domain/order.ts", "app/infra/db.ts"),
+        sep="/",
+    )
+    m = replace(m, nodes=(*m.nodes, Node("@expo/vector-icons", None, "external")))
+
+    assert resolve(m, "api/routes.ts") == "app/api/routes.ts"
+    assert resolve(m, "@expo/vector-icons") == "@expo/vector-icons"
+    assert [d.name for d in dependencies(m, "app/api")] == ["app/domain"]
+    assert [d.name for d in dependents(m, "app/domain/order.ts")] == ["app/api/routes.ts"]
+    assert [i.importer for i in why(m, "app/api", "app/infra").chain] == [
+        "app/api/routes.ts",
+        "app/domain/order.ts",
+    ]

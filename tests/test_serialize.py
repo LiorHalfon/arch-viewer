@@ -21,9 +21,14 @@ def test_round_trips_a_model_through_its_dict_form(sample):
     assert model_from_dict(model_to_dict(sample)) == sample
 
 
-def test_declares_the_schema_version_and_language(sample):
+def test_declares_the_schema_version_language_and_separator(sample):
     data = model_to_dict(sample)
-    assert (data["schema"], data["language"], data["project"]) == (2, "python", "sample")
+    assert (data["schema"], data["language"], data["separator"], data["project"]) == (
+        3,
+        "python",
+        ".",
+        "sample",
+    )
 
 
 def test_json_matches_the_published_schema(sample):

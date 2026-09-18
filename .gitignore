@@ -13,3 +13,6 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+# TypeScript fixture (npm ci --prefix tests/fixtures/ts-sample)
+tests/fixtures/ts-sample/node_modules/

@@ -14,6 +14,11 @@ jobs:
       - uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install the TypeScript fixture
+        run: npm ci --prefix tests/fixtures/ts-sample
       - name: Install
         run: uv sync --locked
       - name: Lint
@@ -22,5 +27,7 @@ jobs:
           uv run ruff check
       - name: Tests
         run: uv run pytest
+        env:
+          ARCHVIEW_REQUIRE_TS: "1"
       - name: The tool passes its own rules
         run: uv run archview check

@@ -58,3 +58,24 @@ def test_hides_tests_by_their_conventional_names():
     assert [(i.importer, i.imported) for i in kept.imports] == [
         ("app.api.routes", "app.domain.order")
     ]
+
+
+def test_hides_typescript_tests_by_their_conventional_names():
+    from archview.model.filter import without_tests
+
+    m = model(
+        ("app/services/pricing.ts", "app/domain/order.ts"),
+        ("app/services/pricing.test.ts", "app/services/pricing.ts"),
+        ("app/services/pricing.spec.tsx", "app/services/pricing.ts"),
+        ("app/services/__mocks__/pricing.ts", "app/domain/order.ts"),
+        ("app/__tests__/flow.ts", "app/services/pricing.ts"),
+        ("app/e2e/flow.ts", "app/services/pricing.ts"),
+        ("app/ui/Button.e2e.tsx", "app/services/pricing.ts"),
+        sep="/",
+    )
+
+    kept = without_tests(m)
+
+    assert [(i.importer, i.imported) for i in kept.imports] == [
+        ("app/services/pricing.ts", "app/domain/order.ts")
+    ]

@@ -20,6 +20,8 @@ from archview.rules.config import ALL, Config, Forbidden
 
 ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone"]
 Pair = tuple[str, str]
+# How an extractor warning reads in the report; the viewer uses the same words.
+WARNING_LABELS = {"dynamic_import": "dynamic import", "unresolved_import": "unresolved import"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +56,8 @@ class Report:
         return any(p.fails for p in self.problems)
 
 
-def component_map(config: Config, project: str) -> ComponentMap:
-    return ComponentMap(project, config.components, frozenset(config.ignored))
+def component_map(config: Config, project: str, sep: str) -> ComponentMap:
+    return ComponentMap(project, sep, config.components, frozenset(config.ignored))
 
 
 def component_edges(
@@ -73,7 +75,7 @@ def component_edges(
         source, target = components.of(imp.importer), components.of(imp.imported)
         if source is None or target is None or source == target:
             continue
-        hit = _exemption(imp, exemptions)
+        hit = _exemption(imp, exemptions, model.separator)
         if hit is not None:
             used.add(hit)
             continue
@@ -81,9 +83,11 @@ def component_edges(
     return dict(sorted(grouped.items())), used
 
 
-def _exemption(imp: Import, exemptions) -> int | None:
+def _exemption(imp: Import, exemptions, sep: str) -> int | None:
     for index, e in enumerate(exemptions):
-        if matches_name(e.importer, imp.importer) and matches_name(e.imported, imp.imported):
+        if matches_name(e.importer, imp.importer, sep) and matches_name(
+            e.imported, imp.imported, sep
+        ):
             return index
     return None
 
@@ -109,7 +113,7 @@ def checked_imports(model: Model, config: Config) -> Model:
 
 def check(model: Model, config: Config) -> Report:
     model = checked_imports(model, config)
-    components = component_map(config, model.project)
+    components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
     edges, used = component_edges(model, components, config)
     table = config.table
@@ -352,11 +356,9 @@ def _warnings(
             )
     for w in model.warnings:
         target = f" ({w.target})" if w.target else ""
+        label = WARNING_LABELS.get(w.kind, w.kind.replace("_", " "))
         warnings.append(
-            Notice(
-                w.kind,
-                f"{w.file}:{w.line} {w.text}: dynamic import{target} is not checked",
-            )
+            Notice(w.kind, f"{w.file}:{w.line} {w.text}: {label}{target} is not checked")
         )
     modules = [n.id for n in model.nodes]
     for name, pattern in components.unmatched_patterns(modules):

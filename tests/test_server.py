@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from archview.server.app import create_app
-from archview.server.workspace import Workspace
+from archview.server.workspace import Workspace, source_files
+from tests.typescript_support import TS_SAMPLE, requires_typescript
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -245,3 +246,48 @@ def test_watch_reanalyzes_when_a_file_changes(repo):
 
     assert workspace.generation > first
     assert "sample.api.views" in {n.id for n in workspace.project.model.nodes}
+
+
+def test_python_summary_carries_the_language_and_separator(client):
+    summary = client.get("/api/project").json()
+
+    assert (summary["language"], summary["separator"]) == ("python", ".")
+
+
+def test_watching_lists_source_files_outside_node_modules_and_hidden_directories(tmp_path):
+    for name in ("a.ts", "src/b.tsx", "node_modules/x/c.ts", ".git/d.ts", "README.md"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("")
+
+    found = source_files(tmp_path, (".ts", ".tsx"))
+
+    assert [p.relative_to(tmp_path).as_posix() for p in found] == ["a.ts", "src/b.tsx"]
+
+
+@requires_typescript
+def test_serves_a_typescript_project(tmp_path):
+    repo = tmp_path / "ts-sample"
+    shutil.copytree(TS_SAMPLE, repo, ignore=shutil.ignore_patterns("node_modules"))
+    (repo / "node_modules").symlink_to(TS_SAMPLE / "node_modules")
+    client = TestClient(create_app(Workspace(repo)))
+
+    summary = client.get("/api/project").json()
+    view = client.get("/api/view").json()
+    tree = client.get("/api/tree", params={"root": "ts-sample/domain"}).json()
+
+    assert (summary["project"], summary["language"], summary["separator"]) == (
+        "ts-sample",
+        "typescript",
+        "/",
+    )
+    assert [n["name"] for n in view["nodes"]] == [
+        "app",
+        "components",
+        "domain",
+        "services",
+        "utils",
+    ]
+    assert [c["name"] for c in tree["children"]] == ["Repository.ts", "order.ts", "types.ts"]
+    assert (
+        client.get("/api/source", params={"module": "ts-sample/domain/order.ts"}).status_code == 200
+    )

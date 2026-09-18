@@ -16,6 +16,42 @@ uv tool install --reinstall git+https://github.com/LiorHalfon/arch-viewer@v0.1
 uvx --refresh --from git+https://github.com/LiorHalfon/arch-viewer@v0.1 archview check
 ```
 
+## TypeScript
+
+A `tsconfig.json` at the repo root makes archview read TypeScript (or `language =
+"typescript"` / `--language typescript`). It needs Node.js on the PATH and the
+project's own dependencies installed (`npm install`): archview uses the repo's
+`typescript` package, so imports resolve exactly as `tsc` resolves them.
+
+- Another tsconfig: `tsconfig = "server/tsconfig.json"` or `--tsconfig`.
+- Monorepos: point archview at one package (`archview packages/core`).
+- Names are paths with their extension: `archview why components/ui utils`,
+  `archview graph --root myapp/components`, `[archview.components]` patterns like
+  `"myapp/features/**"`, and file components are quoted keys (`"i18n.ts" = []`).
+- `type_checking_imports` applies to `import type`.
+
+Loading the repo's `typescript` means running code from its `node_modules` (the one
+carve-out from "static analysis only", N2; the repo's own sources are parsed, never
+executed). Analyse repos you trust, as you would before running `npm install` or
+`tsc` in them. In a hoisted monorepo the package need not be in that package's own
+`node_modules` — the lookup walks up the directories, as Node's does.
+
+A stray root `tsconfig.json` in an otherwise-Python repo (a monorepo with a JS
+frontend, say) is enough to make archview read it as TypeScript; say `language =
+"python"` or `--language python` to override. This is a footgun worth knowing about
+before it surprises you.
+
+Only what the tsconfig's `include` covers is analysed — build scripts, sandboxes and
+anything else outside it are invisible to archview. That is intentional (it is what
+`tsc` itself would compile), but it is easy to forget when a file "should" show up
+and does not.
+
+Abstractness (`A` in `archview metrics`) reads low across a React/TypeScript app: it
+counts abstract classes and type-only modules, and a UI-heavy codebase has almost
+none of either outside a `types/` directory, so most components land in the "zone of
+pain". That is expected for this kind of app, not a defect — the useful signal is the
+direction of dependencies and the cycles, not the zone column.
+
 ## Adopt it
 
 ```bash
