@@ -1,0 +1,7 @@
+{
+  "name": "@acme/ts-sample",
+  "private": true,
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

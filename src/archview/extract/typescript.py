@@ -1,16 +1,20 @@
 """Turn what the TypeScript compiler reports into the model (ADR 0010).
 
 `typescript.mjs` runs in Node with the analysed repo's own `typescript` package and
-prints raw facts per file (see `read_facts`); every decision about ids, kinds,
-externals and warnings is made here. Ids are paths below the source root, prefixed by
-the project and keeping the file extension, split by '/'.
+prints raw facts per file (the format is documented on `read_facts`); every decision
+about ids, kinds, externals and warnings is made here. Ids are paths below the source
+root, prefixed by the project and keeping the file extension, split by '/'.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from archview.model.graph import ExtractionWarning, Import, Model, Node
@@ -25,6 +29,33 @@ NON_CODE = re.compile(
     re.IGNORECASE,
 )
 ROOT_CONFIG = re.compile(r"^[^/]*\.config\.[^/]+$")  # vite.config.ts, next.config.mjs
+SCRIPT = Path(__file__).with_name("typescript.mjs")
+
+
+class ExtractionError(Exception):
+    """The TypeScript project cannot be read: no Node, no `typescript`, a broken tsconfig."""
+
+
+def read_facts(repo: Path, tsconfig: Path) -> dict[str, Any]:
+    """Run `typescript.mjs` on the project and return what it prints.
+
+    `{"files": [{"file", "abstract", "imports": [{"specifier", "resolved", "line", "text",
+    "type_only", "lazy", "dynamic", "builtin", "alias"}]}]}` - paths relative to `repo`;
+    `specifier` is None only for a dynamic import; `alias`: an unresolved specifier that
+    matches a tsconfig `paths` pattern pointing inside the repo.
+    """
+    node = shutil.which("node")
+    if node is None:
+        raise ExtractionError("node not found on PATH; archview needs Node.js to read TypeScript")
+    done = subprocess.run(
+        [node, str(SCRIPT), str(repo), str(tsconfig)], capture_output=True, text=True, check=False
+    )
+    if done.returncode != 0:
+        raise ExtractionError(done.stderr.strip() or f"{SCRIPT.name} exited with {done.returncode}")
+    try:
+        return json.loads(done.stdout)
+    except ValueError as error:
+        raise ExtractionError(f"{SCRIPT.name} printed no JSON: {error}") from None
 
 
 @dataclass(frozen=True, slots=True)
