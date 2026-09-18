@@ -82,17 +82,9 @@ def _resolved_target(specifier: str, resolved: str) -> Target:
 
 
 def find_source_root(files: Iterable[str]) -> str:
-    """The one top-level directory every file lies under (`src`), else '' (the repo).
-
-    Not a root if it recurs as a subdirectory of itself (`T/T/Fade.tsx` next to
-    `T/T.tsx`): stripping would be ambiguous, so the files are left where they are.
-    """
-    names = list(files)
-    tops = {f.split(SEP)[0] if SEP in f else "" for f in names}
-    if len(tops) != 1 or "" in tops:
-        return ""
-    root = next(iter(tops))
-    return "" if any(root in f.split(SEP)[1:] for f in names) else root
+    """The one top-level directory every file lies under (`src`), else '' (the repo)."""
+    tops = {f.split(SEP)[0] if SEP in f else "" for f in files}
+    return next(iter(tops)) if len(tops) == 1 and "" not in tops else ""
 
 
 def _below(file: str, root: str) -> bool:

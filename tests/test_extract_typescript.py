@@ -55,9 +55,15 @@ def test_ids_keep_the_extension_and_directories_become_packages():
 
 
 def test_a_file_next_to_a_directory_of_the_same_name_does_not_clash():
-    m = build_model(facts(("T/T.tsx", []), ("T/T/Fade.tsx", [])), "app")
+    m = build_model(
+        facts(("components/T/T.tsx", []), ("components/T/T/Fade.tsx", []), ("utils/x.ts", [])),
+        "app",
+    )
 
-    assert {(n.id, n.kind) for n in m.nodes} >= {("app/T/T", "package"), ("app/T/T.tsx", "module")}
+    assert {(n.id, n.kind) for n in m.nodes} >= {
+        ("app/components/T/T", "package"),
+        ("app/components/T/T.tsx", "module"),
+    }
 
 
 def test_the_one_top_level_directory_holding_every_file_is_the_source_root():
