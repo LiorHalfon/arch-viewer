@@ -29,6 +29,7 @@ const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
 const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
 const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
+const WARNING_LABELS = { dynamic_import: "dynamic import", unresolved_import: "unresolved import" };
 
 async function api(path, options) {
   const response = await fetch(path, options);
@@ -150,13 +151,22 @@ function crumbs(root) {
   });
 }
 
+function warningSummary(warnings) {
+  const byKind = {};
+  warnings.forEach((w) => { byKind[w.kind] = (byKind[w.kind] || 0) + 1; });
+  return Object.keys(byKind)
+    .sort()
+    .map((kind) => plural(byKind[kind], WARNING_LABELS[kind] || kind.replace(/_/g, " ")))
+    .join(" · ");
+}
+
 function stats(view) {
   const parts = [plural(view.nodes.length, "box", "boxes"), plural(view.edges.length, "dependency", "dependencies")];
   parts.push(view.cycles.length ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>` : "no cycles");
   const violations = view.edges.filter((e) => e.violation).length;
   if (violations) parts.push(`<span class="bad">${plural(violations, "rule break")}</span>`);
-  const warnings = state.project.warnings.length;
-  if (warnings) parts.push(`<button class="link" id="show-warnings" title="Dynamic imports the analysis cannot follow">⚠ ${plural(warnings, "dynamic import")}</button>`);
+  const warnings = state.project.warnings;
+  if (warnings.length) parts.push(`<button class="link" id="show-warnings" title="Imports the analysis could not resolve or follow">⚠ ${warningSummary(warnings)}</button>`);
   $("stats").innerHTML = parts.join(" · ");
   const button = $("show-warnings");
   if (button) button.onclick = openWarnings;
@@ -511,6 +521,10 @@ function openNode(node) {
   });
 }
 
+function warningTooltip(w) {
+  return w.kind === "unresolved_import" ? "unresolved import: not resolved" : "dynamic import: not followed";
+}
+
 async function openSource(module, line = null) {
   let source;
   try {
@@ -529,7 +543,11 @@ async function openSource(module, line = null) {
     if (!byLine.has(i.line)) byLine.set(i.line, []);
     byLine.get(i.line).push(i);
   });
-  const warned = new Set(source.warnings.map((w) => w.line));
+  const warnedLines = new Map();
+  source.warnings.forEach((w) => {
+    if (!warnedLines.has(w.line)) warnedLines.set(w.line, []);
+    warnedLines.get(w.line).push(w);
+  });
   const highlighted = window.hljs
     ? hljs.highlight(source.text, { language: "python", ignoreIllegals: true }).value
     : esc(source.text);
@@ -540,7 +558,8 @@ async function openSource(module, line = null) {
       const title = imports.map((x) => `imports ${x.imported}${x.violation ? " (breaks a rule)" : ""}`).join("\n");
       return `<span class="imp" data-line="${n}" title="${esc(title)} (click to open)">${n}</span>`;
     }
-    return warned.has(n) ? `<span title="dynamic import: not followed">${n}⚠</span>` : `<span>${n}</span>`;
+    const atLine = warnedLines.get(n);
+    return atLine ? `<span title="${esc(atLine.map(warningTooltip).join(" · "))}">${n}⚠</span>` : `<span>${n}</span>`;
   }).join("");
   const bar = (n, cls) => `<div class="mark ${cls}" style="top:calc(8px + ${n - 1} * var(--line))"></div>`;
   const marks = [...byLine.entries()].map(([n, imps]) => bar(n, imps.some((x) => x.violation) ? "target" : "")).join("")
@@ -561,14 +580,19 @@ async function openSource(module, line = null) {
   }
 }
 
+function warningTarget(w) {
+  if (w.kind === "unresolved_import") return `could not resolve ${esc(w.target)}`;
+  return w.target ? `target ${esc(w.target)}` : "target not a literal";
+}
+
 function openWarnings() {
   const warnings = state.project.warnings;
   const body = openPanel(
-    `<h2>Dynamic imports</h2><div class="sub">not followed by the analysis or the checker</div>`,
+    `<h2>Extraction warnings</h2><div class="sub">not resolved or followed by the analysis or the checker</div>`,
     `<ul class="imports">${warnings.map((w, n) => `<li data-n="${n}">
-        <div class="where">${esc(w.file)}:${w.line}</div>
+        <div class="where">${esc(w.file)}:${w.line} <span class="badge flag">${esc(WARNING_LABELS[w.kind] || w.kind)}</span></div>
         <div class="text">${esc(w.text)}</div>
-        <div class="target">${w.target ? `target ${esc(w.target)}` : "target not a literal"}</div></li>`).join("")}</ul>`,
+        <div class="target">${warningTarget(w)}</div></li>`).join("")}</ul>`,
   );
   body.querySelectorAll(".imports li").forEach((li) => {
     const w = warnings[Number(li.dataset.n)];
