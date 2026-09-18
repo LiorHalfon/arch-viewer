@@ -1,4 +1,4 @@
-# Requirements — Architecture Viewer + Dependency Rules Checker (Python first)
+# Requirements — Architecture Viewer + Dependency Rules Checker (Python and TypeScript)
 
 Status: draft v1, 2026-08-30. Derived from the video (`01-video-notes.md`, timestamps in parentheses), Bob's real tools (`03-reference-uncle-bob-tools.md`, marked AV = arch-view, DC = dependency-checker), and Lior's decisions (marked LH). Priority: **MVP** = needed for the first useful version, **V2** = next, **Later** = idea parked.
 
@@ -50,8 +50,9 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | A10 | Compute Bob's component metrics: fan-in, fan-out, instability `I`, abstractness `A`, distance `D = |A + I − 1|`, zone (healthy / pain / useless) with a configurable threshold (default 0.3). | V2 | DC |
 | A11 | Exclusions: configurable directories/patterns (tests, migrations, generated code) and ignored components. | MVP | DC `:ignored-components` |
 | A12 | Export the full model as JSON (tree, edges with details, cycles, layers, components, metrics, violations) — the single interchange format the viewer, the checker, exports and agents all consume. | MVP | AV `--out/--in-edn`, `--no-gui` |
-| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design) / Later (impl) | LH |
+| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design) / M6 (impl, ADR 0010) | LH |
 | A14 | Speed: full analysis of a few thousand modules in seconds; per-view aggregation instantaneous. Optional on-disk cache. | MVP | 16:18 (checks must not make agents slower than humans) |
+| A15 | TypeScript extractor: tsc's own resolution (paths, extends, references), ids that keep file extensions split by '/', type-only and lazy flags, unresolved-import warnings. Needs Node and the project's installed typescript. | M6 | LH |
 
 ## 5. Functional requirements — viewer
 
@@ -145,3 +146,5 @@ records imports, not line numbers.
 Clarified during M5 (ADR 0009): the queries run on the filtered model, not on grimp;
 `why` prefers direct imports over a chain; `deps` leaves out third-party packages
 unless asked.
+
+M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on storygenerator.

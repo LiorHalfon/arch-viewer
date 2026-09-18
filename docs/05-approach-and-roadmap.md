@@ -120,7 +120,7 @@ Upgrade path (V2 interactions: focus, collapse in place, hover popups, metrics b
 | **M3 — viewer MVP** | `serve` + static UI: layered boxes, edge counts, drill-down with back, source panel, cycles list | Can navigate `tiny-tale-backend` top → package → file without reading a listing |
 | **M4 — depth** | Abstractness + UML arrowheads, metrics + zones, violations overlay, TYPE_CHECKING/dynamic-import handling, SVG/Mermaid export, reanalyze/watch, filters (tests/externals/focus) | Requirements V7–V12, A4–A5, A9–A10, C7–C9 (done 2026-09-16, ADR 0008; V10 collapse-in-place deferred to the ELK/React Flow step) |
 | **M5 — agents** (done) | `why`/`deps`/`rdeps`/`cycles`, `check --stop-hook`, the query paragraph for CLAUDE.md (ADR 0009; baseline, JSON and the snippet came with M2/M4; MCP server optional, see ADR 0005) | Claude Code answers "why does X depend on Y" via the CLI; check runs in the hand-off loop |
-| **M6 — second language** | TypeScript extractor (tree-sitter-typescript or the TS compiler API) producing the same JSON for the frontend repo | Viewer/checker work unchanged on `tiny-tale-bespoke-pages` (or whichever frontend repo) |
+| **M6 — second language** (done) | TypeScript extractor through the TS compiler API (ADR 0010), same JSON (schema 3) | Viewer/checker work unchanged on storygenerator (done 2026-09-17) |
 
 Suggested order of work inside M1–M3: tests and fixture first (Bob's PROJECT_NOTES process), then the smallest vertical slice that reaches the browser, then iterate — a story or two, look at the result, reorganise (35:46–41:36).
 
