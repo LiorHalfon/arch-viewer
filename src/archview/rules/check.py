@@ -73,7 +73,7 @@ def component_edges(
         source, target = components.of(imp.importer), components.of(imp.imported)
         if source is None or target is None or source == target:
             continue
-        hit = _exemption(imp, exemptions)
+        hit = _exemption(imp, exemptions, model.separator)
         if hit is not None:
             used.add(hit)
             continue
@@ -81,9 +81,11 @@ def component_edges(
     return dict(sorted(grouped.items())), used
 
 
-def _exemption(imp: Import, exemptions) -> int | None:
+def _exemption(imp: Import, exemptions, sep: str) -> int | None:
     for index, e in enumerate(exemptions):
-        if matches_name(e.importer, imp.importer) and matches_name(e.imported, imp.imported):
+        if matches_name(e.importer, imp.importer, sep) and matches_name(
+            e.imported, imp.imported, sep
+        ):
             return index
     return None
 

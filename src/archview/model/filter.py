@@ -29,13 +29,27 @@ def without_files(model: Model, patterns: Iterable[str]) -> Model:
     )
 
 
-TEST_NAMES = ("**.tests", "**.test", "**.test_*", "**.*_test", "**.*_tests", "**.conftest")
+TEST_NAMES = {
+    "python": ("**.tests", "**.test", "**.test_*", "**.*_test", "**.*_tests", "**.conftest"),
+    "typescript": (
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/*.e2e.*",
+        "**/__tests__",
+        "**/__mocks__",
+        "**/test",
+        "**/tests",
+        "**/e2e",
+    ),
+}
 
 
 def without_names(model: Model, patterns: Iterable[str]) -> Model:
-    """Drop every node whose dotted name matches a pattern (with its subtree)."""
+    """Drop every node whose name matches a pattern (with its subtree)."""
     patterns = tuple(patterns)
-    dropped = {n.id for n in model.nodes if any(matches_name(p, n.id) for p in patterns)}
+    dropped = {
+        n.id for n in model.nodes if any(matches_name(p, n.id, model.separator) for p in patterns)
+    }
     if not dropped:
         return model
     return replace(
@@ -50,4 +64,4 @@ def without_names(model: Model, patterns: Iterable[str]) -> Model:
 
 def without_tests(model: Model) -> Model:
     """Hide test packages and modules by their conventional names (V10)."""
-    return without_names(model, TEST_NAMES)
+    return without_names(model, TEST_NAMES.get(model.language, ()))

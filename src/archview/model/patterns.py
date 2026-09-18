@@ -1,14 +1,16 @@
-"""Glob patterns over dotted names and file paths.
+"""Glob patterns over node names and file paths.
 
-`*` matches within one segment, `**` matches any number of segments. A dotted
-pattern that names a package also covers everything below it, so `app.db`
-matches `app.db.session`.
+`*` matches within one segment, `**` matches any number of segments. A name pattern
+that names a package also covers everything below it, so `app.db` matches
+`app.db.session` (and `app/db` matches `app/db/session.ts`).
 """
 
 from __future__ import annotations
 
 import re
 from functools import cache
+
+from archview.model.names import ancestors
 
 
 @cache
@@ -34,11 +36,10 @@ def _compile(pattern: str, sep: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
-def matches_name(pattern: str, name: str) -> bool:
-    """True if `name` or one of its ancestors matches the dotted `pattern`."""
-    regex = _compile(pattern, ".")
-    parts = name.split(".")
-    return any(regex.fullmatch(".".join(parts[: i + 1])) for i in range(len(parts)))
+def matches_name(pattern: str, name: str, sep: str) -> bool:
+    """True if `name` or one of its ancestors matches `pattern`, both split by `sep`."""
+    regex = _compile(pattern, sep)
+    return any(regex.fullmatch(prefix) for prefix in ancestors(name, sep))
 
 
 def matches_path(pattern: str, path: str) -> bool:
@@ -46,6 +47,6 @@ def matches_path(pattern: str, path: str) -> bool:
     return _compile(pattern, "/").fullmatch(path) is not None
 
 
-def specificity(pattern: str) -> tuple[int, int]:
+def specificity(pattern: str, sep: str) -> tuple[int, int]:
     """Longer, less wild patterns win when several match the same name."""
-    return (pattern.count(".") + 1, -pattern.count("*"))
+    return (pattern.count(sep) + 1, -pattern.count("*"))

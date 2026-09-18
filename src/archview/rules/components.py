@@ -27,10 +27,10 @@ class ComponentMap:
 
     def _explicit(self, module: str) -> str | None:
         hits = [
-            (specificity(pattern), name)
+            (specificity(pattern, "."), name)
             for name, patterns in self.explicit.items()
             for pattern in patterns
-            if matches_name(pattern, module)
+            if matches_name(pattern, module, ".")
         ]
         if not hits:
             return None
@@ -52,5 +52,5 @@ class ComponentMap:
             (name, pattern)
             for name, patterns in sorted(self.explicit.items())
             for pattern in patterns
-            if not any(matches_name(pattern, m) for m in names)
+            if not any(matches_name(pattern, m, ".") for m in names)
         ]
