@@ -133,6 +133,16 @@ def test_a_repo_without_typescript_installed_says_to_run_npm_install(tmp_path):
         read_facts(tmp_path, tmp_path / "tsconfig.json")
 
 
+@requires_node
+def test_a_missing_repo_is_one_line_not_a_stack_trace(tmp_path):
+    missing = tmp_path / "gone"
+
+    with pytest.raises(ExtractionError, match="no such directory") as error:
+        read_facts(missing, missing / "tsconfig.json")
+
+    assert "\n" not in str(error.value)
+
+
 @requires_typescript
 def test_a_broken_extends_is_an_error_not_a_quiet_fallback(tmp_path):
     (tmp_path / "node_modules").symlink_to(TS_SAMPLE / "node_modules")

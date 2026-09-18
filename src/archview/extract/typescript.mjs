@@ -20,8 +20,13 @@ function fail(message) {
   process.exit(2);
 }
 
+// An unreadable file or a throw out of the compiler is a failure like any other: one
+// line, exit 2 - never a stack trace for read_facts to hand to the user.
+process.on("uncaughtException", (error) => fail(error.message));
+
 const [repoArg, tsconfigArg] = process.argv.slice(2);
 if (!repoArg || !tsconfigArg) fail("usage: node typescript.mjs <repo> <tsconfig>");
+if (!fs.existsSync(repoArg)) fail(`no such directory: ${repoArg}`);
 const repo = fs.realpathSync(path.resolve(repoArg));
 const rel = (file) => path.relative(repo, file).split(path.sep).join("/");
 const real = (file) => {
