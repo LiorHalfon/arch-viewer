@@ -22,6 +22,7 @@ const state = {
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const sep = () => state.project.separator;
+const fileSuffix = () => (state.project.language === "python" ? ".py" : "");
 const inProject = (id) => id === state.project.project || id.startsWith(state.project.project + sep());
 const short = (id) => (inProject(id) ? id.split(sep()).pop() : id);
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
@@ -334,7 +335,7 @@ function treeRows(nodes, depth) {
       : '<span class="twisty"></span>';
     const hint = pkg ? `open ${node.id}` : `source of ${node.id}`;
     return `<li role="treeitem"${pkg ? ` aria-expanded="${open}"` : ""}>
-      <div class="${classes}" style="--depth:${depth}" data-id="${esc(node.id)}" data-kind="${node.kind}" title="${esc(hint)}">${twisty}<span class="sw sw-${pkg ? "pkg" : "mod"}"></span><span class="name">${esc(node.name)}${pkg ? "/" : ".py"}</span></div>
+      <div class="${classes}" style="--depth:${depth}" data-id="${esc(node.id)}" data-kind="${node.kind}" title="${esc(hint)}">${twisty}<span class="sw sw-${pkg ? "pkg" : "mod"}"></span><span class="name">${esc(node.name)}${pkg ? "/" : fileSuffix()}</span></div>
       ${open ? `<ul role="group">${treeRows(node.children, depth + 1)}</ul>` : ""}
     </li>`;
   }).join("");
