@@ -20,6 +20,8 @@ from archview.rules.config import ALL, Config, Forbidden
 
 ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone"]
 Pair = tuple[str, str]
+# How an extractor warning reads in the report; the viewer uses the same words.
+WARNING_LABELS = {"dynamic_import": "dynamic import", "unresolved_import": "unresolved import"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,11 +356,9 @@ def _warnings(
             )
     for w in model.warnings:
         target = f" ({w.target})" if w.target else ""
+        label = WARNING_LABELS.get(w.kind, w.kind.replace("_", " "))
         warnings.append(
-            Notice(
-                w.kind,
-                f"{w.file}:{w.line} {w.text}: dynamic import{target} is not checked",
-            )
+            Notice(w.kind, f"{w.file}:{w.line} {w.text}: {label}{target} is not checked")
         )
     modules = [n.id for n in model.nodes]
     for name, pattern in components.unmatched_patterns(modules):

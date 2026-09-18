@@ -81,6 +81,32 @@ def test_dynamic_imports_are_reported_as_warnings():
     [warning] = [w for w in check(m, Config()).warnings if w.kind != "no_rules"]
     assert warning.kind == "dynamic_import"
     assert warning.message.startswith("app/api/a.py:3 x()")
+    assert "dynamic import" in warning.message
+
+
+def test_an_extraction_warning_is_named_by_its_own_kind():
+    """An unresolved import must not be reported as a dynamic one (TypeScript, M6)."""
+    from archview.model.graph import ExtractionWarning
+
+    m = model(("app.api.a", "app.domain.x"))
+    m = replace(
+        m,
+        warnings=(
+            ExtractionWarning(
+                "unresolved_import",
+                "app.api.a",
+                "app/api/a.py",
+                1,
+                'import { X } from "@/gone";',
+                "@/gone",
+            ),
+        ),
+    )
+
+    [warning] = [w for w in check(m, Config()).warnings if w.kind != "no_rules"]
+    assert warning.kind == "unresolved_import"
+    assert "unresolved import (@/gone)" in warning.message
+    assert "dynamic" not in warning.message
 
 
 RULES = {"domain": (), "infra": (), "api": ()}
