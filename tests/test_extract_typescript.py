@@ -125,6 +125,7 @@ def test_a_given_source_root_drops_the_files_outside_it():
         ),
         (fact("@acme/ui", resolved="../ui/src/index.ts"), Target("external", "@acme/ui")),
         (fact("../../shared/x", resolved="../shared/x.ts"), Target("external", "../shared")),
+        (fact("../..", resolved="../.."), Target("external", "../..")),
         (
             fact("~/vendor/lib", resolved="node_modules/some-lib/index.js", alias=False),
             Target("external", "some-lib"),

@@ -54,8 +54,8 @@ def _external_name(specifier: str, resolved: str) -> str:
     if "node_modules" in parts:
         last = max(i for i, p in enumerate(parts) if p == "node_modules")
         return _package_name("/".join(parts[last + 1 :]))
-    ups = next(i for i, p in enumerate(parts) if p != "..")
-    return "/".join(parts[: ups + 1])
+    ups = next((i for i, p in enumerate(parts) if p != ".."), len(parts) - 1)
+    return SEP.join(parts[: ups + 1])
 
 
 def classify(fact: dict[str, Any]) -> Target:
