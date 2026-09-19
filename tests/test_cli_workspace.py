@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from archview.cli import main
+from archview.render.workspace import workspace_to_text
+from archview.rules.check import Report, WorkspaceReport
 from tests.test_golden import check as golden
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -89,3 +91,39 @@ def test_a_repo_without_a_workspace_table_is_unchanged(repo, capsys):
 def test_a_workspace_root_does_not_ask_you_to_pick_a_package(tmp_path, capsys):
     root = workspace_dir(tmp_path)
     assert main(["check", str(root)]) == 0
+
+
+def test_the_header_columns_and_the_summary_are_pinned_exactly():
+    """The header column width is reflow-sensitive - it is derived from the longest
+    package name, so it silently changes whenever a package is added or removed
+    (N1: identical input must give byte-identical output). Pin the literal lines,
+    padding included, rather than only checking a substring appears somewhere.
+
+    This also pins the summary line's package count: it must report every workspace
+    member (from `between.components`, which lists all of them), not just the ones
+    checked inside - a bare `len(report.packages)` undercounts a workspace where a
+    member has no rules file of its own, as `plugin` does not in the real fixture.
+    """
+    a = Report("a", ("a",), (), ())
+    bcdef = Report("bcdef", ("bcdef",), (), ())
+    between = Report("workspace", ("a", "bcdef", "uncheckable"), (), ())
+    report = WorkspaceReport("workspace", (("a", a), ("bcdef", bcdef)), between)
+
+    text = workspace_to_text(report)
+
+    assert text.splitlines() == [
+        "a      ok",
+        "bcdef  ok",
+        "between packages  ok",
+        "ok: workspace, 3 packages (2 checked inside), no failing problems",
+    ]
+
+
+def test_the_summary_does_not_qualify_the_count_when_every_package_has_rules():
+    a = Report("a", ("a",), (), ())
+    between = Report("workspace", ("a",), (), ())
+    report = WorkspaceReport("workspace", (("a", a),), between)
+
+    text = workspace_to_text(report)
+
+    assert text.splitlines()[-1] == "ok: workspace, 1 package, no failing problems"

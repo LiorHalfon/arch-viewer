@@ -55,9 +55,21 @@ def _body(report: Report, color: bool) -> list[str]:
 
 def _total(report: WorkspaceReport, sections: list[tuple[str, Report]], color: bool) -> str:
     if not report.failed:
-        return f"ok: {report.name}, {_plural(len(report.packages), 'package')}, no failing problems"
+        return f"ok: {report.name}, {_summary(report)}, no failing problems"
     failing = sum(_failing(section) for _, section in sections)
     return _paint(RED, f"{_plural(failing, 'problem')}. exit 1", color)
+
+
+def _summary(report: WorkspaceReport) -> str:
+    """Every workspace member, not just the ones checked inside: `between.components`
+    lists all of them (`_check_between` sets it from every package, with or without
+    its own rules), while `report.packages` only holds the ones that have rules of
+    their own. A bare `len(report.packages)` would undercount a workspace where a
+    member has no rules file, as `plugin` does not in the M8 fixture."""
+    total = len(report.between.components)
+    checked = len(report.packages)
+    summary = _plural(total, "package")
+    return summary if checked == total else f"{summary} ({checked} checked inside)"
 
 
 def _failing(report: Report) -> int:
