@@ -164,3 +164,32 @@ def test_graph_can_show_external_packages(repo, capsys):
     _, out, _ = run(capsys, "graph", str(repo), "--externals", "--json")
 
     assert [n["id"] for n in json.loads(out)["nodes"] if n["kind"] == "external"] == ["grimp"]
+
+
+def test_an_outside_violation_is_reported_with_file_and_line(repo, capsys):
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.externals]\napi = []\n")
+
+    code, out, _ = run(capsys, "check", str(repo))
+
+    assert code == 1
+    assert "OUTSIDE api -> grimp (1 import) not allowed by [archview.externals.api]" in out
+    assert "sample/api/routes.py:8  import grimp" in out
+
+
+def test_an_outside_violation_in_json(repo, capsys):
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.externals]\napi = []\n")
+
+    code, out, _ = run(capsys, "check", str(repo), "--format", "json")
+
+    assert code == 1
+    data = json.loads(out)
+    [problem] = [p for p in data["problems"] if p["kind"] == "outside"]
+    assert problem["from"] == "api"
+    assert problem["to"] == "grimp"
+    assert problem["rule"] == "archview.externals.api"
+    assert problem["components"] == ["api", "grimp"]
+    assert problem["imports"][0]["line"] == 8
