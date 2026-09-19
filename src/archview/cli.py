@@ -16,6 +16,7 @@ import socket
 import sys
 import threading
 import webbrowser
+from collections.abc import Collection
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -58,9 +59,16 @@ from archview.rules.check import check
 from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
 from archview.rules.init import infer_rules
 from archview.rules.overlay import failing_imports, outside_targets, violating_edges
-from archview.workspace import Workspace, check_workspace, open_workspace
+from archview.workspace import (
+    Workspace,
+    check_workspace,
+    open_workspace,
+    workspace_cycles,
+    workspace_view,
+)
 
 USAGE_ERROR = 2
+Pair = tuple[str, str]
 
 
 class UsageError(Exception):
@@ -90,25 +98,13 @@ def _as_text(view: View) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _graph(args: argparse.Namespace) -> int:
-    project = _open(args, [args.root] if args.root else None)
-    model = without_tests(project.model) if args.hide_tests else project.model
-    root = args.root or project.package
-    if root not in {n.id for n in model.nodes}:
-        raise UsageError(f"{root} is not a module of {project.package}")
-
-    report = project_report(project) if project.config_path else None
-    keep = outside_targets(report) if report is not None else frozenset()
-    view = build_view(model, root, externals=args.externals, keep=keep)
-    if not view.nodes:
-        raise UsageError(f"{root} has no children to show; drill into a package instead")
-
-    fmt = args.format or next(
+def _output_format(args: argparse.Namespace) -> str:
+    return args.format or next(
         f for f in ("json", "dot", "mermaid", "text") if getattr(args, f, True)
     )
-    violations = set()
-    if report is not None and fmt in ("dot", "mermaid"):
-        violations = violating_edges(view, failing_imports(report))
+
+
+def _write_view(fmt: str, view: View, violations: Collection[Pair] = ()) -> None:
     if fmt == "json":
         sys.stdout.write(json.dumps(view_to_dict(view), indent=2) + "\n")
     elif fmt == "dot":
@@ -117,6 +113,30 @@ def _graph(args: argparse.Namespace) -> int:
         sys.stdout.write(to_mermaid(view, violations))
     else:
         sys.stdout.write(_as_text(view))
+
+
+def _graph(args: argparse.Namespace) -> int:
+    root = _workspace_root(args)
+    if root is not None:
+        _write_view(_output_format(args), workspace_view(open_workspace(root, args.config)))
+        return 0
+    project = _workspace_member(args) or _open(args, [args.root] if args.root else None)
+    model = without_tests(project.model) if args.hide_tests else project.model
+    where = args.root or project.package
+    if where not in {n.id for n in model.nodes}:
+        raise UsageError(f"{where} is not a module of {project.package}")
+
+    report = project_report(project) if project.config_path else None
+    keep = outside_targets(report) if report is not None else frozenset()
+    view = build_view(model, where, externals=args.externals, keep=keep)
+    if not view.nodes:
+        raise UsageError(f"{where} has no children to show; drill into a package instead")
+
+    fmt = _output_format(args)
+    violations = set()
+    if report is not None and fmt in ("dot", "mermaid"):
+        violations = violating_edges(view, failing_imports(report))
+    _write_view(fmt, view, violations)
     return 0
 
 
@@ -135,6 +155,25 @@ def _workspace_root(args: argparse.Namespace) -> Path | None:
     if path is None:
         return None
     return repo if load_config(path).workspace is not None else None
+
+
+def _workspace_member(args: argparse.Namespace) -> Project | None:
+    """`--package`'s own project, when `args.path` is a workspace root and `--package`
+    names one of its members - so `graph`/`cycles` can drill into a package exactly as
+    they would inside its own repo. `None` when `args.path` is not a workspace root
+    (or no `--package` was given), so the caller falls back to `_open`."""
+    if not args.package:
+        return None
+    repo = args.path.expanduser().resolve()
+    path = args.config or find_config(repo)
+    if path is None or load_config(path).workspace is None:
+        return None
+    ws = open_workspace(repo, args.config)
+    member = next((p for p in ws.packages if p.name == args.package), None)
+    if member is None:
+        names = ", ".join(p.name for p in ws.packages)
+        raise UsageError(f"no package {args.package!r} in workspace {ws.name} (found: {names})")
+    return member.project
 
 
 def _check(args: argparse.Namespace) -> int:
@@ -255,11 +294,15 @@ def _rules_project(args: argparse.Namespace):
     return project
 
 
+def _filtered(model: Model, args: argparse.Namespace) -> Model:
+    """`without_tests`/`runtime_only`, applied as the query commands' flags ask."""
+    model = without_tests(model) if args.hide_tests else model
+    return runtime_only(model) if args.runtime_only else model
+
+
 def _query_model(args: argparse.Namespace, names: list[str]) -> Model:
     """The model the queries run on; the package may be named by the first query name."""
-    project = _open(args, names)
-    model = without_tests(project.model) if args.hide_tests else project.model
-    return runtime_only(model) if args.runtime_only else model
+    return _filtered(_open(args, names).model, args)
 
 
 def _write(args: argparse.Namespace, text: str, data: dict) -> None:
@@ -290,7 +333,18 @@ def _neighbours(args: argparse.Namespace, outgoing: bool) -> int:
 
 
 def _cycles(args: argparse.Namespace) -> int:
-    model = _query_model(args, [args.root] if args.root else [])
+    workspace_root = _workspace_root(args)
+    if workspace_root is not None:
+        ws = open_workspace(workspace_root, args.config)
+        found = workspace_cycles(ws)
+        _write(args, cycles_to_text(found, ws.name), cycles_to_dict(found, ws.name))
+        return 0
+    member = _workspace_member(args)
+    model = (
+        _filtered(member.model, args)
+        if member
+        else _query_model(args, [args.root] if args.root else [])
+    )
     try:
         root = resolve(model, args.root) if args.root else model.project
     except UnknownName as error:

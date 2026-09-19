@@ -19,6 +19,8 @@ from archview.workspace import (
     check_workspace,
     cross_edges,
     open_workspace,
+    workspace_cycles,
+    workspace_view,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "workspace"
@@ -303,3 +305,38 @@ def test_fail_on_cycles_false_suppresses_the_cross_package_cycle(tmp_path):
     cycles = [p for p in report.between.problems if p.kind == "cycle"]
     assert cycles and not cycles[0].fails
     assert not report.between.failed
+
+
+def test_the_workspace_view_is_the_packages_and_their_edges():
+    view = workspace_view(open_workspace(FIXTURE))
+    assert [n.id for n in view.nodes] == ["core", "plugin"]
+    assert [(e.source, e.target, e.count) for e in view.edges] == [("plugin", "core", 1)]
+
+
+def test_the_workspace_view_layers_the_packages():
+    view = workspace_view(open_workspace(FIXTURE))
+    layers = {n.id: n.layer for n in view.nodes}
+    assert layers["plugin"] < layers["core"] or layers["core"] < layers["plugin"]
+
+
+def test_a_package_node_counts_its_modules():
+    view = workspace_view(open_workspace(FIXTURE))
+    assert {n.id: n.module_count for n in view.nodes}["core"] == 3
+
+
+def test_workspace_cycles_finds_none_in_the_fixture():
+    assert workspace_cycles(open_workspace(FIXTURE)) == ()
+
+
+def test_workspace_cycles_reports_a_cross_package_cycle_with_a_path(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": ("plugin",), "plugin": ("core",)})
+    (root / "core" / "src" / "core" / "uses_plugin.py").write_text("from plugin import Adapter\n")
+
+    found = workspace_cycles(open_workspace(root))
+
+    assert [c.members for c in found] == [("core", "plugin")]
+    assert found[0].path == ("core", "plugin", "core")
+    assert [s.imports[0].text for s in found[0].steps] == [
+        "from plugin import Adapter",
+        "from core.ports import Port",
+    ]

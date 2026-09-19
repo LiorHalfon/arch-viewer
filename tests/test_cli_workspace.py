@@ -127,3 +127,29 @@ def test_the_summary_does_not_qualify_the_count_when_every_package_has_rules():
     text = workspace_to_text(report)
 
     assert text.splitlines()[-1] == "ok: workspace, 1 package, no failing problems"
+
+
+def test_graph_at_a_workspace_root_shows_the_packages(capsys):
+    assert main(["graph", str(FIXTURE)]) == 0
+    out = capsys.readouterr().out
+    assert "plugin" in out and "core" in out
+
+
+def test_graph_with_a_package_drills_in(capsys):
+    assert main(["graph", str(FIXTURE), "--package", "core"]) == 0
+    assert "ports" in capsys.readouterr().out
+
+
+def test_graph_with_an_unknown_package_fails_clearly(capsys):
+    assert main(["graph", str(FIXTURE), "--package", "bogus"]) == 2
+    assert "no package 'bogus' in workspace" in capsys.readouterr().err
+
+
+def test_cycles_at_a_workspace_root_finds_none_in_the_fixture(capsys):
+    assert main(["cycles", str(FIXTURE)]) == 0
+    assert "no cycles under workspace" in capsys.readouterr().out
+
+
+def test_cycles_with_a_package_drills_in(capsys):
+    assert main(["cycles", str(FIXTURE), "--package", "core"]) == 0
+    assert "no cycles under core" in capsys.readouterr().out

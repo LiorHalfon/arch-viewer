@@ -18,7 +18,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from archview.model.graph import Import
+from archview.model.cycles import components, find_cycles
+from archview.model.graph import Import, Model
+from archview.model.layers import assign_layers
+from archview.model.metrics import DEFAULT_THRESHOLD
+from archview.model.query import Cycle, _cycle
+from archview.model.view import View, ViewEdge, ViewNode
 from archview.project import Project, open_project, project_report
 from archview.rules.baseline import apply_baseline, load_baseline
 from archview.rules.check import (
@@ -215,3 +220,72 @@ def _apply_workspace_baseline(report: Report, root: Path, name: str) -> Report:
     if not path.is_file():
         raise ConfigError(f"baseline {path} does not exist; `archview check --update-baseline`")
     return apply_baseline(report, load_baseline(path), path.name)
+
+
+def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
+    """The workspace's top level: each package a node, cross-package imports the
+    edges between them. Mirrors `build_view`'s shape, and returns the same `View`, so
+    `to_dot`, `to_mermaid`, `view_to_dict` and the violations overlay work on it
+    unchanged.
+
+    A package's abstractness and zone are not computed across packages - aggregating
+    Martin metrics across languages is out of scope - so every node keeps `zone`
+    "isolated" and the metric fields at their defaults, exactly as an external node
+    does today. `threshold` is accepted only for signature parity with `build_view`;
+    it plays no part here.
+    """
+    by_name = {p.name: p for p in ws.packages}
+    children = frozenset(by_name)
+    grouped = cross_edges(ws)
+    counts = {pair: len(imports) for pair, imports in grouped.items()}
+
+    component = components(children, counts)
+    layer = assign_layers(children, counts)
+    cycles = find_cycles(children, counts)
+    cyclic = {name for cycle in cycles for name in cycle}
+
+    nodes = tuple(
+        _package_node(by_name[name], grouped, layer[name], name in cyclic)
+        for name in sorted(children)
+    )
+    edges = tuple(
+        ViewEdge(
+            source=s,
+            target=t,
+            count=len(imports),
+            in_cycle=component[s] == component[t],
+            imports=tuple(imports),
+            type_checking=all(i.type_checking for i in imports),
+        )
+        for (s, t), imports in sorted(grouped.items())
+    )
+    return View(root=ws.name, nodes=nodes, edges=edges, cycles=cycles)
+
+
+def _package_node(
+    package: Package, grouped: dict[Pair, list[Import]], layer: int, in_cycle: bool
+) -> ViewNode:
+    incoming = [i for (_, t), imps in grouped.items() if t == package.name for i in imps]
+    outgoing = [i for (s, t), imps in grouped.items() if s == package.name for i in imps]
+    return ViewNode(
+        id=package.name,
+        name=package.name,
+        kind="package",
+        module_count=_module_count(package.project.model),
+        layer=layer,
+        in_cycle=in_cycle,
+        fan_in=len(incoming),
+        fan_out=len(outgoing),
+    )
+
+
+def _module_count(model: Model) -> int:
+    return sum(1 for n in model.nodes if n.file is not None)
+
+
+def workspace_cycles(ws: Workspace) -> tuple[Cycle, ...]:
+    """The cycles among the packages themselves, with a path each - the workspace's
+    top-level analogue of `archview.model.query.all_cycles` for a single level."""
+    view = workspace_view(ws)
+    edges = {(e.source, e.target): e for e in view.edges}
+    return tuple(_cycle(ws.name, members, edges) for members in view.cycles)
