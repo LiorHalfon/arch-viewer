@@ -88,13 +88,20 @@ def _externals(model: Model, root: str) -> set[str]:
 
 
 def build_view(
-    model: Model, root: str, externals: bool = False, threshold: float = DEFAULT_THRESHOLD
+    model: Model,
+    root: str,
+    externals: bool = False,
+    threshold: float = DEFAULT_THRESHOLD,
+    keep: frozenset[str] = frozenset(),
 ) -> View:
     """The children of `root` and the counted edges between them; with `externals`,
-    the third-party packages the subtree imports become boxes too."""
+    the third-party packages the subtree imports become boxes too, and `keep` names
+    outside packages to show even without `externals` (a rule broken by reaching one)."""
     by_id = {n.id: n for n in model.nodes}
     internal = frozenset(n.id for n in model.nodes if n.parent == root and n.kind != "external")
-    children = internal | (frozenset(_externals(model, root)) if externals else frozenset())
+    found = _externals(model, root)
+    shown = found if externals else (found & keep)
+    children = internal | frozenset(shown)
     grouped = _grouped_imports(model, children)
     counts = {pair: len(imports) for pair, imports in grouped.items()}
 

@@ -56,7 +56,7 @@ from archview.rules.baseline import baseline_of
 from archview.rules.check import check
 from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
 from archview.rules.init import infer_rules
-from archview.rules.overlay import failing_imports, violating_edges
+from archview.rules.overlay import failing_imports, outside_targets, violating_edges
 
 USAGE_ERROR = 2
 
@@ -95,7 +95,9 @@ def _graph(args: argparse.Namespace) -> int:
     if root not in {n.id for n in model.nodes}:
         raise UsageError(f"{root} is not a module of {project.package}")
 
-    view = build_view(model, root, externals=args.externals)
+    report = project_report(project) if project.config_path else None
+    keep = outside_targets(report) if report is not None else frozenset()
+    view = build_view(model, root, externals=args.externals, keep=keep)
     if not view.nodes:
         raise UsageError(f"{root} has no children to show; drill into a package instead")
 
@@ -103,8 +105,8 @@ def _graph(args: argparse.Namespace) -> int:
         f for f in ("json", "dot", "mermaid", "text") if getattr(args, f, True)
     )
     violations = set()
-    if project.config_path and fmt in ("dot", "mermaid"):
-        violations = violating_edges(view, failing_imports(project_report(project)))
+    if report is not None and fmt in ("dot", "mermaid"):
+        violations = violating_edges(view, failing_imports(report))
     if fmt == "json":
         sys.stdout.write(json.dumps(view_to_dict(view), indent=2) + "\n")
     elif fmt == "dot":

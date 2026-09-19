@@ -19,7 +19,7 @@ from archview.render.check import report_to_dict
 from archview.render.dot import to_dot
 from archview.render.mermaid import to_mermaid
 from archview.rules.config import ConfigError
-from archview.rules.overlay import failing_imports, violating_edges
+from archview.rules.overlay import failing_imports, outside_targets, violating_edges
 
 POLL_SECONDS = 1.0
 
@@ -75,6 +75,7 @@ class Workspace:
             self.report = report
             self.rules_error = rules_error
             self._failing = failing_imports(report) if report else frozenset()
+            self._keep = outside_targets(report) if report else frozenset()
             self._models: dict[bool, Model] = {False: project.model}
             self._parents = {n.parent for n in project.model.nodes if n.parent}
             self._tangled = tangled_packages(project.model)
@@ -149,7 +150,9 @@ class Workspace:
         with self._lock:
             if key not in self._views:
                 threshold = self.project.config.metrics.threshold
-                view = build_view(self._model(hide_tests), root, externals, threshold)
+                view = build_view(
+                    self._model(hide_tests), root, externals, threshold, keep=self._keep
+                )
                 self._views[key] = (view, self._payload(view))
             return self._views[key]
 

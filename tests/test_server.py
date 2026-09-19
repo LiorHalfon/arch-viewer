@@ -189,6 +189,20 @@ def test_marks_edges_and_imports_that_break_the_rules(repo, capsys):
     assert (summary["rules"], summary["failing"]) == ("archview.toml", 1)
 
 
+def test_shows_a_violating_outside_package_without_externals(repo, capsys):
+    from archview.cli import main
+
+    main(["init", str(repo)])
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.externals]\napi = []\n")
+    client = TestClient(create_app(Workspace(repo)))
+
+    view = client.get("/api/view").json()
+
+    assert "grimp" in [n["id"] for n in view["nodes"]]
+    assert ("sample.api", "grimp") in [(e["source"], e["target"]) for e in view["edges"]]
+
+
 def test_serves_the_check_report(repo, capsys):
     rules_with_one_violation(repo)
     client = TestClient(create_app(Workspace(repo)))
