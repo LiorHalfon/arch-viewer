@@ -16,7 +16,7 @@ from archview.model.graph import Import, Model
 from archview.model.metrics import Metrics, metrics
 from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, ALL_COMPONENTS, Config, Forbidden
+from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
 
 ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside"]
 Pair = tuple[str, str]
@@ -138,6 +138,7 @@ def check(model: Model, config: Config) -> Report:
     model = checked_imports(model, config)
     components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
+    _reject_outside_sources(model, config)
     edges = component_edges(model, components, config)
     table = config.table
     measured = component_metrics(
@@ -380,6 +381,17 @@ def _imports(count: int) -> str:
     return "1 import" if count == 1 else f"{count} imports"
 
 
+def _reject_outside_sources(model: Model, config: Config) -> None:
+    """`from` always names a component: nothing we can see imports out of a package."""
+    external = {n.id for n in model.nodes if n.kind == "external"}
+    for f in config.all_forbidden():
+        if f.source in external:
+            raise ConfigError(
+                f"[{config.table}.{f.origin}] has from = {f.source!r}, a package outside "
+                "the project; `from` must name a component"
+            )
+
+
 def _warnings(
     model: Model,
     config: Config,
@@ -388,7 +400,8 @@ def _warnings(
     used: set[int],
     table: str,
 ) -> list[Notice]:
-    known = set(present)
+    external = {n.id for n in model.nodes if n.kind == "external"}
+    known = set(present) | external | {ALL_COMPONENTS}
     warnings = []
     if config.allowed is None:
         warnings.append(
@@ -405,6 +418,22 @@ def _warnings(
                     Notice(
                         "unknown_component",
                         f"[{table}.allowed.{component}] names {name!r}, which has no modules",
+                    )
+                )
+    for component, targets in sorted((config.externals or {}).items()):
+        if component not in present:
+            warnings.append(
+                Notice(
+                    "unknown_component",
+                    f"[{table}.externals.{component}] names {component!r}, which has no modules",
+                )
+            )
+        for name in [] if targets == ALL else targets:
+            if name not in external:
+                warnings.append(
+                    Notice(
+                        "unknown_component",
+                        f"[{table}.externals.{component}] names {name!r}, which nothing imports",
                     )
                 )
     for f in config.all_forbidden():

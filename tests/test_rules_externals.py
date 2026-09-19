@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from archview.rules.check import check, component_edges
 from archview.rules.components import ComponentMap
-from archview.rules.config import Config, Exemption, Forbidden
+from archview.rules.config import Config, ConfigError, Exemption, Forbidden
 from tests.builders import model_with_external
 
 
@@ -92,3 +94,27 @@ def test_forbidden_beats_the_externals_allow_list():
         forbidden=(Forbidden("llm", "openai"),),
     )
     assert [p.kind for p in check(model_with_external(), config).problems] == ["forbidden"]
+
+
+def test_a_live_outside_rule_warns_about_nothing():
+    config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("llm", "openai"),))
+    report = check(model_with_external(), config)
+    assert [w for w in report.warnings if w.kind == "unknown_component"] == []
+
+
+def test_a_dead_outside_rule_warns():
+    config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("llm", "anthropic"),))
+    report = check(model_with_external(), config)
+    assert any("anthropic" in w.message for w in report.warnings)
+
+
+def test_an_externals_key_that_is_not_a_component_warns():
+    config = Config(allowed={"api": ["llm"], "llm": []}, externals={"nope": ()})
+    report = check(model_with_external(), config)
+    assert any("nope" in w.message for w in report.warnings)
+
+
+def test_an_outside_name_on_the_from_side_is_an_error():
+    config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("openai", "llm"),))
+    with pytest.raises(ConfigError, match="openai"):
+        check(model_with_external(), config)
