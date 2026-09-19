@@ -3,7 +3,8 @@
 By default a component is a direct child of the project package: `shop.api.routes`
 belongs to `api`, as `shop/api/routes.ts` does, and the project's own root module to a
 component named after the project. Explicit `[components]` patterns take precedence;
-when several match, the most specific pattern wins, then the component name.
+when several match, the most specific pattern wins, then the component name. A module
+outside the project belongs to no component, but has an outside name of its own.
 """
 
 from __future__ import annotations
@@ -26,6 +27,16 @@ class ComponentMap:
         """The component `module` belongs to, or None if it is outside the project or ignored."""
         component = self._explicit(module) or self._default(module)
         return None if component in self.ignored else component
+
+    def outside(self, module: str) -> str | None:
+        """The outside package `module` belongs to, or None if it is inside the project.
+
+        Squashed to the top-level name, as the extractors squash external nodes.
+        """
+        if module == self.project or within(module, self.project, self.sep):
+            return None
+        name = module.split(self.sep)[0]
+        return None if name in self.ignored else name
 
     def _explicit(self, module: str) -> str | None:
         hits = [
