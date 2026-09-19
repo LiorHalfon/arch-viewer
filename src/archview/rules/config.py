@@ -8,6 +8,7 @@ silently ignored: a typo in a rules file would otherwise switch a rule off.
 from __future__ import annotations
 
 import difflib
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any
 
 RULES_FILE = "archview.toml"
 ALL = "all"
+STDLIB = sys.stdlib_module_names | {"__future__"}
 
 
 class ConfigError(Exception):
@@ -61,6 +63,7 @@ class Config:
     fail_on_violations: bool = True
     fail_on_cycles: bool = True
     allowed: dict[str, tuple[str, ...] | str] | None = None
+    externals: dict[str, tuple[str, ...] | str] | None = None
     forbidden: tuple[Forbidden, ...] = ()
     exceptions: tuple[Exemption, ...] = ()
     ignored: tuple[str, ...] = ()
@@ -107,6 +110,7 @@ TOP_KEYS = {
     "fail_on_violations",
     "fail_on_cycles",
     "allowed",
+    "externals",
     "forbidden",
     "exceptions",
     "ignored",
@@ -162,6 +166,7 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         fail_on_violations=_bool(table, "fail_on_violations", where),
         fail_on_cycles=_bool(table, "fail_on_cycles", where),
         allowed=_allowed(table.get("allowed"), f"{where}.allowed"),
+        externals=_externals(table.get("externals"), f"{where}.externals"),
         forbidden=_forbidden(table.get("forbidden", []), f"{where}.forbidden"),
         exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
         ignored=_str_list(table, "ignored", where),
@@ -271,6 +276,30 @@ def _allowed(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | None:
     return allowed
 
 
+def _externals(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | None:
+    """Like `allowed`, but the targets are packages outside the project."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ConfigError(
+            f"[{where}] must be a table: component = [packages outside the project it may import]"
+        )
+    table = _allowed(value, where)
+    for component, targets in table.items():
+        if targets != ALL:
+            for name in targets:
+                _reject_stdlib(name, f"{where}.{component}")
+    return table
+
+
+def _reject_stdlib(name: str, where: str) -> None:
+    if name.split(".")[0] in STDLIB:
+        raise ConfigError(
+            f"[{where}] names {name!r}, a stdlib module: stdlib imports are not "
+            "analysed, so the rule could never fire"
+        )
+
+
 def _tables(value: Any, where: str, keys: set[str]) -> list[dict[str, Any]]:
     if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
         raise ConfigError(f"[[{where}]] must be an array of tables")
@@ -284,6 +313,8 @@ def _tables(value: Any, where: str, keys: set[str]) -> list[dict[str, Any]]:
 
 def _forbidden(value: Any, where: str) -> tuple[Forbidden, ...]:
     items = _tables(value, where, {"from", "to"})
+    for item in items:
+        _reject_stdlib(item["to"], where)
     return tuple(Forbidden(i["from"], i["to"]) for i in items)
 
 

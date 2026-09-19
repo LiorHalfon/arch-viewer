@@ -1,5 +1,7 @@
 """The rules file: loading, defaults and helpful errors (C1, C11)."""
 
+import textwrap
+
 import pytest
 
 from archview.rules.config import (
@@ -12,6 +14,13 @@ from archview.rules.config import (
     load_config,
     parse_config,
 )
+
+
+def written(tmp_path, text):
+    path = tmp_path / "archview.toml"
+    path.write_text(textwrap.dedent(text))
+    return load_config(path)
+
 
 FULL = """
 [archview]
@@ -127,3 +136,50 @@ def test_reads_the_language_and_tsconfig():
 def test_rejects_an_unknown_language():
     with pytest.raises(ConfigError, match="language must be one of 'python', 'typescript'"):
         parse_config({"language": "java"})
+
+
+def test_externals_table_is_parsed(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview]
+        package = "shop"
+        [archview.externals]
+        ports = []
+        llm = ["openai"]
+        tools = "all"
+    """,
+    )
+    assert config.externals == {"ports": (), "llm": ("openai",), "tools": "all"}
+
+
+def test_no_externals_table_means_none(tmp_path):
+    config = written(tmp_path, '[archview]\npackage = "shop"\n')
+    assert config.externals is None
+
+
+def test_a_stdlib_target_is_rejected(tmp_path):
+    with pytest.raises(ConfigError, match="stdlib"):
+        written(
+            tmp_path,
+            """
+            [archview]
+            package = "shop"
+            [archview.externals]
+            llm = ["subprocess"]
+        """,
+        )
+
+
+def test_a_stdlib_forbidden_target_is_rejected(tmp_path):
+    with pytest.raises(ConfigError, match="stdlib"):
+        written(
+            tmp_path,
+            """
+            [archview]
+            package = "shop"
+            [[archview.forbidden]]
+            from = "domain"
+            to = "os"
+        """,
+        )
