@@ -11,13 +11,13 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from archview.server.workspace import NotFound, Workspace
+from archview.server.state import NotFound, ViewerState
 
 UI = Path(__file__).resolve().parent.parent / "ui"
 NO_STORE = {"Cache-Control": "no-store"}
 
 
-def create_app(workspace: Workspace) -> FastAPI:
+def create_app(workspace: ViewerState) -> FastAPI:
     app = FastAPI(title="archview", docs_url=None, redoc_url=None, openapi_url=None)
 
     def found(call):

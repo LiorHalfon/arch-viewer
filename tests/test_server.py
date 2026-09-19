@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from archview.server.app import create_app
-from archview.server.workspace import Workspace, source_files
+from archview.server.state import ViewerState, source_files
 from tests.typescript_support import TS_SAMPLE, requires_typescript
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -21,7 +21,7 @@ def repo(tmp_path):
 
 @pytest.fixture
 def client(repo):
-    return TestClient(create_app(Workspace(repo)))
+    return TestClient(create_app(ViewerState(repo)))
 
 
 def test_serves_the_page_and_its_vendored_scripts(client):
@@ -60,7 +60,7 @@ def test_the_top_view_carries_nodes_edges_cycles_and_dot(client):
 def test_marks_packages_with_a_cycle_inside(repo):
     (repo / "sample" / "infra" / "cache.py").write_text("from sample.infra import db\n")
     (repo / "sample" / "infra" / "db.py").write_text("from sample.infra import cache\n")
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     view = client.get("/api/view").json()
 
@@ -106,7 +106,7 @@ def test_the_tree_of_a_subpackage_knows_its_parent_and_flags(repo):
     (repo / "sample" / "infra" / "sub").mkdir()
     (repo / "sample" / "infra" / "sub" / "__init__.py").write_text("")
     (repo / "sample" / "infra" / "sub" / "leaf.py").write_text("")
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     top = client.get("/api/tree").json()
     infra = client.get("/api/tree", params={"root": "sample.infra"}).json()
@@ -127,7 +127,7 @@ def test_the_tree_can_hide_tests_and_rejects_unknown_roots(repo):
     (repo / "sample" / "tests").mkdir()
     (repo / "sample" / "tests" / "__init__.py").write_text("")
     (repo / "sample" / "tests" / "test_api.py").write_text("from sample.api import routes\n")
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     def names(**params):
         return [c["name"] for c in client.get("/api/tree", params=params).json()["children"]]
@@ -178,7 +178,7 @@ def rules_with_one_violation(repo):
 
 def test_marks_edges_and_imports_that_break_the_rules(repo, capsys):
     rules_with_one_violation(repo)
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     view = client.get("/api/view").json()
     summary = client.get("/api/project").json()
@@ -195,7 +195,7 @@ def test_shows_a_violating_outside_package_without_externals(repo, capsys):
     main(["init", str(repo)])
     rules = repo / "archview.toml"
     rules.write_text(rules.read_text() + "\n[archview.externals]\napi = []\n")
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     view = client.get("/api/view").json()
 
@@ -205,7 +205,7 @@ def test_shows_a_violating_outside_package_without_externals(repo, capsys):
 
 def test_serves_the_check_report(repo, capsys):
     rules_with_one_violation(repo)
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     report = client.get("/api/check").json()
 
@@ -230,7 +230,7 @@ def test_views_can_show_externals_and_hide_tests(repo):
     (repo / "sample" / "tests").mkdir()
     (repo / "sample" / "tests" / "__init__.py").write_text("")
     (repo / "sample" / "tests" / "test_api.py").write_text("from sample.api import routes\n")
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     def names(**params):
         return [n["name"] for n in client.get("/api/view", params=params).json()["nodes"]]
@@ -248,7 +248,7 @@ def test_does_not_serve_files_outside_the_ui_folder(client):
 def test_watch_reanalyzes_when_a_file_changes(repo):
     import time
 
-    workspace = Workspace(repo)
+    workspace = ViewerState(repo)
     workspace.watch(interval=0.05)
     first = workspace.generation
 
@@ -283,7 +283,7 @@ def test_serves_a_typescript_project(tmp_path):
     repo = tmp_path / "ts-sample"
     shutil.copytree(TS_SAMPLE, repo, ignore=shutil.ignore_patterns("node_modules"))
     (repo / "node_modules").symlink_to(TS_SAMPLE / "node_modules")
-    client = TestClient(create_app(Workspace(repo)))
+    client = TestClient(create_app(ViewerState(repo)))
 
     summary = client.get("/api/project").json()
     view = client.get("/api/view").json()

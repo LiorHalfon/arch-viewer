@@ -42,7 +42,9 @@ class NotFound(Exception):
     pass
 
 
-class Workspace:
+class ViewerState:
+    """The project the viewer is looking at, with its cached views."""
+
     def __init__(
         self,
         repo: Path,

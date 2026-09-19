@@ -422,9 +422,9 @@ def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     from archview.server.app import create_app
-    from archview.server.workspace import Workspace
+    from archview.server.state import ViewerState
 
-    workspace = Workspace(args.path, args.package, args.config, args.language, args.tsconfig)
+    workspace = ViewerState(args.path, args.package, args.config, args.language, args.tsconfig)
     if args.watch:
         workspace.watch()
     port = _free_port(args.host, args.port)
