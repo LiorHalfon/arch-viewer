@@ -56,6 +56,24 @@ class Report:
         return any(p.fails for p in self.problems)
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceReport:
+    """A workspace's check: each package's own report, plus the rules between them.
+
+    Pure report data - nothing here references `workspace.py`, so `render/check.py`
+    and its siblings can render `between` (an ordinary `Report`) without depending on
+    `workspace`, `project` or `extract`.
+    """
+
+    name: str
+    packages: tuple[tuple[str, Report], ...]
+    between: Report
+
+    @property
+    def failed(self) -> bool:
+        return self.between.failed or any(report.failed for _, report in self.packages)
+
+
 def component_map(config: Config, project: str, sep: str) -> ComponentMap:
     return ComponentMap(project, sep, config.components, frozenset(config.ignored))
 

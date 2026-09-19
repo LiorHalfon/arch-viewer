@@ -14,11 +14,32 @@ TypeScript's `/` ids, since `Model` carries a single `project` string and a sing
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from archview.project import Project, open_project
-from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
+from archview.model.graph import Import
+from archview.project import Project, open_project, project_report
+from archview.rules.baseline import apply_baseline, load_baseline
+from archview.rules.check import (
+    Edges,
+    Pair,
+    Report,
+    WorkspaceReport,
+    _cycle_problems,
+    _exemption,
+    _rule_problems,
+    component_edges,
+    component_map,
+)
+from archview.rules.config import (
+    RULES_FILE,
+    Config,
+    ConfigError,
+    WorkspaceRules,
+    find_config,
+    load_config,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,3 +135,76 @@ def _owner_by_path(outside: str, importer: Package, packages: tuple[Package, ...
         (p.name for p in sorted(packages, key=lambda p: p.name) if target.is_relative_to(p.path)),
         None,
     )
+
+
+def cross_edges(ws: Workspace) -> dict[Pair, list[Import]]:
+    """Every package's outside edges (M7) whose target is a sibling, grouped by
+    (source package, target package) and sorted.
+
+    A workspace exception exempts a cross-package import the same way a package's own
+    `[archview.exceptions]` exempt an internal one - `_exemption` is the same helper.
+    """
+    exceptions = ws.config.workspace.exceptions
+    cross: dict[Pair, list[Import]] = defaultdict(list)
+    for package in ws.packages:
+        for outside, imports in _outside_imports(package).items():
+            sibling = _owner(outside, package, ws.packages)
+            if sibling is None or sibling == package.name:
+                continue
+            sep = package.project.model.separator
+            surviving = [imp for imp in imports if _exemption(imp, exceptions, sep) is None]
+            if surviving:
+                cross[(package.name, sibling)] += surviving
+    return {
+        pair: sorted(imps, key=lambda i: (i.file, i.line)) for pair, imps in sorted(cross.items())
+    }
+
+
+def _outside_imports(package: Package) -> dict[str, list[Import]]:
+    """A package's own outside edges, keyed by the outside name alone."""
+    project = package.project
+    components = component_map(project.config, project.model.project, project.model.separator)
+    edges = component_edges(project.model, components, project.config)
+    by_outside: dict[str, list[Import]] = defaultdict(list)
+    for (_, outside), imports in edges.outside.items():
+        by_outside[outside] += imports
+    return by_outside
+
+
+def check_workspace(ws: Workspace) -> WorkspaceReport:
+    """Each package's own check, where it has rules, plus the rules between them."""
+    packages = tuple((p.name, project_report(p.project)) for p in ws.packages if p.has_rules)
+    return WorkspaceReport(ws.name, packages, _check_between(ws))
+
+
+def _check_between(ws: Workspace) -> Report:
+    rules = ws.config.workspace
+    present = tuple(p.name for p in ws.packages)
+    edges = Edges(internal=cross_edges(ws), outside={}, exceptions_used=set())
+    config = _between_config(rules)
+    problems = [
+        *_rule_problems(edges, present, config, config.table),
+        *_cycle_problems(edges.internal, present, config, config.table),
+    ]
+    report = Report(ws.name, present, tuple(problems), ())
+    if rules.baseline:
+        report = _apply_workspace_baseline(report, ws.root, rules.baseline)
+    return report
+
+
+def _between_config(rules: WorkspaceRules) -> Config:
+    """A `Config` carrying just what `_rule_problems`/`_cycle_problems` need."""
+    return Config(
+        table="archview.workspace",
+        allowed=rules.allowed,
+        forbidden=rules.forbidden,
+        fail_on_violations=rules.fail_on_violations,
+        fail_on_cycles=rules.fail_on_cycles,
+    )
+
+
+def _apply_workspace_baseline(report: Report, root: Path, name: str) -> Report:
+    path = root / name
+    if not path.is_file():
+        raise ConfigError(f"baseline {path} does not exist; `archview check --update-baseline`")
+    return apply_baseline(report, load_baseline(path), path.name)
