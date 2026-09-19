@@ -60,27 +60,50 @@ def component_map(config: Config, project: str, sep: str) -> ComponentMap:
     return ComponentMap(project, sep, config.components, frozenset(config.ignored))
 
 
-def component_edges(
-    model: Model, components: ComponentMap, config: Config | None = None
-) -> tuple[dict[Pair, list[Import]], set[int]]:
-    """Imports grouped by the pair of components they connect, minus exempted ones.
+@dataclass(frozen=True, slots=True)
+class Edges:
+    """Imports grouped by the pair they connect, split by whether the target is inside."""
 
-    Also returns the indexes of the exceptions that exempted something, so unused
-    exceptions can be reported.
+    internal: dict[Pair, list[Import]]
+    outside: dict[Pair, list[Import]]
+    exceptions_used: set[int]
+
+
+def component_edges(model: Model, components: ComponentMap, config: Config | None = None) -> Edges:
+    """Imports grouped by the components they connect, minus exempted ones.
+
+    `outside` holds the imports whose target is an external node; `exceptions_used`
+    holds the indexes of the exceptions that exempted something, so unused ones
+    can be reported.
     """
     exemptions = config.exceptions if config else ()
-    grouped: dict[Pair, list[Import]] = defaultdict(list)
+    external = {n.id for n in model.nodes if n.kind == "external"}
+    internal: dict[Pair, list[Import]] = defaultdict(list)
+    outside: dict[Pair, list[Import]] = defaultdict(list)
     used: set[int] = set()
     for imp in model.imports:
-        source, target = components.of(imp.importer), components.of(imp.imported)
-        if source is None or target is None or source == target:
+        pair = _pair(imp, components, external)
+        if pair is None:
             continue
         hit = _exemption(imp, exemptions, model.separator)
         if hit is not None:
             used.add(hit)
             continue
-        grouped[(source, target)].append(imp)
-    return dict(sorted(grouped.items())), used
+        bucket = outside if imp.imported in external else internal
+        bucket[pair].append(imp)
+    return Edges(dict(sorted(internal.items())), dict(sorted(outside.items())), used)
+
+
+def _pair(imp: Import, components: ComponentMap, external: set[str]) -> Pair | None:
+    """(source component, target) for an import the rules care about, else None."""
+    source = components.of(imp.importer)
+    if source is None:
+        return None
+    if imp.imported in external:
+        target = components.outside(imp.imported)
+        return None if target is None else (source, target)
+    target = components.of(imp.imported)
+    return None if target is None or target == source else (source, target)
 
 
 def _exemption(imp: Import, exemptions, sep: str) -> int | None:
@@ -115,23 +138,25 @@ def check(model: Model, config: Config) -> Report:
     model = checked_imports(model, config)
     components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
-    edges, used = component_edges(model, components, config)
+    edges = component_edges(model, components, config)
     table = config.table
-    measured = component_metrics(model, components, edges, present, config.metrics.threshold)
+    measured = component_metrics(
+        model, components, edges.internal, present, config.metrics.threshold
+    )
 
     problems = [
         *_rule_problems(edges, present, config, table),
-        *_cycle_problems(edges, present, config, table),
+        *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(model, config, components, present, used, table)
+    warnings = _warnings(model, config, components, present, edges.exceptions_used, table)
     return Report(
         model.project,
         present,
         tuple(problems),
         tuple(warnings),
         measured,
-        _unused(edges, present, config),
+        _unused(edges.internal, present, config),
     )
 
 
@@ -198,7 +223,7 @@ def _zone_hint(component: str, m: Metrics) -> str:
 
 
 def _rule_problems(
-    edges: dict[Pair, list[Import]], present: tuple[str, ...], config: Config, table: str
+    edges: Edges, present: tuple[str, ...], config: Config, table: str
 ) -> list[Problem]:
     forbidden: dict[Pair, Forbidden] = {}
     for f in config.all_forbidden():
@@ -209,9 +234,11 @@ def _rule_problems(
     if allowed is not None:
         for component in present:
             if component not in allowed:
-                outgoing = [i for (s, _), imps in edges.items() if s == component for i in imps]
+                outgoing = [
+                    i for (s, _), imps in edges.internal.items() if s == component for i in imps
+                ]
                 problems.append(_undeclared(component, outgoing, table, fails))
-    for (source, target), imports in edges.items():
+    for (source, target), imports in edges.internal.items():
         if (source, target) in forbidden:
             origin = forbidden[(source, target)].origin
             problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))

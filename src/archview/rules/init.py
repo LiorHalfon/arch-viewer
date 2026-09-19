@@ -38,8 +38,8 @@ def infer_rules(model: Model, config: Config | None = None) -> str:
     model = checked_imports(model, config)
     components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
-    edges, _ = component_edges(model, components)
-    cycles = find_cycles(present, edges)
+    edges = component_edges(model, components)
+    cycles = find_cycles(present, edges.internal)
 
     lines = [
         "# Dependency rules for `archview check`, inferred by `archview init` from the",
@@ -64,7 +64,7 @@ def infer_rules(model: Model, config: Config | None = None) -> str:
     lines.extend(_cycle_setting(cycles))
     lines += ["", "[archview.allowed]"]
     for component in present:
-        targets = sorted(t for (s, t) in edges if s == component)
+        targets = sorted(t for (s, t) in edges.internal if s == component)
         lines.append(f"{_key(component)} = {_array(targets)}")
     if config.components:
         lines += ["", "[archview.components]"]
