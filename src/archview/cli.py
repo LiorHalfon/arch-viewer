@@ -52,11 +52,13 @@ from archview.render.query import (
     why_to_dict,
     why_to_text,
 )
-from archview.rules.baseline import baseline_of
+from archview.render.workspace import workspace_to_dict, workspace_to_text
+from archview.rules.baseline import Baseline, baseline_of
 from archview.rules.check import check
 from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
 from archview.rules.init import infer_rules
 from archview.rules.overlay import failing_imports, outside_targets, violating_edges
+from archview.workspace import Workspace, check_workspace, open_workspace
 
 USAGE_ERROR = 2
 
@@ -122,9 +124,25 @@ def _wants_color() -> bool:
     return sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
 
+def _workspace_root(args: argparse.Namespace) -> Path | None:
+    """`args.path`, when the rules found there declare `[archview.workspace]` and no
+    `--package` was given to check one package instead of the whole workspace; `None`
+    otherwise. Shared with `graph`, `cycles` and the server (tasks 13, 15)."""
+    if args.package:
+        return None
+    repo = args.path.expanduser().resolve()
+    path = args.config or find_config(repo)
+    if path is None:
+        return None
+    return repo if load_config(path).workspace is not None else None
+
+
 def _check(args: argparse.Namespace) -> int:
     if args.stop_hook:
         return _stop_hook(args)
+    root = _workspace_root(args)
+    if root is not None:
+        return _check_workspace(args, root)
     project = _rules_project(args)
     if args.update_baseline:
         path = baseline_path(project)
@@ -140,6 +158,45 @@ def _check(args: argparse.Namespace) -> int:
     return 1 if report.failed else 0
 
 
+def _check_workspace(args: argparse.Namespace, root: Path) -> int:
+    ws = open_workspace(root, args.config)
+    if args.update_baseline:
+        return _update_workspace_baseline(ws)
+    report = check_workspace(ws)
+    if args.format == "json":
+        sys.stdout.write(json.dumps(workspace_to_dict(report), indent=2) + "\n")
+    else:
+        sys.stdout.write(workspace_to_text(report, color=_wants_color()))
+    return 1 if report.failed else 0
+
+
+def _update_workspace_baseline(ws: Workspace) -> int:
+    """Each configured package's own baseline, exactly as a single project's
+    `--update-baseline` would write it, plus the workspace baseline when
+    `[archview.workspace].baseline` names one."""
+    written = [
+        _write_baseline(
+            baseline_path(p.project), baseline_of(check(p.project.model, p.project.config))
+        )
+        for p in ws.packages
+        if p.has_rules
+    ]
+    rules = ws.config.workspace
+    if rules.baseline:
+        cleared = replace(ws, config=replace(ws.config, workspace=replace(rules, baseline=None)))
+        between = check_workspace(cleared).between
+        written.append(_write_baseline(ws.root / rules.baseline, baseline_of(between)))
+    sys.stdout.write(
+        "\n".join(written) + "\n" if written else "no baseline configured; nothing written\n"
+    )
+    return 0
+
+
+def _write_baseline(path: Path, baseline: Baseline) -> str:
+    path.write_text(baseline.to_json())
+    return f"wrote {path} ({len(baseline.entries)} known problems)"
+
+
 HOOK_BLOCKS = 2  # Claude Code's Stop hook: exit 2 sends stderr back to the agent
 
 
@@ -148,13 +205,19 @@ def _stop_hook(args: argparse.Namespace) -> int:
     if _hook_input().get("stop_hook_active"):
         return 0
     try:
-        report = project_report(_rules_project(args))
+        root = _workspace_root(args)
+        if root is not None:
+            report = check_workspace(open_workspace(root, args.config))
+            text = workspace_to_text(report)
+        else:
+            report = project_report(_rules_project(args))
+            text = report_to_text(report)
     except (UsageError, ProjectError, ConfigError) as error:
         sys.stderr.write(f"archview: {error} (not blocking the stop)\n")
         return 0
     if not report.failed:
         return 0
-    sys.stderr.write(report_to_text(report))
+    sys.stderr.write(text)
     return HOOK_BLOCKS
 
 
