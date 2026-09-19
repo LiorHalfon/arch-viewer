@@ -29,6 +29,7 @@ from archview.rules.check import (
     _cycle_problems,
     _exemption,
     _rule_problems,
+    checked_imports,
     component_edges,
     component_map,
 )
@@ -161,10 +162,16 @@ def cross_edges(ws: Workspace) -> dict[Pair, list[Import]]:
 
 
 def _outside_imports(package: Package) -> dict[str, list[Import]]:
-    """A package's own outside edges, keyed by the outside name alone."""
+    """A package's own outside edges, keyed by the outside name alone.
+
+    `checked_imports` drops TYPE_CHECKING-only imports first, exactly as `check()`
+    does for a package's own rules (A4): a workspace must not fire on the same
+    pattern that is silently ignored inside a single package by default.
+    """
     project = package.project
-    components = component_map(project.config, project.model.project, project.model.separator)
-    edges = component_edges(project.model, components, project.config)
+    model = checked_imports(project.model, project.config)
+    components = component_map(project.config, model.project, model.separator)
+    edges = component_edges(model, components, project.config)
     by_outside: dict[str, list[Import]] = defaultdict(list)
     for (_, outside), imports in edges.outside.items():
         by_outside[outside] += imports

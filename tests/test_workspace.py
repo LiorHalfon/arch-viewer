@@ -53,13 +53,19 @@ def _workspace_toml(table: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def workspace_with(tmp_path: Path, **workspace_table):
+def _prepare_workspace(tmp_path: Path, **workspace_table) -> Path:
     """A copy of FIXTURE at tmp_path with its root [archview.workspace] table replaced,
-    so each test varies exactly one thing."""
+    so each test varies exactly one thing. Not yet opened, so a test can still edit a
+    package's own files (a source file, its own archview.toml) before extraction runs."""
     shutil.copytree(FIXTURE, tmp_path, dirs_exist_ok=True)
     table = {"packages": ["core", "plugin"], **workspace_table}
     (tmp_path / "archview.toml").write_text(_workspace_toml(table))
-    return open_workspace(tmp_path)
+    return tmp_path
+
+
+def workspace_with(tmp_path: Path, **workspace_table):
+    """`_prepare_workspace`, opened."""
+    return open_workspace(_prepare_workspace(tmp_path, **workspace_table))
 
 
 def not_allowed(report):
@@ -232,3 +238,68 @@ def test_a_missing_workspace_baseline_raises_a_config_error(tmp_path):
     )
     with pytest.raises(ConfigError, match=r"archview-baseline\.json"):
         check_workspace(ws)
+
+
+TYPE_CHECKING_ADAPTER = '''"""A cross-package import that exists only for type checking."""
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.ports import Port
+
+
+class Adapter:
+    def __init__(self, port: "Port") -> None:
+        self.port = port
+'''
+
+
+def test_a_type_checking_only_cross_package_import_is_ignored_by_default(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ()})
+    (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(TYPE_CHECKING_ADAPTER)
+
+    report = check_workspace(open_workspace(root))
+
+    assert "core" not in {t for _, t in cross_edges(open_workspace(root))}
+    assert not report.between.failed
+
+
+def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ()})
+    (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(TYPE_CHECKING_ADAPTER)
+    (root / "plugin" / "archview.toml").write_text(
+        '[archview]\npackage = "plugin"\nsource_roots = ["src"]\n'
+        'type_checking_imports = "include"\n'
+    )
+
+    report = check_workspace(open_workspace(root))
+
+    assert not_allowed(report.between) == [("plugin", "core")]
+    assert report.failed
+
+
+def test_a_cycle_between_packages_fails_by_default(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": ("plugin",), "plugin": ("core",)})
+    (root / "core" / "src" / "core" / "uses_plugin.py").write_text("from plugin import Adapter\n")
+
+    report = check_workspace(open_workspace(root))
+
+    cycles = [p for p in report.between.problems if p.kind == "cycle"]
+    assert [c.components for c in cycles] == [("core", "plugin")]
+    assert cycles[0].fails
+    assert report.between.failed
+
+
+def test_fail_on_cycles_false_suppresses_the_cross_package_cycle(tmp_path):
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": ("plugin",), "plugin": ("core",)},
+        fail_on_cycles=False,
+    )
+    (root / "core" / "src" / "core" / "uses_plugin.py").write_text("from plugin import Adapter\n")
+
+    report = check_workspace(open_workspace(root))
+
+    cycles = [p for p in report.between.problems if p.kind == "cycle"]
+    assert cycles and not cycles[0].fails
+    assert not report.between.failed
