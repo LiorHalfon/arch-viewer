@@ -89,6 +89,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C9 | Metrics report with optional thresholds (e.g. fail if a component enters the zone of pain). | V2 | DC metrics |
 | C10 | Runs in < a few seconds on a typical service repo so it can sit in a pre-commit hook and in the agent's fix-it loop. | MVP | 16:52–17:25 |
 | C11 | Config evolution: unknown/legacy keys produce a clear error with a hint, not silent acceptance. | V2 | DC |
+| C12 | `allowed`/`forbidden`/`exceptions` can name a package outside the project (a PyPI/npm dependency, or a workspace sibling before M8 tells them apart) via a new `[archview.externals]` allow-list; `forbidden` needs no new syntax. A stdlib target is a config error, not a silent no-op. | MVP (M7) | GitHub issue #1; ADR 0011 |
 
 ## 7. Agent integration
 
@@ -130,13 +131,13 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-17, after M6)
+## 12. Implementation status (2026-09-20, after M7)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C11. C5 text + JSON | C5 GitHub Actions annotations |
+| Checker | C1–C4, C6–C12. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
@@ -148,3 +149,8 @@ Clarified during M5 (ADR 0009): the queries run on the filtered model, not on gr
 unless asked.
 
 M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on storygenerator.
+
+M7 (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
+`[archview.externals]`, `from = "*"`, a viewer overlay for the failing edge, and
+`archview init --externals`. This repo's own rules gain a live outside rule (`model`
+must not reach `grimp`).

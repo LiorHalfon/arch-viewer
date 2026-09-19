@@ -86,9 +86,17 @@ independent = [["billing", "shipping"]]               # these may not import eac
 api = ["domain", "billing", "shipping"]
 domain = []
 
+[archview.externals]                  # component -> packages *outside* the project it may import
+llm = ["openai"]                      # a missing component here is unconstrained - no error
+ports = []                            # "may reach nothing outside the project"
+
 [[archview.forbidden]]                # checked even when `allowed` says "all"
 from = "domain"
 to = "api"
+
+[[archview.forbidden]]                # "from" also takes "*" (every component); "to" may
+from = "*"                            # name a package outside the project, PyPI or npm
+to = "openai"
 
 [[archview.exceptions]]               # module-level exemptions, always with a reason
 importer = "shop.billing.legacy"
@@ -106,6 +114,20 @@ ignore = ["common"]
 
 Unknown keys are errors with a suggestion. A component that is not in `allowed` fails
 the check, because a new top-level package is a human decision.
+
+A rule may also name a package outside the project - a PyPI or npm dependency, or a
+sibling package in a workspace; archview cannot tell those two apart from one
+package's model alone (ADR 0011). `[archview.externals]` is the allow-list for these:
+unlike `[archview.allowed]`, a component missing from it is unconstrained, not an
+error, so it can be adopted one component at a time. `[[archview.forbidden]]` can
+also target one, with either side checked even when nothing is declared. Naming a
+stdlib module on either side is a `ConfigError` at load time, since the extractor
+already drops stdlib imports from the graph and such a rule could never fire; the
+check is skipped for a repo that has declared `language = "typescript"` or a
+`tsconfig`, since npm has packages named `queue` or `string` that collide with Python
+stdlib module names. `archview init --externals` writes `[archview.externals]` from
+today's imports, the same freeze-then-delete starting point `init` already gives
+`[archview.allowed]`; a plain `archview init` leaves the table out.
 
 ## Legacy code: baseline
 

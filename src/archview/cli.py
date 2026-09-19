@@ -251,7 +251,7 @@ def _init(args: argparse.Namespace) -> int:
         config = replace(config, tsconfig=args.tsconfig)
 
     project = open_project(repo, args.package, config=config, language=args.language)
-    text = infer_rules(project.model, config)
+    text = infer_rules(project.model, config, externals=args.externals)
     if args.stdout:
         sys.stdout.write(text)
         return 0
@@ -408,6 +408,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--stdout", action="store_true", help="print instead of writing")
     init.add_argument(
         "--exclude", action="append", default=[], metavar="GLOB", help="file glob to leave out"
+    )
+    init.add_argument(
+        "--externals",
+        action="store_true",
+        help="also write [archview.externals] from today's outside imports",
     )
     init.set_defaults(run=_init)
 

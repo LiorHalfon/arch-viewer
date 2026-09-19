@@ -17,3 +17,7 @@ project = ["extract", "model", "rules"]
 render = ["model", "rules"]
 rules = ["model"]
 server = ["model", "project", "render", "rules"]
+
+[[archview.forbidden]]
+from = "model"
+to = "grimp"

@@ -4,7 +4,7 @@ from archview.rules.check import check
 from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, Config, Exemption, Forbidden
 from archview.rules.init import infer_rules
-from tests.builders import model
+from tests.builders import model, model_with_external
 
 LAYERED = model(
     ("app.api.routes", "app.services.pricing"),
@@ -216,6 +216,18 @@ def test_init_quotes_file_components_and_records_the_language():
 
     assert 'language = "typescript"' in text
     assert '"i18n.ts" = ["utils"]' in text
+
+
+def test_init_writes_no_externals_table_by_default():
+    assert "[archview.externals]" not in infer_rules(model_with_external(), Config())
+
+
+def test_init_externals_writes_the_table_from_todays_imports():
+    text = infer_rules(model_with_external(), Config(), externals=True)
+
+    assert "[archview.externals]" in text
+    assert 'llm = ["openai"]' in text
+    assert "api = []" in text
 
 
 def test_uses_the_pyproject_table_name_in_rules():
