@@ -156,19 +156,25 @@ def _read_toml(path: Path) -> dict[str, Any]:
 
 def parse_config(table: dict[str, Any], where: str = "archview", path: str | None = None) -> Config:
     _known_keys(table, TOP_KEYS, where)
+    language = _language(table, where)
+    tsconfig = _optional_str(table, "tsconfig", where)
+    # TypeScript builtins are not stdlib-checked (see the design spec): a declared
+    # `tsconfig` or `language = "typescript"` mean names like "queue" are npm packages,
+    # not the Python stdlib module of the same name.
+    check_stdlib = language != "typescript" and tsconfig is None
     return Config(
         path=path,
         table=where,
         package=_optional_str(table, "package", where),
-        language=_language(table, where),
-        tsconfig=_optional_str(table, "tsconfig", where),
+        language=language,
+        tsconfig=tsconfig,
         source_roots=_str_list(table, "source_roots", where),
         exclude=_str_list(table, "exclude", where),
         fail_on_violations=_bool(table, "fail_on_violations", where),
         fail_on_cycles=_bool(table, "fail_on_cycles", where),
         allowed=_allowed(table.get("allowed"), f"{where}.allowed"),
-        externals=_externals(table.get("externals"), f"{where}.externals"),
-        forbidden=_forbidden(table.get("forbidden", []), f"{where}.forbidden"),
+        externals=_externals(table.get("externals"), f"{where}.externals", check_stdlib),
+        forbidden=_forbidden(table.get("forbidden", []), f"{where}.forbidden", check_stdlib),
         exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
         ignored=_str_list(table, "ignored", where),
         components=_components(table.get("components", {}), f"{where}.components"),
@@ -277,7 +283,9 @@ def _allowed(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | None:
     return allowed
 
 
-def _externals(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | None:
+def _externals(
+    value: Any, where: str, check_stdlib: bool
+) -> dict[str, tuple[str, ...] | str] | None:
     """Like `allowed`, but the targets are packages outside the project."""
     if value is None:
         return None
@@ -286,10 +294,11 @@ def _externals(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | Non
             f"[{where}] must be a table: component = [packages outside the project it may import]"
         )
     table = _allowed(value, where)
-    for component, targets in table.items():
-        if targets != ALL:
-            for name in targets:
-                _reject_stdlib(name, f"{where}.{component}")
+    if check_stdlib:
+        for component, targets in table.items():
+            if targets != ALL:
+                for name in targets:
+                    _reject_stdlib(name, f"{where}.{component}")
     return table
 
 
@@ -312,10 +321,11 @@ def _tables(value: Any, where: str, keys: set[str]) -> list[dict[str, Any]]:
     return value
 
 
-def _forbidden(value: Any, where: str) -> tuple[Forbidden, ...]:
+def _forbidden(value: Any, where: str, check_stdlib: bool) -> tuple[Forbidden, ...]:
     items = _tables(value, where, {"from", "to"})
-    for item in items:
-        _reject_stdlib(item["to"], where)
+    if check_stdlib:
+        for item in items:
+            _reject_stdlib(item["to"], where)
     return tuple(Forbidden(i["from"], i["to"]) for i in items)
 
 

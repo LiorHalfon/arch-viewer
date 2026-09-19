@@ -183,3 +183,31 @@ def test_a_stdlib_forbidden_target_is_rejected(tmp_path):
             to = "os"
         """,
         )
+
+
+def test_typescript_by_language_skips_stdlib_rejection(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview]
+        package = "shop"
+        language = "typescript"
+        [archview.externals]
+        deps = ["queue"]
+    """,
+    )
+    assert config.externals == {"deps": ("queue",)}
+
+
+def test_typescript_by_tsconfig_skips_stdlib_rejection(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview]
+        package = "shop"
+        tsconfig = "tsconfig.json"
+        [archview.externals]
+        deps = ["queue"]
+    """,
+    )
+    assert config.externals == {"deps": ("queue",)}
