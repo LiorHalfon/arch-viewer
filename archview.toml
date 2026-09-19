@@ -10,13 +10,14 @@ fail_on_violations = true
 fail_on_cycles = true
 
 [archview.allowed]
-cli = ["model", "project", "render", "rules", "server"]
+cli = ["model", "project", "render", "rules", "server", "workspace"]
 extract = ["model"]
 model = []
 project = ["extract", "model", "rules"]
 render = ["model", "rules"]
 rules = ["model"]
-server = ["model", "project", "render", "rules"]
+server = ["model", "project", "render", "rules", "workspace"]
+workspace = ["extract", "model", "project", "rules"]
 
 [[archview.forbidden]]
 from = "model"
