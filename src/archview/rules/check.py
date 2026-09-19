@@ -16,9 +16,9 @@ from archview.model.graph import Import, Model
 from archview.model.metrics import Metrics, metrics
 from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, Config, Forbidden
+from archview.rules.config import ALL, ALL_COMPONENTS, Config, Forbidden
 
-ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone"]
+ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside"]
 Pair = tuple[str, str]
 # How an extractor warning reads in the report; the viewer uses the same words.
 WARNING_LABELS = {"dynamic_import": "dynamic import", "unresolved_import": "unresolved import"}
@@ -225,9 +225,7 @@ def _zone_hint(component: str, m: Metrics) -> str:
 def _rule_problems(
     edges: Edges, present: tuple[str, ...], config: Config, table: str
 ) -> list[Problem]:
-    forbidden: dict[Pair, Forbidden] = {}
-    for f in config.all_forbidden():
-        forbidden.setdefault((f.source, f.target), f)
+    forbidden = _forbidden_pairs(config, present)
     allowed = config.allowed
     fails = config.fail_on_violations
     problems: list[Problem] = []
@@ -244,7 +242,52 @@ def _rule_problems(
             problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
         elif allowed is not None and source in allowed and not _may(allowed, source, target):
             problems.append(_not_allowed(source, target, imports, allowed, table, fails))
+    problems += _outside_problems(edges.outside, forbidden, config, table)
     return sorted(problems, key=lambda p: (p.components, p.kind))
+
+
+def _forbidden_pairs(config: Config, present: tuple[str, ...]) -> dict[Pair, Forbidden]:
+    """`forbidden` rules keyed by pair, with `from = "*"` expanded to every component."""
+    pairs: dict[Pair, Forbidden] = {}
+    for f in config.all_forbidden():
+        sources = present if f.source == ALL_COMPONENTS else (f.source,)
+        for source in sources:
+            pairs.setdefault((source, f.target), f)
+    return pairs
+
+
+def _outside_problems(
+    outside: dict[Pair, list[Import]], forbidden: dict[Pair, Forbidden], config: Config, table: str
+) -> list[Problem]:
+    externals = config.externals
+    fails = config.fail_on_violations
+    problems = []
+    for (source, target), imports in outside.items():
+        if (source, target) in forbidden:
+            origin = forbidden[(source, target)].origin
+            problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
+        elif externals is not None and source in externals and not _may(externals, source, target):
+            problems.append(_outside(source, target, imports, externals, table, fails))
+    return problems
+
+
+def _outside(
+    source: str, target: str, imports: list[Import], externals: dict, table: str, fails: bool
+) -> Problem:
+    may = ", ".join(externals[source]) or "nothing outside the project"
+    return Problem(
+        kind="outside",
+        rule=f"{table}.externals.{source}",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{source} may reach {may}. Declare {target} in [{table}.externals].{source}, "
+            f"or define the interface {source} needs inside {source} and let another "
+            "component depend on the package."
+        ),
+        fails=fails,
+    )
 
 
 def _may(allowed: dict, source: str, target: str) -> bool:

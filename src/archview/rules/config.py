@@ -16,6 +16,7 @@ from typing import Any
 
 RULES_FILE = "archview.toml"
 ALL = "all"
+ALL_COMPONENTS = "*"
 STDLIB = sys.stdlib_module_names | {"__future__"}
 
 
