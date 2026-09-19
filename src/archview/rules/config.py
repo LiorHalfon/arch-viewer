@@ -52,6 +52,19 @@ class Exemption:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkspaceRules:
+    """The `[archview.workspace]` table: rules between the packages of a workspace."""
+
+    packages: tuple[str, ...] = ()
+    fail_on_violations: bool = True
+    fail_on_cycles: bool = True
+    allowed: dict[str, tuple[str, ...] | str] | None = None
+    forbidden: tuple[Forbidden, ...] = ()
+    exceptions: tuple[Exemption, ...] = ()
+    baseline: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     path: str | None = None
     table: str = "archview"
@@ -73,6 +86,7 @@ class Config:
     independent: tuple[tuple[str, ...], ...] = ()
     metrics: MetricRules = field(default_factory=MetricRules)
     baseline: str | None = None
+    workspace: WorkspaceRules | None = None
 
     def all_forbidden(self) -> tuple[Forbidden, ...]:
         """`forbidden`, plus what `layers` and `independent` imply (requirement C8)."""
@@ -119,6 +133,16 @@ TOP_KEYS = {
     "layers",
     "independent",
     "metrics",
+    "baseline",
+    "workspace",
+}
+WORKSPACE_KEYS = {
+    "packages",
+    "fail_on_violations",
+    "fail_on_cycles",
+    "allowed",
+    "forbidden",
+    "exceptions",
     "baseline",
 }
 
@@ -188,6 +212,7 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         ),
         metrics=_metrics(table.get("metrics", {}), f"{where}.metrics"),
         baseline=_optional_str(table, "baseline", where),
+        workspace=_workspace(table.get("workspace"), f"{where}.workspace"),
     )
 
 
@@ -338,3 +363,21 @@ def _components(value: Any, where: str) -> dict[str, tuple[str, ...]]:
     if not isinstance(value, dict):
         raise ConfigError(f"[{where}] must be a table: component = [module patterns]")
     return {name: _strings(patterns, f"{where}.{name}") for name, patterns in value.items()}
+
+
+def _workspace(value: Any, where: str) -> WorkspaceRules | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ConfigError(f"[{where}] must be a table")
+    _known_keys(value, WORKSPACE_KEYS, where)
+    return WorkspaceRules(
+        packages=_str_list(value, "packages", where),
+        fail_on_violations=_bool(value, "fail_on_violations", where),
+        fail_on_cycles=_bool(value, "fail_on_cycles", where),
+        allowed=_allowed(value.get("allowed"), f"{where}.allowed"),
+        # Targets here are sibling package names, never stdlib modules.
+        forbidden=_forbidden(value.get("forbidden", []), f"{where}.forbidden", check_stdlib=False),
+        exceptions=_exceptions(value.get("exceptions", []), f"{where}.exceptions"),
+        baseline=_optional_str(value, "baseline", where),
+    )

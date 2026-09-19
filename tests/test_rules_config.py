@@ -211,3 +211,50 @@ def test_typescript_by_tsconfig_skips_stdlib_rejection(tmp_path):
     """,
     )
     assert config.externals == {"deps": ("queue",)}
+
+
+def test_workspace_table_is_parsed(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview.workspace]
+        packages = ["core", "plugin"]
+        [archview.workspace.allowed]
+        core = []
+        plugin = ["core"]
+    """,
+    )
+    assert config.workspace.packages == ("core", "plugin")
+    assert config.workspace.allowed == {"core": (), "plugin": ("core",)}
+    assert config.workspace.fail_on_violations is True
+    assert config.workspace.fail_on_cycles is True
+
+
+def test_no_workspace_table_means_none(tmp_path):
+    assert written(tmp_path, '[archview]\npackage = "shop"\n').workspace is None
+
+
+def test_an_unknown_workspace_key_is_rejected(tmp_path):
+    with pytest.raises(ConfigError, match="packagess"):
+        written(tmp_path, "[archview.workspace]\npackagess = []\n")
+
+
+def test_workspace_forbidden_exceptions_and_baseline_are_parsed(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview.workspace]
+        packages = ["core", "plugin"]
+        baseline = "workspace-baseline.json"
+        [[archview.workspace.forbidden]]
+        from = "plugin"
+        to = "core"
+        [[archview.workspace.exceptions]]
+        importer = "plugin.adapter"
+        imported = "core"
+        reason = "temporary, TT-1"
+    """,
+    )
+    assert config.workspace.forbidden == (Forbidden("plugin", "core"),)
+    assert config.workspace.exceptions == (Exemption("plugin.adapter", "core", "temporary, TT-1"),)
+    assert config.workspace.baseline == "workspace-baseline.json"

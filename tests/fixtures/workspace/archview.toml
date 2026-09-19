@@ -1,0 +1,7 @@
+# A two-package workspace (M8 fixture): core has its own rules, plugin does not.
+[archview.workspace]
+packages = ["core", "plugin"]
+
+[archview.workspace.allowed]
+core = []
+plugin = ["core"]
