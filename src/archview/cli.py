@@ -55,7 +55,7 @@ from archview.render.query import (
 )
 from archview.render.workspace import workspace_to_dict, workspace_to_text
 from archview.rules.baseline import Baseline, baseline_of
-from archview.rules.check import check
+from archview.rules.check import Report, check
 from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
 from archview.rules.init import infer_rules
 from archview.rules.overlay import failing_imports, outside_targets, violating_edges
@@ -142,7 +142,7 @@ def _graph(args: argparse.Namespace) -> int:
     if where not in {n.id for n in model.nodes}:
         raise UsageError(f"{where} is not a module of {project.package}")
 
-    report = project_report(project) if project.config_path else None
+    report = _graph_report(project) if project.config_path else None
     keep = outside_targets(report) if report is not None else frozenset()
     view = build_view(model, where, externals=args.externals, keep=keep)
     if not view.nodes:
@@ -154,6 +154,18 @@ def _graph(args: argparse.Namespace) -> int:
         violations = violating_edges(view, failing_imports(report))
     _write_view(fmt, view, violations)
     return 0
+
+
+def _graph_report(project: Project) -> Report | None:
+    """`project_report`, but a broken rules file (an unreadable baseline, say) must not
+    stop `graph` from drawing the view - `server/state.py::_analyse` already degrades
+    this way for the viewer, and `graph` had ruled the hard failure acceptable before
+    that landed. `None` here means the same as "no rules file": no `keep`, no
+    violations overlay, just the plain view."""
+    try:
+        return project_report(project)
+    except ConfigError:
+        return None
 
 
 def _wants_color() -> bool:

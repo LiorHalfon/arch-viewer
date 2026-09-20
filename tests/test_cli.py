@@ -134,6 +134,24 @@ def test_shows_no_outside_package_when_there_is_no_rules_file(repo, capsys):
     assert "grimp" not in [n["id"] for n in json.loads(out)["nodes"]]
 
 
+def test_graph_degrades_when_the_rules_file_is_broken(repo, capsys):
+    """A broken rules file (here, a baseline that does not exist) must not stop `graph`
+    from drawing the view - `server/state.py::_analyse` already degrades this way, and
+    `graph` reversed an earlier ruling to match it (Fix 5, M7/M8 review)."""
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(
+        rules.read_text().replace(
+            "fail_on_cycles = false", 'fail_on_cycles = false\nbaseline = "gone.json"'
+        )
+    )
+
+    code, out = run(capsys, "graph", str(repo), "--json")
+
+    assert code == 0
+    assert json.loads(out)["root"] == "sample"
+
+
 def test_a_path_without_a_command_opens_the_viewer(monkeypatch):
     from archview import cli
 
