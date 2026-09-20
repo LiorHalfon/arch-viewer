@@ -193,3 +193,32 @@ def test_externals_at_a_workspace_root_is_rejected_for_graph(capsys):
     err = capsys.readouterr().err
     assert "--externals" in err
     assert "--package" in err
+
+
+def test_runtime_only_at_a_workspace_root_is_rejected_for_cycles(capsys):
+    """`--runtime-only` is the same class of bug as `--root`/`--hide-tests`/
+    `--externals`: `cycles` accepts it (`_query_options`), but at a workspace root it
+    was silently ignored - `workspace_cycles` never filters by it. `graph` has no
+    `--runtime-only` flag at all, so it needs no rejection there."""
+    assert main(["cycles", str(FIXTURE), "--runtime-only"]) == 2
+    err = capsys.readouterr().err
+    assert "--runtime-only" in err
+    assert "--package" in err
+
+
+@pytest.mark.parametrize("fmt", ["--mermaid", "--dot"])
+def test_graph_at_a_workspace_root_marks_a_cross_package_violation(tmp_path, capsys, fmt):
+    """Mirrors test_cli_check.py::test_graph_prints_mermaid_with_violations_marked:
+    `_graph`'s workspace branch wires `violating_edges(view,
+    failing_imports(check_workspace(ws).between))` into `dot`/`mermaid` output so a
+    broken cross-package rule is highlighted without a flag - this pins that it
+    actually highlights one, not just that the wiring exists."""
+    root = workspace_dir(tmp_path, allowed={"core": (), "plugin": ()})
+
+    code, out = run(capsys, "graph", str(root), fmt)
+
+    assert code == 0
+    if fmt == "--mermaid":
+        assert "n_plugin -. 1 ✗ .-> n_core" in out
+    else:
+        assert '"plugin" -> "core" [label="1" color="#d9480f" style="dashed"' in out

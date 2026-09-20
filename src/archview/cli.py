@@ -362,7 +362,7 @@ def _neighbours(args: argparse.Namespace, outgoing: bool) -> int:
 def _cycles(args: argparse.Namespace) -> int:
     ws = _workspace_root(args)
     if ws is not None:
-        _reject_workspace_flags(args, ("root", "hide_tests"))
+        _reject_workspace_flags(args, ("root", "hide_tests", "runtime_only"))
         found = workspace_cycles(ws)
         _write(args, cycles_to_text(found, ws.name), cycles_to_dict(found, ws.name))
         return 0

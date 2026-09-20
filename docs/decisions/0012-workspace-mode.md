@@ -99,9 +99,9 @@ the design makes and why.
 - **`WorkspaceReport` lives in `rules/check.py`, not `workspace.py`.** It is pure
   report data — a name, a list of `(package name, Report)` pairs, and a `Report` for
   the rules between them — with nothing in it that references `workspace.py`. Putting
-  it there instead would have given `render/check.py` (which renders `WorkspaceReport`
-  alongside plain `Report`) a dependency on `workspace`, and transitively on
-  `extract`, just to describe a shape it already knows how to print.
+  it there instead would have given `render/workspace.py` (which renders
+  `WorkspaceReport` alongside plain `Report`) a dependency on `workspace`, and
+  transitively on `extract`, just to describe a shape it already knows how to print.
 
 - **`_owner` lives in `workspace.py`, not as a new `ComponentMap` accessor.** ADR
   0011 flagged this as a plausible extension point ("a further `ComponentMap`
