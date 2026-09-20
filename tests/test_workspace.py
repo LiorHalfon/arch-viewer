@@ -248,6 +248,26 @@ def test_a_workspace_exception_exempts_a_cross_package_import(tmp_path):
     assert not check_workspace(ws).failed
 
 
+def test_a_packages_own_exception_does_not_exempt_a_cross_package_import(tmp_path):
+    """Only [[archview.workspace.exceptions]] may exempt a cross-package edge; a
+    package's own [[archview.exceptions]] must not silently cancel a workspace rule
+    (M7 widened exceptions to cover outside edges, and a package's own rules file is
+    not the authority for what crosses a package line)."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ()})
+    (root / "plugin" / "archview.toml").write_text(
+        '[archview]\npackage = "plugin"\nsource_roots = ["src"]\n\n'
+        "[[archview.exceptions]]\n"
+        'importer = "plugin.adapter"\n'
+        'imported = "core"\n'
+        'reason = "must not exempt a workspace rule"\n'
+    )
+
+    report = check_workspace(open_workspace(root))
+
+    assert not_allowed(report.between) == [("plugin", "core")]
+    assert report.failed
+
+
 def test_a_third_party_import_is_not_a_cross_package_edge(tmp_path):
     """plugin imports openai, which is nobody's sibling."""
     ws = workspace_with(tmp_path, allowed={"core": (), "plugin": ("core",)})

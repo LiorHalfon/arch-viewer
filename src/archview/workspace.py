@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from archview.model.cycles import components, find_cycles
@@ -177,11 +177,19 @@ def _outside_imports(package: Package) -> dict[str, list[Import]]:
     `checked_imports` drops TYPE_CHECKING-only imports first, exactly as `check()`
     does for a package's own rules (A4): a workspace must not fire on the same
     pattern that is silently ignored inside a single package by default.
+
+    The package's own `[[archview.exceptions]]` are stripped before `component_edges`
+    sees them: M7 widened exceptions to exempt outside edges too, so a package's own
+    exception would otherwise exempt a cross-package import before `cross_edges` ever
+    saw it - the root rules file, via `[[archview.workspace.exceptions]]`, is the only
+    authority for what crosses a package line. The package's own `check()` still
+    applies its own exceptions to its own `[archview.externals]` rules; only this
+    workspace-attribution pass ignores them.
     """
     project = package.project
     model = checked_imports(project.model, project.config)
     components = component_map(project.config, model.project, model.separator)
-    edges = component_edges(model, components, project.config)
+    edges = component_edges(model, components, replace(project.config, exceptions=()))
     by_outside: dict[str, list[Import]] = defaultdict(list)
     for (_, outside), imports in edges.outside.items():
         by_outside[outside] += imports
