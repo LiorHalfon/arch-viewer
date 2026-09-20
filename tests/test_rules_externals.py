@@ -124,6 +124,29 @@ def test_an_externals_key_that_is_not_a_component_warns():
     assert any("nope" in w.message for w in report.warnings)
 
 
+def test_an_allowed_target_naming_an_outside_package_warns():
+    """`[archview.allowed]` is only ever consulted for `edges.internal` pairs, where
+    both sides are components (`_rule_problems`); naming an outside package there is a
+    rule that can never fire, and used to be silent because the `known` set the
+    `allowed` loop checked against was widened (for `forbidden`/`*`) to include
+    externals - Fix 2 (M7/M8 review)."""
+    config = Config(allowed={"api": ["llm"], "llm": ["openai"]})
+    report = check(model_with_external(), config)
+    assert [w.message for w in report.warnings if w.kind == "unknown_component"] == [
+        "[archview.allowed.llm] names 'openai', which has no modules"
+    ]
+
+
+def test_an_allowed_target_naming_the_star_wildcard_warns():
+    """Unlike `forbidden.from`, `[archview.allowed]` targets never expand `"*"` - so
+    naming it there is a dead entry that must warn."""
+    config = Config(allowed={"api": ["llm"], "llm": ["*"]})
+    report = check(model_with_external(), config)
+    assert [w.message for w in report.warnings if w.kind == "unknown_component"] == [
+        "[archview.allowed.llm] names '*', which has no modules"
+    ]
+
+
 def test_an_outside_name_on_the_from_side_is_an_error():
     config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("openai", "llm"),))
     with pytest.raises(ConfigError, match="openai"):

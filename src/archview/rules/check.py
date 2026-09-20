@@ -419,7 +419,11 @@ def _warnings(
     table: str,
 ) -> list[Notice]:
     external = {n.id for n in model.nodes if n.kind == "external"}
-    known = set(present) | external | {ALL_COMPONENTS}
+    known_components = set(present)
+    # `allowed` is consulted only for `edges.internal` pairs (`_rule_problems`), where
+    # both sides are components: an outside name or "*" there is a rule that can never
+    # fire, so it must not be treated as known the way `forbidden` legitimately is.
+    known = known_components | external | {ALL_COMPONENTS}
     warnings = []
     if config.allowed is None:
         warnings.append(
@@ -431,7 +435,7 @@ def _warnings(
         )
     for component, targets in sorted((config.allowed or {}).items()):
         for name in [component] + ([] if targets == ALL else list(targets)):
-            if name not in known:
+            if name not in known_components:
                 warnings.append(
                     Notice(
                         "unknown_component",
