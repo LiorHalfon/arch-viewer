@@ -424,19 +424,26 @@ def _serve(args: argparse.Namespace) -> int:
     from archview.server.app import create_app
     from archview.server.state import ViewerState
 
-    workspace = ViewerState(args.path, args.package, args.config, args.language, args.tsconfig)
+    # `_workspace_root`/`_workspace_member` are shared with `_check`, `_graph` and
+    # `_cycles`; `ViewerState` itself opens a plain workspace root as a workspace
+    # (M8), so only `--package` at one needs resolving here, exactly as `_graph` does.
+    member = _workspace_member(args)
+    if member is not None:
+        state = ViewerState(member.repo, config_path=member.config_path)
+    else:
+        state = ViewerState(args.path, args.package, args.config, args.language, args.tsconfig)
     if args.watch:
-        workspace.watch()
+        state.watch()
     port = _free_port(args.host, args.port)
     url = f"http://{args.host}:{port}/"
-    summary = workspace.summary()
+    summary = state.summary()
     sys.stdout.write(
         f"archview: {summary['project']} ({summary['modules']} modules) at {url}  (Ctrl+C stops)\n"
     )
     sys.stdout.flush()
     if not args.no_open:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
-    uvicorn.run(create_app(workspace), host=args.host, port=port, log_level="warning")
+    uvicorn.run(create_app(state), host=args.host, port=port, log_level="warning")
     return 0
 
 

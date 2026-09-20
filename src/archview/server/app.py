@@ -17,7 +17,7 @@ UI = Path(__file__).resolve().parent.parent / "ui"
 NO_STORE = {"Cache-Control": "no-store"}
 
 
-def create_app(workspace: ViewerState) -> FastAPI:
+def create_app(state: ViewerState) -> FastAPI:
     app = FastAPI(title="archview", docs_url=None, redoc_url=None, openapi_url=None)
 
     def found(call):
@@ -28,34 +28,43 @@ def create_app(workspace: ViewerState) -> FastAPI:
 
     @app.get("/api/project")
     def project() -> dict:
-        return workspace.summary()
+        return state.summary()
 
     @app.get("/api/view")
-    def view(root: str | None = None, externals: bool = False, hide_tests: bool = False) -> dict:
-        return found(lambda: workspace.view(root, externals, hide_tests))
+    def view(
+        root: str | None = None,
+        externals: bool = False,
+        hide_tests: bool = False,
+        package: str | None = None,
+    ) -> dict:
+        return found(lambda: state.view(root, externals, hide_tests, package))
 
     @app.get("/api/tree")
-    def tree(root: str | None = None, hide_tests: bool = False) -> dict:
-        return found(lambda: workspace.tree(root, hide_tests))
+    def tree(root: str | None = None, hide_tests: bool = False, package: str | None = None) -> dict:
+        return found(lambda: state.tree(root, hide_tests, package))
 
     @app.get("/api/check")
-    def check() -> dict:
-        return found(workspace.check)
+    def check(package: str | None = None) -> dict:
+        return found(lambda: state.check(package))
 
     @app.get("/api/export", response_class=PlainTextResponse)
     def export(
-        format: str, root: str | None = None, externals: bool = False, hide_tests: bool = False
+        format: str,
+        root: str | None = None,
+        externals: bool = False,
+        hide_tests: bool = False,
+        package: str | None = None,
     ) -> str:
-        return found(lambda: workspace.export(root, format, externals, hide_tests))
+        return found(lambda: state.export(root, format, externals, hide_tests, package))
 
     @app.get("/api/source")
-    def source(module: str) -> dict:
-        return found(lambda: workspace.source(module))
+    def source(module: str, package: str | None = None) -> dict:
+        return found(lambda: state.source(module, package))
 
     @app.post("/api/reanalyze")
     def reanalyze() -> dict:
-        workspace.reload()
-        return workspace.summary()
+        state.reload()
+        return state.summary()
 
     @app.get("/")
     def index() -> FileResponse:

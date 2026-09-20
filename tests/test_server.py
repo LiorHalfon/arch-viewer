@@ -11,12 +11,24 @@ from archview.server.state import ViewerState, source_files
 from tests.typescript_support import TS_SAMPLE, requires_typescript
 
 FIXTURES = Path(__file__).parent / "fixtures"
+WORKSPACE = FIXTURES / "workspace"
 
 
 @pytest.fixture
 def repo(tmp_path):
     shutil.copytree(FIXTURES / "sample", tmp_path / "sample")
     return tmp_path
+
+
+@pytest.fixture
+def workspace_repo(tmp_path):
+    """A writable copy of the workspace fixture (core has rules, plugin does not)."""
+    shutil.copytree(WORKSPACE, tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+def client_for(path):
+    return TestClient(create_app(ViewerState(path)))
 
 
 @pytest.fixture
@@ -305,3 +317,116 @@ def test_serves_a_typescript_project(tmp_path):
     assert (
         client.get("/api/source", params={"module": "ts-sample/domain/order.ts"}).status_code == 200
     )
+
+
+# ---------- workspace mode (M8) ----------
+
+
+def test_the_api_returns_the_workspace_view_at_the_top():
+    client = client_for(WORKSPACE)
+
+    data = client.get("/api/view").json()
+
+    assert sorted(n["id"] for n in data["nodes"]) == ["core", "plugin"]
+    assert all(n["kind"] == "package" and n["has_children"] for n in data["nodes"])
+    assert data["parent"] is None
+
+
+def test_the_api_drills_into_a_package():
+    client = client_for(WORKSPACE)
+
+    data = client.get("/api/view", params={"package": "core", "root": "core"}).json()
+
+    assert "core.ports" in [n["id"] for n in data["nodes"]]
+    assert data["project"] == "core"
+    assert data["separator"] == "."
+
+
+def test_a_packages_own_root_points_back_to_the_workspace():
+    client = client_for(WORKSPACE)
+
+    data = client.get("/api/view", params={"package": "core", "root": "core"}).json()
+
+    assert data["parent"] == "workspace"
+
+
+def test_the_api_reads_a_source_file_from_a_package():
+    client = client_for(WORKSPACE)
+
+    body = client.get("/api/source", params={"package": "core", "module": "core.ports"}).json()
+
+    assert "Port" in body["text"]
+    assert body["file"].endswith("ports.py")
+
+
+def test_a_single_package_repo_still_works(repo):
+    client = client_for(repo)
+
+    assert client.get("/api/view").json()["nodes"]
+
+
+def test_an_unknown_package_is_not_found():
+    client = client_for(WORKSPACE)
+
+    assert client.get("/api/view", params={"package": "nope", "root": "nope"}).status_code == 404
+    assert client.get("/api/source", params={"package": "nope", "module": "x"}).status_code == 404
+
+
+def test_a_package_param_on_a_non_workspace_repo_is_not_found(client):
+    assert (
+        client.get("/api/view", params={"package": "sample", "root": "sample"}).status_code == 404
+    )
+
+
+def test_the_workspace_summary_lists_its_packages():
+    client = client_for(WORKSPACE)
+
+    summary = client.get("/api/project").json()
+
+    assert summary["workspace"] is True
+    assert summary["packages"] == ["core", "plugin"]
+    assert summary["project"] == "workspace"
+
+
+def test_the_api_checks_the_whole_workspace_and_one_package():
+    client = client_for(WORKSPACE)
+
+    top = client.get("/api/check").json()
+    core = client.get("/api/check", params={"package": "core"}).json()
+
+    assert top["workspace"] == "workspace"
+    assert "core" in [p["package"] for p in top["packages"]]
+    assert {"model", "ports"} <= core["metrics"].keys()
+    assert client.get("/api/check", params={"package": "plugin"}).status_code == 404
+
+
+def test_the_top_view_marks_a_cross_package_violation(workspace_repo):
+    (workspace_repo / "archview.toml").write_text(
+        '[archview.workspace]\npackages = ["core", "plugin"]\n\n'
+        "[archview.workspace.allowed]\ncore = []\nplugin = []\n"
+    )
+    client = client_for(workspace_repo)
+
+    view = client.get("/api/view").json()
+
+    broken = [(e["source"], e["target"]) for e in view["edges"] if e["violation"]]
+    assert ("plugin", "core") in broken
+    assert 'class="violation"' in view["dot"]
+
+
+def test_watch_watches_every_package_directory(workspace_repo):
+    import time
+
+    state = ViewerState(workspace_repo)
+    state.watch(interval=0.05)
+    first = state.generation
+
+    time.sleep(0.2)
+    (workspace_repo / "plugin" / "src" / "plugin" / "extra.py").write_text("")
+    deadline = time.monotonic() + 5
+    while state.generation == first and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    assert state.generation > first
+    view = state.view(root="plugin", package="plugin")
+    assert "plugin.extra" in [n["id"] for n in view["nodes"]]
