@@ -93,6 +93,24 @@ def test_a_workspace_root_does_not_ask_you_to_pick_a_package(tmp_path, capsys):
     assert main(["check", str(root)]) == 0
 
 
+def test_check_with_a_package_checks_that_package_alone(capsys):
+    """`--package` drills `check` into one member exactly as it already does for
+    `graph`/`cycles` - the same rules, the same exit code, as if run inside that
+    package's own directory."""
+    assert main(["check", str(FIXTURE), "--package", "core"]) == 0
+    assert "ok: core" in capsys.readouterr().out
+
+
+def test_check_with_a_package_that_has_no_rules_fails_clearly(capsys):
+    assert main(["check", str(FIXTURE), "--package", "plugin"]) == 2
+    assert "no archview.toml" in capsys.readouterr().err
+
+
+def test_check_with_an_unknown_package_fails_clearly(capsys):
+    assert main(["check", str(FIXTURE), "--package", "bogus"]) == 2
+    assert "no package 'bogus' in workspace" in capsys.readouterr().err
+
+
 def test_the_header_columns_and_the_summary_are_pinned_exactly():
     """The header column width is reflow-sensitive - it is derived from the longest
     package name, so it silently changes whenever a package is added or removed

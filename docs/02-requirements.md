@@ -90,6 +90,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C10 | Runs in < a few seconds on a typical service repo so it can sit in a pre-commit hook and in the agent's fix-it loop. | MVP | 16:52–17:25 |
 | C11 | Config evolution: unknown/legacy keys produce a clear error with a hint, not silent acceptance. | V2 | DC |
 | C12 | `allowed`/`forbidden`/`exceptions` can name a package outside the project (a PyPI/npm dependency, or a workspace sibling before M8 tells them apart) via a new `[archview.externals]` allow-list; `forbidden` needs no new syntax. A stdlib target is a config error, not a silent no-op. | MVP (M7) | GitHub issue #1; ADR 0011 |
+| C13 | A `[archview.workspace]` table at a repo's root lists several packages (Python and/or TypeScript), each opened with its own rules file when it has one; `check` runs every package's own check plus a declared `allowed`/`forbidden`/`exceptions` table for the imports *between* them, with one exit code. A cross-package import is attributed to its sibling by the M7 outside name it already produces. | MVP (M8) | GitHub issue #2; ADR 0012 |
 
 ## 7. Agent integration
 
@@ -131,13 +132,13 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-20, after M7)
+## 12. Implementation status (2026-09-20, after M8)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
-| Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C12. C5 text + JSON | C5 GitHub Actions annotations |
+| Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012) | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
+| Checker | C1–C4, C6–C13. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
@@ -154,3 +155,11 @@ M7 (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
 `[archview.externals]`, `from = "*"`, a viewer overlay for the failing edge, and
 `archview init --externals`. This repo's own rules gain a live outside rule (`model`
 must not reach `grimp`).
+
+M8 (2026-09-20): workspace mode (C13, ADR 0012). A `[archview.workspace]` table
+federates several packages' own `Project`s rather than merging them into one `Model`;
+a cross-package import is an M7 outside edge whose name joins one of a sibling's
+aliases (its top-level module name; its `package.json` name, scoped or not; a
+TypeScript `../` import resolved back to a package directory). `check`, `graph` and
+`cycles` run over the whole workspace by default and drill into one package with
+`--package`; the viewer's top level is the packages.

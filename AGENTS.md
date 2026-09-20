@@ -7,21 +7,23 @@ AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1–M6 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
+**M1–M8 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
 Python, the TypeScript compiler API for TypeScript, ADR 0010), the model (views,
-cycles, layers, metrics, agent queries), the checker (`rules/`, with layers, zones
-and baseline), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
+cycles, layers, metrics, agent queries), the checker (`rules/`, with layers, zones,
+baseline and rules that name a package outside the project, ADR 0011), workspace
+mode (`workspace.py`, several packages checked and drawn as one architecture, ADR
+0012), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
 `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits its own
 `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions
 (`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
 Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
-2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M6
-3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor
+2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M8
+3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode
 4. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
 5. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
-6. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks
+6. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks, workspace mode
 7. `docs/01-video-notes.md` — the talk that started this
 8. `spike/arch_graph.py` — the original one-file spike; superseded by `src/archview/`
 9. `spike/viewer/view.py` — the spike's self-contained HTML viewer; superseded by `archview serve`
@@ -67,6 +69,8 @@ uv run archview check [--format json] [--update-baseline]   # exit 0 pass, 1 pro
 uv run archview why cli networkx                   # also: deps X, rdeps X, cycles [--root X]
 uv run archview init ~/git/tiny-tale-backend --config /tmp/tt.toml   # rules kept outside that repo
 uv run archview graph ~/git/storygenerator         # TypeScript (needs node + npm install there)
+uv run archview check --package core               # at a workspace root: check one member alone
+uv run archview graph --package core               # ditto for the view; drop --package for the whole workspace
 npm ci --prefix tests/fixtures/ts-sample           # once, for the TypeScript tests
 uv run pytest && uv run ruff check
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff

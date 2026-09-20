@@ -131,6 +131,81 @@ packages named `queue` or `string` that collide with Python stdlib module names.
 today's imports, the same freeze-then-delete starting point `init` already gives
 `[archview.allowed]`; a plain `archview init` leaves the table out.
 
+## Workspace mode
+
+A `[archview.workspace]` table at the repo root turns several packages — Python,
+TypeScript, or a mix — into one architecture: each keeps its own rules file for what
+happens inside it, and a second table declares what may cross between them.
+
+```toml
+[archview.workspace]
+packages = ["core", "plugins/openai", "server", "web"]   # paths relative to this file
+fail_on_violations = true            # default true
+fail_on_cycles = true                # cycles *between* packages; default true
+baseline = "archview-baseline.json"  # optional, for the cross-package rules only
+
+[archview.workspace.allowed]         # keyed by package name (each package's own Project.package)
+core    = []
+openai  = ["core"]
+server  = ["core", "openai"]
+web     = []
+
+[[archview.workspace.forbidden]]
+from = "web"
+to   = "openai"
+
+[[archview.workspace.exceptions]]
+importer = "server.wiring"
+imported = "openai"
+reason   = "the composition root builds the plugins from settings"
+```
+
+`allowed`, `forbidden` and `exceptions` are the same tables as a single package's
+rules file, just keyed by package name instead of component name; `"all"` and the
+`from = "*"` wildcard work the same way.
+
+A cross-package import is an M7 outside edge — each package already sees a sibling as
+a plain external, since it cannot tell a workspace sibling from a third-party
+dependency on its own. archview attributes that outside name back to the sibling by
+matching it against the sibling's aliases: its top-level module name (Python), its
+`package.json` `name` with and without the `@scope/` prefix (TypeScript), or, for a
+TypeScript `../`-relative import, the sibling whose directory contains the resolved
+file. A name that matches no sibling is an ordinary third-party dependency, governed
+by that package's own `[archview.externals]` if it has one.
+
+**`undeclared` applies here, unlike `[archview.externals]`.** A package missing from
+`[archview.workspace.allowed]` fails the check: the set of workspace packages is
+closed and every one of them was added on purpose, so a new one is exactly the kind
+of decision ADR 0006 says an agent must not make quietly. This is the opposite of
+`[archview.externals]`, where the universe of third-party packages is open and large
+and a missing entry is deliberately left unconstrained.
+
+**A package listed without its own rules file is unconstrained inside it.** Its
+model is still built (the cross-package edges need it), but its own check does not
+run at all — not even for cycles — so a workspace can be adopted one package's rules
+file at a time.
+
+```bash
+archview check                       # every package's own check, plus the rules between them
+archview check --format json         # {"workspace": ..., "ok": ..., "packages": [...], "between": {...}}
+archview check --package core        # exactly like `archview check` inside core/ itself
+archview graph                       # the workspace: packages as boxes, cross-package imports as edges
+archview graph --package web         # drills into one package's own view
+archview cycles                      # cycles between packages
+```
+
+`--update-baseline` at the root writes every configured package's own baseline plus
+the workspace baseline, in one run. `metrics`, `why`, `deps` and `rdeps` do not read
+`[archview.workspace]` at all; point them at a member's own directory
+(`archview metrics core`), exactly as you would if it were not part of a workspace.
+`graph` and `cycles`'s `--root` and `--hide-tests`, and `graph`'s `--externals`, need
+a single package; at a workspace root they fail with a usage error naming `--package`
+rather than silently doing nothing.
+
+`archview init` never writes a `[archview.workspace]` table: which packages exist and
+what may depend on what is the architectural decision a human is making, not one to
+infer from imports. See ADR 0012.
+
 ## Legacy code: baseline
 
 ```bash

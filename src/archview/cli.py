@@ -309,8 +309,10 @@ def _open(args: argparse.Namespace, names: list[str] | None = None) -> Project:
         raise ProjectError(f"several packages in {args.path}; pick one with --package") from None
 
 
-def _rules_project(args: argparse.Namespace):
-    project = _open(args)
+def _rules_project(args: argparse.Namespace) -> Project:
+    """The project `check`/`--stop-hook` run on: `--package`'s own member when
+    `args.path` is a workspace root, exactly as `_graph`/`_cycles` already drill in."""
+    project = _workspace_member(args) or _open(args)
     if project.config_path is None:
         raise UsageError(
             f"no {RULES_FILE} (or [tool.archview] in pyproject.toml) in {project.repo}; "
