@@ -414,6 +414,23 @@ def test_the_top_view_marks_a_cross_package_violation(workspace_repo):
     assert 'class="violation"' in view["dot"]
 
 
+def test_a_workspace_members_violating_outside_package_shows_without_externals(workspace_repo):
+    """Mirrors test_shows_a_violating_outside_package_without_externals, but for a
+    workspace member: `_view`'s `keep = outside_targets(analysis.report)` must apply
+    per package inside a workspace too, not only for a single-project repo."""
+    from archview.cli import main
+
+    main(["init", str(workspace_repo / "plugin")])
+    rules = workspace_repo / "plugin" / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.externals]\nadapter = []\n")
+    client = client_for(workspace_repo)
+
+    view = client.get("/api/view", params={"package": "plugin", "root": "plugin"}).json()
+
+    assert "openai" in [n["id"] for n in view["nodes"]]
+    assert ("plugin.adapter", "openai") in [(e["source"], e["target"]) for e in view["edges"]]
+
+
 def test_watch_watches_every_package_directory(workspace_repo):
     import time
 

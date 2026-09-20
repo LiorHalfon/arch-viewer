@@ -146,6 +146,7 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   document.title = `${root} · archview`;
   crumbs(root);
   stats(view);
+  rulesButton();
   if (!keepPanel) closePanel();
   draw(view);
   notes();
@@ -197,13 +198,25 @@ function warningSummary(warnings) {
     .join(" · ");
 }
 
+// `state.project`'s counts (failing rules, warnings) are always workspace-wide once
+// inside a workspace - `/api/project` has no `package=` (M8) - so `rulesButton()`
+// and `stats()` use this to say so plainly while browsing one package, rather than
+// reading as if the numbers were scoped to it.
+function insideAPackage() {
+  return state.isWorkspace && !!state.package;
+}
+
 function stats(view) {
   const parts = [plural(view.nodes.length, "box", "boxes"), plural(view.edges.length, "dependency", "dependencies")];
   parts.push(view.cycles.length ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>` : "no cycles");
   const violations = view.edges.filter((e) => e.violation).length;
   if (violations) parts.push(`<span class="bad">${plural(violations, "rule break")}</span>`);
   const warnings = state.project.warnings;
-  if (warnings.length) parts.push(`<button class="link" id="show-warnings" title="Imports the analysis could not resolve or follow">⚠ ${warningSummary(warnings)}</button>`);
+  if (warnings.length) {
+    const scoped = insideAPackage();
+    const title = "Imports the analysis could not resolve or follow" + (scoped ? " - workspace-wide, not just this package" : "");
+    parts.push(`<button class="link" id="show-warnings" title="${esc(title)}">⚠ ${scoped ? "workspace: " : ""}${warningSummary(warnings)}</button>`);
+  }
   $("stats").innerHTML = parts.join(" · ");
   const button = $("show-warnings");
   if (button) button.onclick = openWarnings;
@@ -807,10 +820,13 @@ function poll() {
 function rulesButton() {
   const button = $("rules");
   const p = state.project;
+  const scoped = insideAPackage();
+  const prefix = scoped ? "Workspace rules" : "Rules";
   button.hidden = !p.rules;
   button.classList.toggle("bad", p.failing > 0 || !!p.rules_error);
-  button.textContent = p.rules_error ? "Rules ⚠" : p.failing ? `Rules: ${p.failing} failing` : "Rules ✓";
-  button.title = p.rules_error || `archview check against ${p.rules}`;
+  button.textContent = p.rules_error ? `${prefix} ⚠` : p.failing ? `${prefix}: ${p.failing} failing` : `${prefix} ✓`;
+  const base = p.rules_error || `archview check against ${p.rules}`;
+  button.title = scoped ? `${base} - counts every package in the workspace, not just this one` : base;
 }
 
 // ---------- wiring ----------
