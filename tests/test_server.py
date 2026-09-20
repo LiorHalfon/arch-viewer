@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from archview.server.app import create_app
-from archview.server.state import ViewerState, source_files
+from archview.server.state import NotFound, ViewerState, source_files
 from tests.typescript_support import TS_SAMPLE, requires_typescript
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -93,6 +93,17 @@ def test_drills_down_and_knows_the_way_back(client):
 def test_a_module_or_unknown_root_is_not_a_view(client):
     assert client.get("/api/view", params={"root": "sample.infra.db"}).status_code == 404
     assert client.get("/api/view", params={"root": "nope"}).status_code == 404
+
+
+def test_unknown_package_error_names_the_repos_own_table(repo):
+    """A plain (non-workspace) repo whose rules live under `[tool.archview]` must name
+    that table in the "not a package" message, not a hardcoded "archview" (Fix 4,
+    M7/M8 review)."""
+    (repo / "pyproject.toml").write_text('[tool.archview]\npackage = "sample"\n')
+    state = ViewerState(repo)
+
+    with pytest.raises(NotFound, match=r"\[tool\.archview\.workspace\]"):
+        state.view(package="bogus")
 
 
 def test_the_tree_nests_the_subtree_of_a_root_packages_first(client):

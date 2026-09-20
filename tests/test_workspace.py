@@ -200,6 +200,34 @@ def test_open_workspace_requires_a_workspace_table(tmp_path):
         open_workspace(tmp_path)
 
 
+def test_open_workspace_error_uses_the_pyproject_table_name(tmp_path):
+    """Every other rule name derives from `Config.table`; this one was hardcoded to
+    "archview.workspace" (Fix 4, M7/M8 review)."""
+    (tmp_path / "pyproject.toml").write_text('[tool.archview]\npackage = "root"\n')
+    with pytest.raises(ConfigError, match=r"no \[tool\.archview\.workspace\] table"):
+        open_workspace(tmp_path)
+
+
+def test_between_rules_use_the_pyproject_table_name(tmp_path):
+    """`_between_config` hardcoded `table="archview.workspace"`; a workspace root whose
+    rules live under `[tool.archview.workspace]` (a `pyproject.toml`) reported problems
+    against an identifier that does not exist in that file (Fix 4, M7/M8 review)."""
+    shutil.copytree(FIXTURE, tmp_path, dirs_exist_ok=True)
+    (tmp_path / "archview.toml").unlink()
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.archview.workspace]\n"
+        'packages = ["core", "plugin"]\n\n'
+        "[tool.archview.workspace.allowed]\n"
+        "core = []\n"
+        "plugin = []\n"
+    )
+
+    report = check_workspace(open_workspace(tmp_path))
+
+    assert not_allowed(report.between) == [("plugin", "core")]
+    assert report.between.problems[0].rule == "tool.archview.workspace.allowed.plugin"
+
+
 def test_open_workspace_rejects_two_packages_with_the_same_name(tmp_path):
     (tmp_path / "a" / "shared").mkdir(parents=True)
     (tmp_path / "a" / "shared" / "__init__.py").write_text("")

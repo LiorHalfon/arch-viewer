@@ -174,7 +174,8 @@ class ViewerState:
         if package in self._packages:
             return self._packages[package]
         if self.workspace is None:
-            raise NotFound(f"{package!r} is not a package; this repo has no [archview.workspace]")
+            table = self.project.config.table
+            raise NotFound(f"{package!r} is not a package; this repo has no [{table}.workspace]")
         names = ", ".join(p.name for p in self.workspace.packages)
         raise NotFound(
             f"no package {package!r} in workspace {self.workspace.name} (found: {names})"

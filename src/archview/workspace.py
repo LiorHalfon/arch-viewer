@@ -78,7 +78,7 @@ def open_workspace(
     if config is None:
         config = load_config(path) if path else Config()
     if config.workspace is None:
-        raise ConfigError(f"no [archview.workspace] table in {path or root / RULES_FILE}")
+        raise ConfigError(f"no [{config.table}.workspace] table in {path or root / RULES_FILE}")
     base = path.parent if path else root
     packages = _open_packages(config.workspace.packages, base)
     return Workspace(config.package or root.name, root, packages, config)
@@ -206,7 +206,7 @@ def _check_between(ws: Workspace) -> Report:
     rules = ws.config.workspace
     present = tuple(p.name for p in ws.packages)
     edges = Edges(internal=cross_edges(ws), outside={}, exceptions_used=set())
-    config = _between_config(rules)
+    config = _between_config(ws.config, rules)
     problems = [
         *_rule_problems(edges, present, config, config.table),
         *_cycle_problems(edges.internal, present, config, config.table),
@@ -217,10 +217,13 @@ def _check_between(ws: Workspace) -> Report:
     return report
 
 
-def _between_config(rules: WorkspaceRules) -> Config:
-    """A `Config` carrying just what `_rule_problems`/`_cycle_problems` need."""
+def _between_config(root: Config, rules: WorkspaceRules) -> Config:
+    """A `Config` carrying just what `_rule_problems`/`_cycle_problems` need. `table`
+    derives from the root rules file's own table, exactly as every other rule name
+    does, so a `pyproject.toml`-based workspace ("tool.archview") does not report
+    problems against "archview.workspace", an identifier that does not exist there."""
     return Config(
-        table="archview.workspace",
+        table=f"{root.table}.workspace",
         allowed=rules.allowed,
         forbidden=rules.forbidden,
         fail_on_violations=rules.fail_on_violations,
