@@ -459,7 +459,13 @@ def _warnings(
                     )
                 )
     for f in config.all_forbidden():
-        for name in (f.source, f.target):
+        # A literal `forbidden` rule whose *target* is absent from the graph is the ban
+        # working: the name is missing precisely because nobody imports it (issue #5).
+        # Warning there trains people to ignore warnings. The *source* is different - a
+        # `from` that names nothing can never fire, so it is still a typo. Rules derived
+        # from `layers`/`independent` name components on both sides, so both still warn.
+        checked = (f.source,) if f.origin == "forbidden" else (f.source, f.target)
+        for name in checked:
             if name not in known:
                 warnings.append(
                     Notice(
