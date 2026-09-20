@@ -112,8 +112,13 @@ def test_a_live_outside_rule_warns_about_nothing():
     assert [w for w in report.warnings if w.kind == "unknown_component"] == []
 
 
-def test_a_dead_outside_rule_warns():
-    config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("llm", "anthropic"),))
+def test_a_dead_externals_rule_warns():
+    """An `externals` target nothing imports is dead config: you granted access to a
+    package that is not there. The `forbidden` mirror image is NOT dead - see
+    `test_a_forbidden_target_that_nothing_imports_does_not_warn` (issue #5). This test
+    asserted the `forbidden` case until then, which was the behaviour that issue
+    reported as training people to ignore warnings."""
+    config = Config(allowed={"api": ["llm"], "llm": []}, externals={"llm": ("anthropic",)})
     report = check(model_with_external(), config)
     assert any("anthropic" in w.message for w in report.warnings)
 
@@ -151,3 +156,27 @@ def test_an_outside_name_on_the_from_side_is_an_error():
     config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("openai", "llm"),))
     with pytest.raises(ConfigError, match="openai"):
         check(model_with_external(), config)
+
+
+def test_a_forbidden_target_that_nothing_imports_does_not_warn():
+    """A ban naming an absent package is the ban working, not dead config.
+
+    The name is missing from the graph precisely because nobody imports it (issue #5).
+    """
+    config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("*", "anthropic"),))
+    report = check(model_with_external(), config)
+    assert [w for w in report.warnings if "anthropic" in w.message] == []
+
+
+def test_a_forbidden_source_that_names_nothing_still_warns():
+    """`from` naming a component that does not exist can never fire - that is a typo."""
+    config = Config(allowed={"api": ["llm"], "llm": []}, forbidden=(Forbidden("nope", "openai"),))
+    report = check(model_with_external(), config)
+    assert any("nope" in w.message for w in report.warnings)
+
+
+def test_a_layers_derived_rule_still_warns_about_a_typo():
+    """`layers` names components, so an absent one there is a misspelling, not a ban."""
+    config = Config(allowed={"api": ["llm"], "llm": []}, layers=[("api",), ("typo",)])
+    report = check(model_with_external(), config)
+    assert any("typo" in w.message for w in report.warnings)
