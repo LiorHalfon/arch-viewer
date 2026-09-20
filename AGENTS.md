@@ -20,13 +20,14 @@ Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
 2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M8
-3. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode
-4. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
-5. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
-6. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks, workspace mode
-7. `docs/01-video-notes.md` — the talk that started this
-8. `spike/arch_graph.py` — the original one-file spike; superseded by `src/archview/`
-9. `spike/viewer/view.py` — the spike's self-contained HTML viewer; superseded by `archview serve`
+3. `docs/superpowers/specs/` — the binding design specs a milestone is built from (ADRs 0011, 0012 both open by naming the one they record)
+4. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode
+5. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
+6. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
+7. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks, workspace mode
+8. `docs/01-video-notes.md` — the talk that started this
+9. `spike/arch_graph.py` — the original one-file spike; superseded by `src/archview/`
+10. `spike/viewer/view.py` — the spike's self-contained HTML viewer; superseded by `archview serve`
 
 ## Decisions already made
 

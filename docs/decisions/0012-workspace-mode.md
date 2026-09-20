@@ -112,6 +112,20 @@ the design makes and why.
   already needs `rules`. Keeping `_owner` in `workspace.py`, operating on the
   `Package` objects its own caller assembled, keeps the dependency one-directional.
 
+- **The cross-package report never warns about an unused exception or lists an
+  unused allowance, and this is not implemented anywhere.** `_check_between` builds
+  the `between` `Report` directly - `Edges(internal=cross_edges(ws), outside={},
+  exceptions_used=set())` and `Report(ws.name, present, tuple(problems), ())` - so
+  `warnings` is hardcoded to `()` and `unused` keeps its default `()`. A single
+  project's own `check()` calls `_warnings()` (which reports `unused_exception` from
+  `exceptions_used`) and `_unused()` (which lists an `[archview.allowed]` entry no
+  import uses); `_check_between` calls neither. Concretely: a stale
+  `[[archview.workspace.exceptions]]` entry that exempts nothing produces no warning,
+  and an `[archview.workspace.allowed]` entry that permits a package pair nothing
+  actually imports is never flagged as tightenable. Both gaps are undocumented
+  elsewhere and unimplemented; this ADR just records them next to the nested-package
+  limitation below, rather than leaving them to be rediscovered.
+
 - **A known limitation, stated plainly.** `_owner_by_path` resolves a `../` import to
   the first sibling package (sorted by name) whose directory contains the target —
   there is no preference for the deepest or most specific match. A workspace that

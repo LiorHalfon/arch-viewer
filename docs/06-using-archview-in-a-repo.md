@@ -120,7 +120,8 @@ sibling package in a workspace; archview cannot tell those two apart from one
 package's model alone (ADR 0011). `[archview.externals]` is the allow-list for these:
 unlike `[archview.allowed]`, a component missing from it is unconstrained, not an
 error, so it can be adopted one component at a time. `[[archview.forbidden]]` can
-also target one, with either side checked even when nothing is declared. `from` always
+also target one, and the rule is enforced whether or not `[archview.externals]`
+declares anything. `from` always
 names a component (or `"*"`); an outside name there is a `ConfigError`, since nothing
 archview can see imports *out of* a third-party package. Naming a stdlib module in
 `to` is a separate `ConfigError` at load time, since the extractor already drops
