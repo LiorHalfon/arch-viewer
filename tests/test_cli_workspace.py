@@ -173,6 +173,43 @@ def test_cycles_with_a_package_drills_in(capsys):
     assert "no cycles under core" in capsys.readouterr().out
 
 
+def test_metrics_with_a_package_drills_in(capsys):
+    """`_metrics` used `_open(args)` directly, skipping `_workspace_member` - so
+    `--package` at a workspace root failed with "no package … (found: none)" even
+    though the workspace listed packages (Fix 3, M7/M8 review)."""
+    assert main(["metrics", str(FIXTURE), "--package", "core"]) == 0
+    out = capsys.readouterr().out
+    assert "model" in out
+    assert "ports" in out
+
+
+def test_metrics_with_an_unknown_package_fails_clearly(capsys):
+    assert main(["metrics", str(FIXTURE), "--package", "bogus"]) == 2
+    assert "no package 'bogus' in workspace" in capsys.readouterr().err
+
+
+def test_deps_with_a_package_drills_in(capsys):
+    """`deps`/`why`/`rdeps` all go through `_query_model`, which had the same bug as
+    `_metrics` (Fix 3)."""
+    assert main(["deps", "ports", str(FIXTURE), "--package", "core"]) == 0
+    assert "model" in capsys.readouterr().out
+
+
+def test_rdeps_with_a_package_drills_in(capsys):
+    assert main(["rdeps", "model", str(FIXTURE), "--package", "core"]) == 0
+    assert "ports" in capsys.readouterr().out
+
+
+def test_why_with_a_package_drills_in(capsys):
+    assert main(["why", "ports", "model", str(FIXTURE), "--package", "core"]) == 0
+    assert "core.ports -> core.model" in capsys.readouterr().out
+
+
+def test_deps_with_an_unknown_package_fails_clearly(capsys):
+    assert main(["deps", "ports", str(FIXTURE), "--package", "bogus"]) == 2
+    assert "no package 'bogus' in workspace" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("command", ["graph", "cycles"])
 @pytest.mark.parametrize("flag", ["--root", "--hide-tests"])
 def test_a_package_scoped_flag_at_a_workspace_root_is_rejected(capsys, command, flag):

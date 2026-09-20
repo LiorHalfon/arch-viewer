@@ -328,8 +328,11 @@ def _filtered(model: Model, args: argparse.Namespace) -> Model:
 
 
 def _query_model(args: argparse.Namespace, names: list[str]) -> Model:
-    """The model the queries run on; the package may be named by the first query name."""
-    return _filtered(_open(args, names).model, args)
+    """The model the queries run on; `--package`'s own member at a workspace root
+    (mirroring `_graph`/`_cycles`), else the package may be named by the first query
+    name."""
+    project = _workspace_member(args) or _open(args, names)
+    return _filtered(project.model, args)
 
 
 def _write(args: argparse.Namespace, text: str, data: dict) -> None:
@@ -406,7 +409,7 @@ def _init(args: argparse.Namespace) -> int:
 
 
 def _metrics(args: argparse.Namespace) -> int:
-    project = _open(args)
+    project = _workspace_member(args) or _open(args)
     report = check(project.model, project.config)
     if args.format == "json":
         data = {name: asdict(m) for name, m in sorted(report.metrics.items())}
