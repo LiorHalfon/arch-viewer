@@ -16,3 +16,6 @@ dist/
 
 # TypeScript fixture (npm ci --prefix tests/fixtures/ts-sample)
 tests/fixtures/ts-sample/node_modules/
+
+# Superpowers scratch (SDD ledgers, brainstorm mockups)
+.superpowers/
