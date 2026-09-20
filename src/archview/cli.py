@@ -115,10 +115,26 @@ def _write_view(fmt: str, view: View, violations: Collection[Pair] = ()) -> None
         sys.stdout.write(_as_text(view))
 
 
+def _reject_workspace_flags(args: argparse.Namespace, names: tuple[str, ...]) -> None:
+    """A workspace root has no single package for these flags to scope down. Silently
+    ignoring them would let a user believe they had narrowed the view when they had
+    not - `--root` most of all, so it fails loudly rather than quietly doing nothing."""
+    for name in names:
+        if getattr(args, name, False):
+            flag = f"--{name.replace('_', '-')}"
+            raise UsageError(f"{flag} needs a single package; drill in with --package first")
+
+
 def _graph(args: argparse.Namespace) -> int:
-    root = _workspace_root(args)
-    if root is not None:
-        _write_view(_output_format(args), workspace_view(open_workspace(root, args.config)))
+    ws = _workspace_root(args)
+    if ws is not None:
+        _reject_workspace_flags(args, ("root", "hide_tests", "externals"))
+        view = workspace_view(ws)
+        fmt = _output_format(args)
+        violations = set()
+        if fmt in ("dot", "mermaid"):
+            violations = violating_edges(view, failing_imports(check_workspace(ws).between))
+        _write_view(fmt, view, violations)
         return 0
     project = _workspace_member(args) or _open(args, [args.root] if args.root else None)
     model = without_tests(project.model) if args.hide_tests else project.model
@@ -144,17 +160,28 @@ def _wants_color() -> bool:
     return sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
 
-def _workspace_root(args: argparse.Namespace) -> Path | None:
-    """`args.path`, when the rules found there declare `[archview.workspace]` and no
-    `--package` was given to check one package instead of the whole workspace; `None`
-    otherwise. Shared with `graph`, `cycles` and the server (tasks 13, 15)."""
-    if args.package:
-        return None
+def _workspace_config(args: argparse.Namespace) -> tuple[Path, Config] | None:
+    """`args.path`'s resolved repo and parsed rules, when those rules declare
+    `[archview.workspace]`; `None` when there is no rules file there or no such
+    table. The one place that resolves and parses the rules file for this - both
+    `_workspace_root` and `_workspace_member` used to do it themselves, and
+    `_workspace_member` then had `open_workspace` parse it again."""
     repo = args.path.expanduser().resolve()
     path = args.config or find_config(repo)
     if path is None:
         return None
-    return repo if load_config(path).workspace is not None else None
+    config = load_config(path)
+    return (repo, config) if config.workspace is not None else None
+
+
+def _workspace_root(args: argparse.Namespace) -> Workspace | None:
+    """`args.path`, opened as a workspace, when its rules declare `[archview.workspace]`
+    and no `--package` was given to check one package instead of the whole workspace;
+    `None` otherwise. Shared with `graph`, `cycles` and `check` (tasks 13, 15)."""
+    if args.package:
+        return None
+    found = _workspace_config(args)
+    return open_workspace(found[0], args.config, config=found[1]) if found else None
 
 
 def _workspace_member(args: argparse.Namespace) -> Project | None:
@@ -164,11 +191,10 @@ def _workspace_member(args: argparse.Namespace) -> Project | None:
     (or no `--package` was given), so the caller falls back to `_open`."""
     if not args.package:
         return None
-    repo = args.path.expanduser().resolve()
-    path = args.config or find_config(repo)
-    if path is None or load_config(path).workspace is None:
+    found = _workspace_config(args)
+    if found is None:
         return None
-    ws = open_workspace(repo, args.config)
+    ws = open_workspace(found[0], args.config, config=found[1])
     member = next((p for p in ws.packages if p.name == args.package), None)
     if member is None:
         names = ", ".join(p.name for p in ws.packages)
@@ -179,9 +205,9 @@ def _workspace_member(args: argparse.Namespace) -> Project | None:
 def _check(args: argparse.Namespace) -> int:
     if args.stop_hook:
         return _stop_hook(args)
-    root = _workspace_root(args)
-    if root is not None:
-        return _check_workspace(args, root)
+    ws = _workspace_root(args)
+    if ws is not None:
+        return _check_workspace(args, ws)
     project = _rules_project(args)
     if args.update_baseline:
         path = baseline_path(project)
@@ -197,8 +223,7 @@ def _check(args: argparse.Namespace) -> int:
     return 1 if report.failed else 0
 
 
-def _check_workspace(args: argparse.Namespace, root: Path) -> int:
-    ws = open_workspace(root, args.config)
+def _check_workspace(args: argparse.Namespace, ws: Workspace) -> int:
     if args.update_baseline:
         return _update_workspace_baseline(ws)
     report = check_workspace(ws)
@@ -244,9 +269,9 @@ def _stop_hook(args: argparse.Namespace) -> int:
     if _hook_input().get("stop_hook_active"):
         return 0
     try:
-        root = _workspace_root(args)
-        if root is not None:
-            report = check_workspace(open_workspace(root, args.config))
+        ws = _workspace_root(args)
+        if ws is not None:
+            report = check_workspace(ws)
             text = workspace_to_text(report)
         else:
             report = project_report(_rules_project(args))
@@ -333,9 +358,9 @@ def _neighbours(args: argparse.Namespace, outgoing: bool) -> int:
 
 
 def _cycles(args: argparse.Namespace) -> int:
-    workspace_root = _workspace_root(args)
-    if workspace_root is not None:
-        ws = open_workspace(workspace_root, args.config)
+    ws = _workspace_root(args)
+    if ws is not None:
+        _reject_workspace_flags(args, ("root", "hide_tests"))
         found = workspace_cycles(ws)
         _write(args, cycles_to_text(found, ws.name), cycles_to_dict(found, ws.name))
         return 0

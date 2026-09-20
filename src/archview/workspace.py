@@ -67,11 +67,16 @@ class Workspace:
     config: Config
 
 
-def open_workspace(root: Path, config_path: Path | None = None) -> Workspace:
-    """Open every package the `[archview.workspace]` table at `root` lists."""
+def open_workspace(
+    root: Path, config_path: Path | None = None, config: Config | None = None
+) -> Workspace:
+    """Open every package the `[archview.workspace]` table at `root` lists. `config`,
+    when given, is already parsed - a caller that had to load it anyway (`cli._workspace_root`)
+    passes it through rather than having this function parse the rules file again."""
     root = Path(root).expanduser().resolve()
     path = config_path or find_config(root)
-    config = load_config(path) if path else Config()
+    if config is None:
+        config = load_config(path) if path else Config()
     if config.workspace is None:
         raise ConfigError(f"no [archview.workspace] table in {path or root / RULES_FILE}")
     base = path.parent if path else root

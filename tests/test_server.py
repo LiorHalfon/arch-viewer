@@ -260,18 +260,18 @@ def test_does_not_serve_files_outside_the_ui_folder(client):
 def test_watch_reanalyzes_when_a_file_changes(repo):
     import time
 
-    workspace = ViewerState(repo)
-    workspace.watch(interval=0.05)
-    first = workspace.generation
+    state = ViewerState(repo)
+    state.watch(interval=0.05)
+    first = state.generation
 
     time.sleep(0.2)
     (repo / "sample" / "api" / "views.py").write_text("from sample.domain import model\n")
     deadline = time.monotonic() + 5
-    while workspace.generation == first and time.monotonic() < deadline:
+    while state.generation == first and time.monotonic() < deadline:
         time.sleep(0.05)
 
-    assert workspace.generation > first
-    assert "sample.api.views" in {n.id for n in workspace.project.model.nodes}
+    assert state.generation > first
+    assert "sample.api.views" in {n.id for n in state.project.model.nodes}
 
 
 def test_python_summary_carries_the_language_and_separator(client):

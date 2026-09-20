@@ -153,3 +153,25 @@ def test_cycles_at_a_workspace_root_finds_none_in_the_fixture(capsys):
 def test_cycles_with_a_package_drills_in(capsys):
     assert main(["cycles", str(FIXTURE), "--package", "core"]) == 0
     assert "no cycles under core" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["graph", "cycles"])
+@pytest.mark.parametrize("flag", ["--root", "--hide-tests"])
+def test_a_package_scoped_flag_at_a_workspace_root_is_rejected(capsys, command, flag):
+    """Silently ignoring `--root`/`--hide-tests`/`--externals` at a workspace root
+    would let a user believe they had scoped the view down when they had not."""
+    argv = [command, str(FIXTURE), flag]
+    if flag == "--root":
+        argv.append("core")
+
+    assert main(argv) == 2
+    err = capsys.readouterr().err
+    assert flag in err
+    assert "--package" in err
+
+
+def test_externals_at_a_workspace_root_is_rejected_for_graph(capsys):
+    assert main(["graph", str(FIXTURE), "--externals"]) == 2
+    err = capsys.readouterr().err
+    assert "--externals" in err
+    assert "--package" in err

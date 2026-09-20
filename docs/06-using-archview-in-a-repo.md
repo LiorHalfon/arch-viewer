@@ -120,12 +120,14 @@ sibling package in a workspace; archview cannot tell those two apart from one
 package's model alone (ADR 0011). `[archview.externals]` is the allow-list for these:
 unlike `[archview.allowed]`, a component missing from it is unconstrained, not an
 error, so it can be adopted one component at a time. `[[archview.forbidden]]` can
-also target one, with either side checked even when nothing is declared. Naming a
-stdlib module on either side is a `ConfigError` at load time, since the extractor
-already drops stdlib imports from the graph and such a rule could never fire; the
-check is skipped for a repo that has declared `language = "typescript"` or a
-`tsconfig`, since npm has packages named `queue` or `string` that collide with Python
-stdlib module names. `archview init --externals` writes `[archview.externals]` from
+also target one, with either side checked even when nothing is declared. `from` always
+names a component (or `"*"`); an outside name there is a `ConfigError`, since nothing
+archview can see imports *out of* a third-party package. Naming a stdlib module in
+`to` is a separate `ConfigError` at load time, since the extractor already drops
+stdlib imports from the graph and such a rule could never fire; that check is skipped
+for a repo that has declared `language = "typescript"` or a `tsconfig`, since npm has
+packages named `queue` or `string` that collide with Python stdlib module names.
+`archview init --externals` writes `[archview.externals]` from
 today's imports, the same freeze-then-delete starting point `init` already gives
 `[archview.allowed]`; a plain `archview init` leaves the table out.
 
