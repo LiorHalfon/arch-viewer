@@ -25,3 +25,14 @@ def violating_edges(view: View, failing: frozenset[ImportKey]) -> set[tuple[str,
         for e in view.edges
         if any((i.importer, i.imported, i.line) in failing for i in e.imports)
     }
+
+
+def outside_targets(report: Report) -> frozenset[str]:
+    """Names behind a failing outside/forbidden problem, for `build_view`'s `keep`.
+
+    A `build_view` intersects this with the packages actually imported from outside,
+    so a `forbidden` problem between two internal components contributes nothing.
+    """
+    return frozenset(
+        p.components[1] for p in report.problems if p.fails and p.kind in ("outside", "forbidden")
+    )

@@ -7,24 +7,37 @@ const $ = (id) => document.getElementById(id);
 const state = {
   viz: null,
   project: null,
+  isWorkspace: false,   // the server has a [archview.workspace] table
+  package: null,        // the workspace member currently drilled into, or null at its top
   root: null,
   view: null,
-  views: new Map(),     // "root|externals|tests" -> view payload
-  places: new Map(),    // root -> {zoom, left, top}
+  views: new Map(),     // "root=..&package=..&externals=..&hide_tests=.." -> view payload
+  places: new Map(),    // "package|root" -> {zoom, left, top}
   zoom: 1,
   natural: { w: 0, h: 0 },
   sticky: null,         // {ids, label} while a focus is pinned
-  trees: new Map(),     // "root|tests" -> tree payload
+  trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
   options: { tests: false, externals: false, zones: false, legend: true, tree: true },
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const sep = () => state.project.separator;
-const fileSuffix = () => (state.project.language === "python" ? ".py" : "");
-const inProject = (id) => id === state.project.project || id.startsWith(state.project.project + sep());
+// A view payload carries its own project/separator/language (M8: each workspace
+// member, or the workspace itself, has its own) - fall back to the plain project
+// summary before the first view has loaded.
+const sep = () => (state.view ? state.view.separator : state.project.separator) || ".";
+const fileSuffix = () => ((state.view ? state.view.language : state.project.language) === "python" ? ".py" : "");
+const inProject = (id) => {
+  const project = state.view ? state.view.project : state.project.project;
+  return id === project || id.startsWith(project + sep());
+};
 const short = (id) => (inProject(id) ? id.split(sep()).pop() : id);
+const placeKey = (pkg, root) => `${pkg || ""}|${root}`;
+const hrefFor = (root, pkg) => `#/${encodeURIComponent(root)}${pkg ? `?package=${encodeURIComponent(pkg)}` : ""}`;
+// At the workspace's own top level (no package drilled into yet), every node is a
+// sibling package: clicking one enters it rather than drilling within the same model.
+const enterOrOpen = (id) => go(id, state.isWorkspace && !state.package ? id : state.package);
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
 const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
@@ -78,8 +91,9 @@ function applyOptions() {
   $("tree-toggle").classList.toggle("on", state.options.tree);
 }
 
-function viewQuery(root) {
+function viewQuery(root, pkg = state.package) {
   const q = new URLSearchParams({ root });
+  if (pkg) q.set("package", pkg);
   if (state.options.externals) q.set("externals", "true");
   if (state.options.tests) q.set("hide_tests", "true");
   return q.toString();
@@ -87,50 +101,57 @@ function viewQuery(root) {
 
 // ---------- navigation ----------
 
-function rootFromHash() {
-  const raw = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-  return raw || state.project.project;
+// The hash is `#/<root>` or, once inside a workspace package, `#/<root>?package=<pkg>`.
+function placeFromHash() {
+  const hash = location.hash.replace(/^#\/?/, "");
+  const [rootPart, query] = hash.split("?");
+  const root = decodeURIComponent(rootPart || "");
+  if (!root) return { root: state.project.project, package: null };
+  return { root, package: new URLSearchParams(query || "").get("package") };
 }
 
-function go(root) {
-  const target = `#/${encodeURIComponent(root)}`;
-  if (location.hash === target) show(root);
+function go(root, pkg = state.package) {
+  const target = hrefFor(root, pkg);
+  if (location.hash === target) show(root, pkg);
   else location.hash = target;
 }
 
 function rememberPlace() {
   if (!state.root) return;
   const stage = $("stage");
-  state.places.set(state.root, { zoom: state.zoom, left: stage.scrollLeft, top: stage.scrollTop });
+  state.places.set(placeKey(state.package, state.root), { zoom: state.zoom, left: stage.scrollLeft, top: stage.scrollTop });
 }
 
-async function loadView(root) {
-  const key = viewQuery(root);
+async function loadView(root, pkg = state.package) {
+  const key = viewQuery(root, pkg);
   if (!state.views.has(key)) state.views.set(key, await api(`/api/view?${key}`));
   return state.views.get(key);
 }
 
-async function show(root, { keepPanel = false, refit = false } = {}) {
-  if (refit) state.places.delete(root);
+async function show(root, pkg = state.package, { keepPanel = false, refit = false } = {}) {
+  const key = placeKey(pkg, root);
+  if (refit) state.places.delete(key);
   else rememberPlace();
   let view;
   try {
-    view = await loadView(root);
+    view = await loadView(root, pkg);
   } catch (error) {
     $("graph").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
     return;
   }
-  if (state.root !== root) state.sticky = null;
+  if (state.root !== root || state.package !== pkg) state.sticky = null;
   state.root = root;
+  state.package = pkg;
   state.view = view;
   document.title = `${root} · archview`;
   crumbs(root);
   stats(view);
+  rulesButton();
   if (!keepPanel) closePanel();
   draw(view);
   notes();
   drawTree();
-  const place = state.places.get(root);
+  const place = state.places.get(key);
   setZoom(place ? place.zoom : fitZoom(), false);
   const stage = $("stage");
   stage.scrollLeft = place ? place.left : 0;
@@ -142,6 +163,17 @@ async function show(root, { keepPanel = false, refit = false } = {}) {
 function crumbs(root) {
   const el = $("crumbs");
   el.innerHTML = "";
+  if (state.isWorkspace) {
+    if (!state.package) {
+      el.insertAdjacentHTML("beforeend", `<span class="here">${esc(state.project.project)}</span>`);
+      return;
+    }
+    const a = document.createElement("a");
+    a.textContent = state.project.project;
+    a.href = hrefFor(state.project.project, null);
+    el.append(a);
+    el.insertAdjacentHTML("beforeend", '<span class="sep">/</span>');
+  }
   const parts = root.split(sep());
   parts.forEach((part, i) => {
     const id = parts.slice(0, i + 1).join(sep());
@@ -151,7 +183,7 @@ function crumbs(root) {
     } else {
       const a = document.createElement("a");
       a.textContent = part;
-      a.href = `#/${encodeURIComponent(id)}`;
+      a.href = hrefFor(id, state.package);
       el.append(a);
     }
   });
@@ -166,13 +198,25 @@ function warningSummary(warnings) {
     .join(" · ");
 }
 
+// `state.project`'s counts (failing rules, warnings) are always workspace-wide once
+// inside a workspace - `/api/project` has no `package=` (M8) - so `rulesButton()`
+// and `stats()` use this to say so plainly while browsing one package, rather than
+// reading as if the numbers were scoped to it.
+function insideAPackage() {
+  return state.isWorkspace && !!state.package;
+}
+
 function stats(view) {
   const parts = [plural(view.nodes.length, "box", "boxes"), plural(view.edges.length, "dependency", "dependencies")];
   parts.push(view.cycles.length ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>` : "no cycles");
   const violations = view.edges.filter((e) => e.violation).length;
   if (violations) parts.push(`<span class="bad">${plural(violations, "rule break")}</span>`);
   const warnings = state.project.warnings;
-  if (warnings.length) parts.push(`<button class="link" id="show-warnings" title="Imports the analysis could not resolve or follow">⚠ ${warningSummary(warnings)}</button>`);
+  if (warnings.length) {
+    const scoped = insideAPackage();
+    const title = "Imports the analysis could not resolve or follow" + (scoped ? " - workspace-wide, not just this package" : "");
+    parts.push(`<button class="link" id="show-warnings" title="${esc(title)}">⚠ ${scoped ? "workspace: " : ""}${warningSummary(warnings)}</button>`);
+  }
   $("stats").innerHTML = parts.join(" · ");
   const button = $("show-warnings");
   if (button) button.onclick = openWarnings;
@@ -234,7 +278,7 @@ function wire(svg, view) {
     g.querySelector("title").textContent = tooltip(node);
     g.onclick = (e) => {
       if (e.shiftKey || e.altKey || node.kind === "external") return openNode(node);
-      return node.has_children ? go(id) : openSource(id);
+      return node.has_children ? enterOrOpen(id) : openSource(id);
     };
     g.oncontextmenu = (e) => { e.preventDefault(); openNode(node); };
     g.onmouseenter = () => { if (!state.sticky) focusOn(new Set([id])); };
@@ -326,18 +370,21 @@ function reach(start, forward) {
 async function drawTree() {
   if (!state.options.tree || !state.root) return;
   const root = state.root;
-  const key = `${root}|${state.options.tests}`;
+  const pkg = state.package;
+  const key = `${placeKey(pkg, root)}|${state.options.tests}`;
   if (!state.trees.has(key)) {
     const q = new URLSearchParams({ root });
+    if (pkg) q.set("package", pkg);
     if (state.options.tests) q.set("hide_tests", "true");
     try {
       state.trees.set(key, await api(`/api/tree?${q}`));
     } catch (error) {
+      $("tree-head").innerHTML = "";
       $("tree-body").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
       return;
     }
   }
-  if (root !== state.root) return;
+  if (root !== state.root || pkg !== state.package) return;
   renderTree(state.trees.get(key));
 }
 
@@ -511,7 +558,7 @@ function openNode(node) {
      <h3>Depended on by</h3>${linkList(incoming, (e) => e.source)}`,
   );
   const actions = {
-    open: () => go(node.id),
+    open: () => enterOrOpen(node.id),
     source: () => openSource(node.id),
     neighbours: () => {
       const ids = new Set([node.id]);
@@ -534,7 +581,9 @@ function warningTooltip(w) {
 async function openSource(module, line = null) {
   let source;
   try {
-    source = await api(`/api/source?module=${encodeURIComponent(module)}`);
+    const q = new URLSearchParams({ module });
+    if (state.package) q.set("package", state.package);
+    source = await api(`/api/source?${q}`);
   } catch (error) {
     toast(error.message);
     return;
@@ -610,7 +659,7 @@ function openWarnings() {
 async function openRules() {
   let report;
   try {
-    report = await api("/api/check");
+    report = await api(`/api/check${state.package ? `?package=${encodeURIComponent(state.package)}` : ""}`);
   } catch (error) {
     toast(error.message);
     return;
@@ -723,18 +772,23 @@ async function exportView(format) {
 
 async function refresh(summary, message) {
   state.project = summary;
+  state.isWorkspace = !!summary.workspace;
   state.views.clear();
   state.trees.clear();
   rulesButton();
   let root = state.root;
+  let pkg = state.package;
   while (root) {
-    try { await loadView(root); break; } catch { root = parentOf(root); }
+    try { await loadView(root, pkg); break; } catch {
+      root = parentOf(root);
+      if (!root) pkg = null;
+    }
   }
   root = root || summary.project;
-  if (root === state.root) {
-    await show(root, { keepPanel: true });
+  if (root === state.root && pkg === state.package) {
+    await show(root, pkg, { keepPanel: true });
   } else {
-    go(root);
+    go(root, pkg);
   }
   if (message) toast(message);
 }
@@ -766,18 +820,26 @@ function poll() {
 function rulesButton() {
   const button = $("rules");
   const p = state.project;
+  const scoped = insideAPackage();
+  const prefix = scoped ? "Workspace rules" : "Rules";
   button.hidden = !p.rules;
   button.classList.toggle("bad", p.failing > 0 || !!p.rules_error);
-  button.textContent = p.rules_error ? "Rules ⚠" : p.failing ? `Rules: ${p.failing} failing` : "Rules ✓";
-  button.title = p.rules_error || `archview check against ${p.rules}`;
+  button.textContent = p.rules_error ? `${prefix} ⚠` : p.failing ? `${prefix}: ${p.failing} failing` : `${prefix} ✓`;
+  const base = p.rules_error || `archview check against ${p.rules}`;
+  button.title = scoped ? `${base} - counts every package in the workspace, not just this one` : base;
 }
 
 // ---------- wiring ----------
 
 function bind() {
   $("tree-toggle").onclick = toggleTree;
-  $("home").onclick = (e) => { e.preventDefault(); go(state.project.project); };
-  $("up").onclick = () => state.view && state.view.parent && go(state.view.parent);
+  $("home").onclick = (e) => { e.preventDefault(); go(state.project.project, null); };
+  $("up").onclick = () => {
+    if (!state.view || !state.view.parent) return;
+    // Up from a package's own root (M8) leaves the package, back to the workspace.
+    const leavingPackage = state.isWorkspace && state.root === state.package;
+    go(state.view.parent, leavingPackage ? null : state.package);
+  };
   $("zoom-in").onclick = () => setZoom(state.zoom * 1.25);
   $("zoom-out").onclick = () => setZoom(state.zoom / 1.25);
   $("zoom-fit").onclick = () => setZoom(fitZoom());
@@ -791,7 +853,7 @@ function bind() {
       state.options[key] = $(id).checked;
       saveOptions();
       applyOptions();
-      if (redraw) show(state.root, { refit: true });
+      if (redraw) show(state.root, state.package, { refit: true });
     };
   };
   option("opt-tests", "tests", true);
@@ -805,7 +867,7 @@ function bind() {
   document.addEventListener("click", (e) => {
     document.querySelectorAll("details.menu[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
-  addEventListener("hashchange", () => show(rootFromHash()));
+  addEventListener("hashchange", () => { const place = placeFromHash(); show(place.root, place.package); });
   addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || e.target.matches("input, textarea")) return;
     const keys = {
@@ -832,9 +894,11 @@ async function start() {
     $("graph").innerHTML = `<p class="hint">Could not start: ${esc(error.message)}</p>`;
     return;
   }
+  state.isWorkspace = !!state.project.workspace;
   rulesButton();
   if (state.project.watching) poll();
-  show(rootFromHash());
+  const place = placeFromHash();
+  show(place.root, place.package);
 }
 
 start();

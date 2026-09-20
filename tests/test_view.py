@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from archview.model.view import build_view, tangled_packages
-from tests.builders import model
+from tests.builders import model, model_with_external
 
 
 def test_aggregates_imports_between_children_of_the_root_into_one_counted_edge():
@@ -161,6 +161,37 @@ def test_shows_external_packages_as_boxes_only_when_asked():
         ("fastapi", "external"),
     ]
     assert ("pkg.api", "fastapi") in {(e.source, e.target) for e in view.edges}
+
+
+def test_keep_pulls_a_named_external_into_a_view_without_externals():
+    m = model_with_external()
+
+    view = build_view(m, "shop", externals=False, keep=frozenset({"openai"}))
+
+    assert "openai" in [n.id for n in view.nodes]
+    assert ("shop.llm", "openai") in [(e.source, e.target) for e in view.edges]
+
+
+def test_keep_does_not_pull_in_other_externals():
+    m = model_with_external()
+
+    view = build_view(m, "shop", externals=False, keep=frozenset({"anthropic"}))
+
+    assert "openai" not in [n.id for n in view.nodes]
+
+
+def test_keep_ignores_a_name_that_is_not_actually_external():
+    m = model_with_external()
+
+    view = build_view(m, "shop", externals=False, keep=frozenset({"shop.api"}))
+
+    assert [n.id for n in view.nodes] == ["shop.api", "shop.llm"]
+
+
+def test_an_empty_keep_leaves_a_default_view_unchanged():
+    m = model_with_external()
+
+    assert build_view(m, "shop") == build_view(m, "shop", keep=frozenset())
 
 
 def test_slash_separated_ids_with_dotted_file_names_are_their_own_nodes():

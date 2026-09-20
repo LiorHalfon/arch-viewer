@@ -1,7 +1,10 @@
 """`archview graph` (requirement G1, roadmap M1)."""
 
 import json
+import shutil
 from pathlib import Path
+
+import pytest
 
 from archview.cli import main
 
@@ -11,6 +14,19 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def run(capsys, *argv: str) -> tuple[int, str]:
     code = main(list(argv))
     return code, capsys.readouterr().out
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """A writable copy of the fixture project."""
+    shutil.copytree(FIXTURES / "sample", tmp_path / "sample")
+    return tmp_path
+
+
+def rules_with_one_outside_violation(capsys, repo):
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.externals]\napi = []\n")
 
 
 def test_prints_the_derived_view_of_the_root_as_json(capsys):
@@ -92,6 +108,48 @@ def test_writes_module_counts_in_the_singular_when_there_is_only_one(capsys):
     _, out = run(capsys, "graph", str(FIXTURES), "--root", "sample.api")
 
     assert "(1 module," in out
+
+
+def test_shows_a_violating_outside_package_without_externals(repo, capsys):
+    rules_with_one_outside_violation(capsys, repo)
+
+    code, out = run(capsys, "graph", str(repo), "--json")
+
+    assert code == 0
+    view = json.loads(out)
+    assert "grimp" in [n["id"] for n in view["nodes"]]
+    assert ("sample.api", "grimp") in [(e["source"], e["target"]) for e in view["edges"]]
+
+
+def test_does_not_show_an_external_package_no_rule_breaks_on(capsys):
+    _, out = run(capsys, "graph", str(FIXTURES), "--json")
+
+    assert "grimp" not in [n["id"] for n in json.loads(out)["nodes"]]
+
+
+def test_shows_no_outside_package_when_there_is_no_rules_file(repo, capsys):
+    code, out = run(capsys, "graph", str(repo), "--json")
+
+    assert code == 0
+    assert "grimp" not in [n["id"] for n in json.loads(out)["nodes"]]
+
+
+def test_graph_degrades_when_the_rules_file_is_broken(repo, capsys):
+    """A broken rules file (here, a baseline that does not exist) must not stop `graph`
+    from drawing the view - `server/state.py::_analyse` already degrades this way, and
+    `graph` reversed an earlier ruling to match it (Fix 5, M7/M8 review)."""
+    run(capsys, "init", str(repo))
+    rules = repo / "archview.toml"
+    rules.write_text(
+        rules.read_text().replace(
+            "fail_on_cycles = false", 'fail_on_cycles = false\nbaseline = "gone.json"'
+        )
+    )
+
+    code, out = run(capsys, "graph", str(repo), "--json")
+
+    assert code == 0
+    assert json.loads(out)["root"] == "sample"
 
 
 def test_a_path_without_a_command_opens_the_viewer(monkeypatch):

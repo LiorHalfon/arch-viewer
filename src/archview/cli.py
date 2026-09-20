@@ -16,6 +16,7 @@ import socket
 import sys
 import threading
 import webbrowser
+from collections.abc import Collection
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -52,13 +53,22 @@ from archview.render.query import (
     why_to_dict,
     why_to_text,
 )
-from archview.rules.baseline import baseline_of
-from archview.rules.check import check
+from archview.render.workspace import workspace_to_dict, workspace_to_text
+from archview.rules.baseline import Baseline, baseline_of
+from archview.rules.check import Report, check
 from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
 from archview.rules.init import infer_rules
-from archview.rules.overlay import failing_imports, violating_edges
+from archview.rules.overlay import failing_imports, outside_targets, violating_edges
+from archview.workspace import (
+    Workspace,
+    check_workspace,
+    open_workspace,
+    workspace_cycles,
+    workspace_view,
+)
 
 USAGE_ERROR = 2
+Pair = tuple[str, str]
 
 
 class UsageError(Exception):
@@ -88,23 +98,13 @@ def _as_text(view: View) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _graph(args: argparse.Namespace) -> int:
-    project = _open(args, [args.root] if args.root else None)
-    model = without_tests(project.model) if args.hide_tests else project.model
-    root = args.root or project.package
-    if root not in {n.id for n in model.nodes}:
-        raise UsageError(f"{root} is not a module of {project.package}")
-
-    view = build_view(model, root, externals=args.externals)
-    if not view.nodes:
-        raise UsageError(f"{root} has no children to show; drill into a package instead")
-
-    fmt = args.format or next(
+def _output_format(args: argparse.Namespace) -> str:
+    return args.format or next(
         f for f in ("json", "dot", "mermaid", "text") if getattr(args, f, True)
     )
-    violations = set()
-    if project.config_path and fmt in ("dot", "mermaid"):
-        violations = violating_edges(view, failing_imports(project_report(project)))
+
+
+def _write_view(fmt: str, view: View, violations: Collection[Pair] = ()) -> None:
     if fmt == "json":
         sys.stdout.write(json.dumps(view_to_dict(view), indent=2) + "\n")
     elif fmt == "dot":
@@ -113,16 +113,113 @@ def _graph(args: argparse.Namespace) -> int:
         sys.stdout.write(to_mermaid(view, violations))
     else:
         sys.stdout.write(_as_text(view))
+
+
+def _reject_workspace_flags(args: argparse.Namespace, names: tuple[str, ...]) -> None:
+    """A workspace root has no single package for these flags to scope down. Silently
+    ignoring them would let a user believe they had narrowed the view when they had
+    not - `--root` most of all, so it fails loudly rather than quietly doing nothing."""
+    for name in names:
+        if getattr(args, name, False):
+            flag = f"--{name.replace('_', '-')}"
+            raise UsageError(f"{flag} needs a single package; drill in with --package first")
+
+
+def _graph(args: argparse.Namespace) -> int:
+    ws = _workspace_root(args)
+    if ws is not None:
+        _reject_workspace_flags(args, ("root", "hide_tests", "externals"))
+        view = workspace_view(ws)
+        fmt = _output_format(args)
+        violations = set()
+        if fmt in ("dot", "mermaid"):
+            violations = violating_edges(view, failing_imports(check_workspace(ws).between))
+        _write_view(fmt, view, violations)
+        return 0
+    project = _workspace_member(args) or _open(args, [args.root] if args.root else None)
+    model = without_tests(project.model) if args.hide_tests else project.model
+    where = args.root or project.package
+    if where not in {n.id for n in model.nodes}:
+        raise UsageError(f"{where} is not a module of {project.package}")
+
+    report = _graph_report(project) if project.config_path else None
+    keep = outside_targets(report) if report is not None else frozenset()
+    view = build_view(model, where, externals=args.externals, keep=keep)
+    if not view.nodes:
+        raise UsageError(f"{where} has no children to show; drill into a package instead")
+
+    fmt = _output_format(args)
+    violations = set()
+    if report is not None and fmt in ("dot", "mermaid"):
+        violations = violating_edges(view, failing_imports(report))
+    _write_view(fmt, view, violations)
     return 0
+
+
+def _graph_report(project: Project) -> Report | None:
+    """`project_report`, but a broken rules file (an unreadable baseline, say) must not
+    stop `graph` from drawing the view - `server/state.py::_analyse` already degrades
+    this way for the viewer, and `graph` had ruled the hard failure acceptable before
+    that landed. `None` here means the same as "no rules file": no `keep`, no
+    violations overlay, just the plain view."""
+    try:
+        return project_report(project)
+    except ConfigError:
+        return None
 
 
 def _wants_color() -> bool:
     return sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
 
+def _workspace_config(args: argparse.Namespace) -> tuple[Path, Config] | None:
+    """`args.path`'s resolved repo and parsed rules, when those rules declare
+    `[archview.workspace]`; `None` when there is no rules file there or no such
+    table. The one place that resolves and parses the rules file for this - both
+    `_workspace_root` and `_workspace_member` used to do it themselves, and
+    `_workspace_member` then had `open_workspace` parse it again."""
+    repo = args.path.expanduser().resolve()
+    path = args.config or find_config(repo)
+    if path is None:
+        return None
+    config = load_config(path)
+    return (repo, config) if config.workspace is not None else None
+
+
+def _workspace_root(args: argparse.Namespace) -> Workspace | None:
+    """`args.path`, opened as a workspace, when its rules declare `[archview.workspace]`
+    and no `--package` was given to check one package instead of the whole workspace;
+    `None` otherwise. Shared with `graph`, `cycles` and `check` (tasks 13, 15)."""
+    if args.package:
+        return None
+    found = _workspace_config(args)
+    return open_workspace(found[0], args.config, config=found[1]) if found else None
+
+
+def _workspace_member(args: argparse.Namespace) -> Project | None:
+    """`--package`'s own project, when `args.path` is a workspace root and `--package`
+    names one of its members - so `graph`/`cycles` can drill into a package exactly as
+    they would inside its own repo. `None` when `args.path` is not a workspace root
+    (or no `--package` was given), so the caller falls back to `_open`."""
+    if not args.package:
+        return None
+    found = _workspace_config(args)
+    if found is None:
+        return None
+    ws = open_workspace(found[0], args.config, config=found[1])
+    member = next((p for p in ws.packages if p.name == args.package), None)
+    if member is None:
+        names = ", ".join(p.name for p in ws.packages)
+        raise UsageError(f"no package {args.package!r} in workspace {ws.name} (found: {names})")
+    return member.project
+
+
 def _check(args: argparse.Namespace) -> int:
     if args.stop_hook:
         return _stop_hook(args)
+    ws = _workspace_root(args)
+    if ws is not None:
+        return _check_workspace(args, ws)
     project = _rules_project(args)
     if args.update_baseline:
         path = baseline_path(project)
@@ -138,6 +235,44 @@ def _check(args: argparse.Namespace) -> int:
     return 1 if report.failed else 0
 
 
+def _check_workspace(args: argparse.Namespace, ws: Workspace) -> int:
+    if args.update_baseline:
+        return _update_workspace_baseline(ws)
+    report = check_workspace(ws)
+    if args.format == "json":
+        sys.stdout.write(json.dumps(workspace_to_dict(report), indent=2) + "\n")
+    else:
+        sys.stdout.write(workspace_to_text(report, color=_wants_color()))
+    return 1 if report.failed else 0
+
+
+def _update_workspace_baseline(ws: Workspace) -> int:
+    """Each configured package's own baseline, exactly as a single project's
+    `--update-baseline` would write it, plus the workspace baseline when
+    `[archview.workspace].baseline` names one."""
+    written = [
+        _write_baseline(
+            baseline_path(p.project), baseline_of(check(p.project.model, p.project.config))
+        )
+        for p in ws.packages
+        if p.has_rules
+    ]
+    rules = ws.config.workspace
+    if rules.baseline:
+        cleared = replace(ws, config=replace(ws.config, workspace=replace(rules, baseline=None)))
+        between = check_workspace(cleared).between
+        written.append(_write_baseline(ws.root / rules.baseline, baseline_of(between)))
+    sys.stdout.write(
+        "\n".join(written) + "\n" if written else "no baseline configured; nothing written\n"
+    )
+    return 0
+
+
+def _write_baseline(path: Path, baseline: Baseline) -> str:
+    path.write_text(baseline.to_json())
+    return f"wrote {path} ({len(baseline.entries)} known problems)"
+
+
 HOOK_BLOCKS = 2  # Claude Code's Stop hook: exit 2 sends stderr back to the agent
 
 
@@ -146,13 +281,19 @@ def _stop_hook(args: argparse.Namespace) -> int:
     if _hook_input().get("stop_hook_active"):
         return 0
     try:
-        report = project_report(_rules_project(args))
+        ws = _workspace_root(args)
+        if ws is not None:
+            report = check_workspace(ws)
+            text = workspace_to_text(report)
+        else:
+            report = project_report(_rules_project(args))
+            text = report_to_text(report)
     except (UsageError, ProjectError, ConfigError) as error:
         sys.stderr.write(f"archview: {error} (not blocking the stop)\n")
         return 0
     if not report.failed:
         return 0
-    sys.stderr.write(report_to_text(report))
+    sys.stderr.write(text)
     return HOOK_BLOCKS
 
 
@@ -180,8 +321,10 @@ def _open(args: argparse.Namespace, names: list[str] | None = None) -> Project:
         raise ProjectError(f"several packages in {args.path}; pick one with --package") from None
 
 
-def _rules_project(args: argparse.Namespace):
-    project = _open(args)
+def _rules_project(args: argparse.Namespace) -> Project:
+    """The project `check`/`--stop-hook` run on: `--package`'s own member when
+    `args.path` is a workspace root, exactly as `_graph`/`_cycles` already drill in."""
+    project = _workspace_member(args) or _open(args)
     if project.config_path is None:
         raise UsageError(
             f"no {RULES_FILE} (or [tool.archview] in pyproject.toml) in {project.repo}; "
@@ -190,11 +333,18 @@ def _rules_project(args: argparse.Namespace):
     return project
 
 
-def _query_model(args: argparse.Namespace, names: list[str]) -> Model:
-    """The model the queries run on; the package may be named by the first query name."""
-    project = _open(args, names)
-    model = without_tests(project.model) if args.hide_tests else project.model
+def _filtered(model: Model, args: argparse.Namespace) -> Model:
+    """`without_tests`/`runtime_only`, applied as the query commands' flags ask."""
+    model = without_tests(model) if args.hide_tests else model
     return runtime_only(model) if args.runtime_only else model
+
+
+def _query_model(args: argparse.Namespace, names: list[str]) -> Model:
+    """The model the queries run on; `--package`'s own member at a workspace root
+    (mirroring `_graph`/`_cycles`), else the package may be named by the first query
+    name."""
+    project = _workspace_member(args) or _open(args, names)
+    return _filtered(project.model, args)
 
 
 def _write(args: argparse.Namespace, text: str, data: dict) -> None:
@@ -225,7 +375,18 @@ def _neighbours(args: argparse.Namespace, outgoing: bool) -> int:
 
 
 def _cycles(args: argparse.Namespace) -> int:
-    model = _query_model(args, [args.root] if args.root else [])
+    ws = _workspace_root(args)
+    if ws is not None:
+        _reject_workspace_flags(args, ("root", "hide_tests", "runtime_only"))
+        found = workspace_cycles(ws)
+        _write(args, cycles_to_text(found, ws.name), cycles_to_dict(found, ws.name))
+        return 0
+    member = _workspace_member(args)
+    model = (
+        _filtered(member.model, args)
+        if member
+        else _query_model(args, [args.root] if args.root else [])
+    )
     try:
         root = resolve(model, args.root) if args.root else model.project
     except UnknownName as error:
@@ -249,7 +410,7 @@ def _init(args: argparse.Namespace) -> int:
         config = replace(config, tsconfig=args.tsconfig)
 
     project = open_project(repo, args.package, config=config, language=args.language)
-    text = infer_rules(project.model, config)
+    text = infer_rules(project.model, config, externals=args.externals)
     if args.stdout:
         sys.stdout.write(text)
         return 0
@@ -260,7 +421,7 @@ def _init(args: argparse.Namespace) -> int:
 
 
 def _metrics(args: argparse.Namespace) -> int:
-    project = _open(args)
+    project = _workspace_member(args) or _open(args)
     report = check(project.model, project.config)
     if args.format == "json":
         data = {name: asdict(m) for name, m in sorted(report.metrics.items())}
@@ -303,21 +464,28 @@ def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     from archview.server.app import create_app
-    from archview.server.workspace import Workspace
+    from archview.server.state import ViewerState
 
-    workspace = Workspace(args.path, args.package, args.config, args.language, args.tsconfig)
+    # `_workspace_root`/`_workspace_member` are shared with `_check`, `_graph` and
+    # `_cycles`; `ViewerState` itself opens a plain workspace root as a workspace
+    # (M8), so only `--package` at one needs resolving here, exactly as `_graph` does.
+    member = _workspace_member(args)
+    if member is not None:
+        state = ViewerState(member.repo, config_path=member.config_path)
+    else:
+        state = ViewerState(args.path, args.package, args.config, args.language, args.tsconfig)
     if args.watch:
-        workspace.watch()
+        state.watch()
     port = _free_port(args.host, args.port)
     url = f"http://{args.host}:{port}/"
-    summary = workspace.summary()
+    summary = state.summary()
     sys.stdout.write(
         f"archview: {summary['project']} ({summary['modules']} modules) at {url}  (Ctrl+C stops)\n"
     )
     sys.stdout.flush()
     if not args.no_open:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
-    uvicorn.run(create_app(workspace), host=args.host, port=port, log_level="warning")
+    uvicorn.run(create_app(state), host=args.host, port=port, log_level="warning")
     return 0
 
 
@@ -406,6 +574,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--stdout", action="store_true", help="print instead of writing")
     init.add_argument(
         "--exclude", action="append", default=[], metavar="GLOB", help="file glob to leave out"
+    )
+    init.add_argument(
+        "--externals",
+        action="store_true",
+        help="also write [archview.externals] from today's outside imports",
     )
     init.set_defaults(run=_init)
 

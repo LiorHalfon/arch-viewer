@@ -32,14 +32,18 @@ def _array(values: Iterable[str]) -> str:
     return "[" + ", ".join(json.dumps(v) for v in values) + "]"
 
 
-def infer_rules(model: Model, config: Config | None = None) -> str:
-    """The text of an `archview.toml`; keeps package, exclusions and components from `config`."""
+def infer_rules(model: Model, config: Config | None = None, externals: bool = False) -> str:
+    """The text of an `archview.toml`; keeps package, exclusions and components from `config`.
+
+    `externals` adds an `[archview.externals]` table from today's outside imports,
+    for repos that want the freeze-then-delete loop `[archview.allowed]` already offers.
+    """
     config = config or Config()
     model = checked_imports(model, config)
     components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
-    edges, _ = component_edges(model, components)
-    cycles = find_cycles(present, edges)
+    edges = component_edges(model, components)
+    cycles = find_cycles(present, edges.internal)
 
     lines = [
         "# Dependency rules for `archview check`, inferred by `archview init` from the",
@@ -64,8 +68,13 @@ def infer_rules(model: Model, config: Config | None = None) -> str:
     lines.extend(_cycle_setting(cycles))
     lines += ["", "[archview.allowed]"]
     for component in present:
-        targets = sorted(t for (s, t) in edges if s == component)
+        targets = sorted(t for (s, t) in edges.internal if s == component)
         lines.append(f"{_key(component)} = {_array(targets)}")
+    if externals:
+        lines += ["", "[archview.externals]"]
+        for component in present:
+            targets = sorted(t for (s, t) in edges.outside if s == component)
+            lines.append(f"{_key(component)} = {_array(targets)}")
     if config.components:
         lines += ["", "[archview.components]"]
         for name, patterns in sorted(config.components.items()):

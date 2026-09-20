@@ -37,3 +37,18 @@ def model(*imports: tuple[str, str], sep: str = ".") -> Model:
         language="python" if sep == "." else "typescript",
         separator=sep,
     )
+
+
+def model_with_external() -> Model:
+    """shop.llm imports openai; shop.api imports shop.llm."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.api", "shop", "module", "shop/api.py"),
+        Node("shop.llm", "shop", "module", "shop/llm.py"),
+        Node("openai", None, "external"),
+    )
+    imports = (
+        Import("shop.api", "shop.llm", "shop/api.py", 1, "import shop.llm"),
+        Import("shop.llm", "openai", "shop/llm.py", 2, "import openai"),
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)

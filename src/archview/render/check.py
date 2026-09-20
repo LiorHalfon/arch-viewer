@@ -17,8 +17,11 @@ LABELS = {
     "undeclared": "UNDECLARED",
     "cycle": "CYCLE",
     "zone": "ZONE",
+    "outside": "OUTSIDE",
 }
 ZONE_NAMES = {"pain": "the zone of pain", "useless": "the zone of uselessness"}
+# Problem kinds rendered as "A -> B" in text and as from/to in JSON.
+PAIRS = ("not_allowed", "forbidden", "outside")
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:
@@ -34,7 +37,7 @@ def report_to_dict(report: Report) -> dict[str, Any]:
 
 
 def _problem_dict(problem: Problem) -> dict[str, Any]:
-    pair = problem.kind in ("not_allowed", "forbidden")
+    pair = problem.kind in PAIRS
     return {
         "kind": problem.kind,
         "rule": problem.rule,
@@ -62,7 +65,8 @@ def _headline(problem: Problem, report: Report) -> str:
         return f"{label} {c[0]} is in {ZONE_NAMES[report.metrics[c[0]].zone]}"
     if problem.kind == "undeclared":
         return f"{label} {c[0]} is not in [{problem.rule}]"
-    reason = "not allowed by" if problem.kind == "not_allowed" else "forbidden by"
+    assert problem.kind in PAIRS
+    reason = "forbidden by" if problem.kind == "forbidden" else "not allowed by"
     return (
         f"{label} {c[0]} -> {c[1]} ({_plural(problem.count, 'import')}) {reason} [{problem.rule}]"
     )

@@ -1,0 +1,8 @@
+# A TypeScript workspace (M8 fixture): the npm-name and relative-path alias joins,
+# which no test exercised end to end before task 16.
+[archview.workspace]
+packages = ["core", "web"]
+
+[archview.workspace.allowed]
+core = []
+web = ["core"]

@@ -16,9 +16,9 @@ from archview.model.graph import Import, Model
 from archview.model.metrics import Metrics, metrics
 from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, Config, Forbidden
+from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
 
-ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone"]
+ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside"]
 Pair = tuple[str, str]
 # How an extractor warning reads in the report; the viewer uses the same words.
 WARNING_LABELS = {"dynamic_import": "dynamic import", "unresolved_import": "unresolved import"}
@@ -56,31 +56,72 @@ class Report:
         return any(p.fails for p in self.problems)
 
 
+@dataclass(frozen=True, slots=True)
+class WorkspaceReport:
+    """A workspace's check: each package's own report, plus the rules between them.
+
+    Pure report data - nothing here references `workspace.py`, so `render/check.py`
+    and its siblings can render `between` (an ordinary `Report`) without depending on
+    `workspace`, `project` or `extract`.
+    """
+
+    name: str
+    packages: tuple[tuple[str, Report], ...]
+    between: Report
+
+    @property
+    def failed(self) -> bool:
+        return self.between.failed or any(report.failed for _, report in self.packages)
+
+
 def component_map(config: Config, project: str, sep: str) -> ComponentMap:
     return ComponentMap(project, sep, config.components, frozenset(config.ignored))
 
 
-def component_edges(
-    model: Model, components: ComponentMap, config: Config | None = None
-) -> tuple[dict[Pair, list[Import]], set[int]]:
-    """Imports grouped by the pair of components they connect, minus exempted ones.
+@dataclass(frozen=True, slots=True)
+class Edges:
+    """Imports grouped by the pair they connect, split by whether the target is inside."""
 
-    Also returns the indexes of the exceptions that exempted something, so unused
-    exceptions can be reported.
+    internal: dict[Pair, list[Import]]
+    outside: dict[Pair, list[Import]]
+    exceptions_used: set[int]
+
+
+def component_edges(model: Model, components: ComponentMap, config: Config | None = None) -> Edges:
+    """Imports grouped by the components they connect, minus exempted ones.
+
+    `outside` holds the imports whose target is an external node; `exceptions_used`
+    holds the indexes of the exceptions that exempted something, so unused ones
+    can be reported.
     """
     exemptions = config.exceptions if config else ()
-    grouped: dict[Pair, list[Import]] = defaultdict(list)
+    external = {n.id for n in model.nodes if n.kind == "external"}
+    internal: dict[Pair, list[Import]] = defaultdict(list)
+    outside: dict[Pair, list[Import]] = defaultdict(list)
     used: set[int] = set()
     for imp in model.imports:
-        source, target = components.of(imp.importer), components.of(imp.imported)
-        if source is None or target is None or source == target:
+        pair = _pair(imp, components, external)
+        if pair is None:
             continue
         hit = _exemption(imp, exemptions, model.separator)
         if hit is not None:
             used.add(hit)
             continue
-        grouped[(source, target)].append(imp)
-    return dict(sorted(grouped.items())), used
+        bucket = outside if imp.imported in external else internal
+        bucket[pair].append(imp)
+    return Edges(dict(sorted(internal.items())), dict(sorted(outside.items())), used)
+
+
+def _pair(imp: Import, components: ComponentMap, external: set[str]) -> Pair | None:
+    """(source component, target) for an import the rules care about, else None."""
+    source = components.of(imp.importer)
+    if source is None:
+        return None
+    if imp.imported in external:
+        target = components.outside(imp.imported)
+        return None if target is None else (source, target)
+    target = components.of(imp.imported)
+    return None if target is None or target == source else (source, target)
 
 
 def _exemption(imp: Import, exemptions, sep: str) -> int | None:
@@ -115,23 +156,26 @@ def check(model: Model, config: Config) -> Report:
     model = checked_imports(model, config)
     components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
-    edges, used = component_edges(model, components, config)
+    _reject_outside_sources(model, config)
+    edges = component_edges(model, components, config)
     table = config.table
-    measured = component_metrics(model, components, edges, present, config.metrics.threshold)
+    measured = component_metrics(
+        model, components, edges.internal, present, config.metrics.threshold
+    )
 
     problems = [
         *_rule_problems(edges, present, config, table),
-        *_cycle_problems(edges, present, config, table),
+        *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(model, config, components, present, used, table)
+    warnings = _warnings(model, config, components, present, edges.exceptions_used, table)
     return Report(
         model.project,
         present,
         tuple(problems),
         tuple(warnings),
         measured,
-        _unused(edges, present, config),
+        _unused(edges.internal, present, config),
     )
 
 
@@ -198,26 +242,71 @@ def _zone_hint(component: str, m: Metrics) -> str:
 
 
 def _rule_problems(
-    edges: dict[Pair, list[Import]], present: tuple[str, ...], config: Config, table: str
+    edges: Edges, present: tuple[str, ...], config: Config, table: str
 ) -> list[Problem]:
-    forbidden: dict[Pair, Forbidden] = {}
-    for f in config.all_forbidden():
-        forbidden.setdefault((f.source, f.target), f)
+    forbidden = _forbidden_pairs(config, present)
     allowed = config.allowed
     fails = config.fail_on_violations
     problems: list[Problem] = []
     if allowed is not None:
         for component in present:
             if component not in allowed:
-                outgoing = [i for (s, _), imps in edges.items() if s == component for i in imps]
+                outgoing = [
+                    i for (s, _), imps in edges.internal.items() if s == component for i in imps
+                ]
                 problems.append(_undeclared(component, outgoing, table, fails))
-    for (source, target), imports in edges.items():
+    for (source, target), imports in edges.internal.items():
         if (source, target) in forbidden:
             origin = forbidden[(source, target)].origin
             problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
         elif allowed is not None and source in allowed and not _may(allowed, source, target):
             problems.append(_not_allowed(source, target, imports, allowed, table, fails))
+    problems += _outside_problems(edges.outside, forbidden, config, table)
     return sorted(problems, key=lambda p: (p.components, p.kind))
+
+
+def _forbidden_pairs(config: Config, present: tuple[str, ...]) -> dict[Pair, Forbidden]:
+    """`forbidden` rules keyed by pair, with `from = "*"` expanded to every component."""
+    pairs: dict[Pair, Forbidden] = {}
+    for f in config.all_forbidden():
+        sources = present if f.source == ALL_COMPONENTS else (f.source,)
+        for source in sources:
+            pairs.setdefault((source, f.target), f)
+    return pairs
+
+
+def _outside_problems(
+    outside: dict[Pair, list[Import]], forbidden: dict[Pair, Forbidden], config: Config, table: str
+) -> list[Problem]:
+    externals = config.externals
+    fails = config.fail_on_violations
+    problems = []
+    for (source, target), imports in outside.items():
+        if (source, target) in forbidden:
+            origin = forbidden[(source, target)].origin
+            problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
+        elif externals is not None and source in externals and not _may(externals, source, target):
+            problems.append(_outside(source, target, imports, externals, table, fails))
+    return problems
+
+
+def _outside(
+    source: str, target: str, imports: list[Import], externals: dict, table: str, fails: bool
+) -> Problem:
+    may = ", ".join(externals[source]) or "nothing outside the project"
+    return Problem(
+        kind="outside",
+        rule=f"{table}.externals.{source}",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{source} may reach {may}. Declare {target} in [{table}.externals].{source}, "
+            f"or define the interface {source} needs inside {source} and let another "
+            "component depend on the package."
+        ),
+        fails=fails,
+    )
 
 
 def _may(allowed: dict, source: str, target: str) -> bool:
@@ -310,6 +399,17 @@ def _imports(count: int) -> str:
     return "1 import" if count == 1 else f"{count} imports"
 
 
+def _reject_outside_sources(model: Model, config: Config) -> None:
+    """`from` always names a component: nothing we can see imports out of a package."""
+    external = {n.id for n in model.nodes if n.kind == "external"}
+    for f in config.all_forbidden():
+        if f.source in external:
+            raise ConfigError(
+                f"[{config.table}.{f.origin}] has from = {f.source!r}, a package outside "
+                "the project; `from` must name a component"
+            )
+
+
 def _warnings(
     model: Model,
     config: Config,
@@ -318,7 +418,12 @@ def _warnings(
     used: set[int],
     table: str,
 ) -> list[Notice]:
-    known = set(present)
+    external = {n.id for n in model.nodes if n.kind == "external"}
+    known_components = set(present)
+    # `allowed` is consulted only for `edges.internal` pairs (`_rule_problems`), where
+    # both sides are components: an outside name or "*" there is a rule that can never
+    # fire, so it must not be treated as known the way `forbidden` legitimately is.
+    known = known_components | external | {ALL_COMPONENTS}
     warnings = []
     if config.allowed is None:
         warnings.append(
@@ -330,11 +435,27 @@ def _warnings(
         )
     for component, targets in sorted((config.allowed or {}).items()):
         for name in [component] + ([] if targets == ALL else list(targets)):
-            if name not in known:
+            if name not in known_components:
                 warnings.append(
                     Notice(
                         "unknown_component",
                         f"[{table}.allowed.{component}] names {name!r}, which has no modules",
+                    )
+                )
+    for component, targets in sorted((config.externals or {}).items()):
+        if component not in present:
+            warnings.append(
+                Notice(
+                    "unknown_component",
+                    f"[{table}.externals.{component}] names {component!r}, which has no modules",
+                )
+            )
+        for name in [] if targets == ALL else targets:
+            if name not in external:
+                warnings.append(
+                    Notice(
+                        "unknown_component",
+                        f"[{table}.externals.{component}] names {name!r}, which nothing imports",
                     )
                 )
     for f in config.all_forbidden():
