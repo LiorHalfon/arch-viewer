@@ -22,8 +22,10 @@ from archview.workspace import (
     workspace_cycles,
     workspace_view,
 )
+from tests.typescript_support import requires_typescript
 
 FIXTURE = Path(__file__).parent / "fixtures" / "workspace"
+TS_FIXTURE = Path(__file__).parent / "fixtures" / "ts-workspace"
 
 
 def _toml_scalar(value: object) -> str:
@@ -156,6 +158,40 @@ def test_owner_returns_none_for_a_relative_import_outside_any_package(tmp_path):
     plugin = _fake_package("plugin", (tmp_path / "plugin").resolve())
 
     assert _owner("../elsewhere/src/story", plugin, (plugin,)) is None
+
+
+# ---------- a TypeScript package in a workspace: the real extractor, not a fake Project ----------
+
+
+@requires_typescript
+def test_a_typescript_package_joins_the_workspace():
+    ws = open_workspace(TS_FIXTURE)
+    assert [p.name for p in ws.packages] == ["core", "web"]
+
+
+@requires_typescript
+def test_a_typescript_package_is_aliased_by_its_npm_name():
+    ws = open_workspace(TS_FIXTURE)
+    by_name = {p.name: p for p in ws.packages}
+    assert by_name["core"].aliases == frozenset({"core", "@fixture/core"})
+
+
+@requires_typescript
+def test_every_typescript_alias_kind_is_attributed_to_the_sibling():
+    """`web` reaches `core` three ways: a relative import the TypeScript extractor
+    resolves and classifies as external (`../core`), its scoped npm name
+    (`@fixture/core`), and its bare package name (`core`). All three must join to the
+    same sibling."""
+    ws = open_workspace(TS_FIXTURE)
+    edges = cross_edges(ws)
+    assert list(edges) == [("web", "core")]
+    assert len(edges[("web", "core")]) == 3
+
+
+@requires_typescript
+def test_the_typescript_workspace_passes_its_own_rules():
+    report = check_workspace(open_workspace(TS_FIXTURE))
+    assert not report.failed
 
 
 def test_open_workspace_requires_a_workspace_table(tmp_path):

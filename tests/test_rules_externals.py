@@ -13,7 +13,17 @@ from tests.builders import model_with_external
 def test_outside_names_a_module_that_is_not_under_the_project():
     components = ComponentMap("shop", ".", {})
     assert components.outside("openai") == "openai"
-    assert components.outside("openai.types") == "openai"
+
+
+def test_outside_trusts_the_extractors_own_squash():
+    """grimp already squashes a deep Python import (`openai.types.chat`) to its
+    top-level package before `outside` ever sees it, and TypeScript's `_external_name`
+    does the same for npm imports - so `outside` must not re-split on `sep`, or a
+    scoped npm name or a workspace's `../sibling` outside name (M8) would be cut down
+    to its first segment (`@scope`, `..`)."""
+    components = ComponentMap("web", "/", {})
+    assert components.outside("@scope/pkg") == "@scope/pkg"
+    assert components.outside("../sibling") == "../sibling"
 
 
 def test_outside_is_none_inside_the_project():

@@ -31,12 +31,17 @@ class ComponentMap:
     def outside(self, module: str) -> str | None:
         """The outside package `module` belongs to, or None if it is inside the project.
 
-        Squashed to the top-level name, as the extractors squash external nodes.
+        `module` is already the extractor's own squashed external id - grimp collapses
+        a deep Python import (`openai.types.chat`) to its top-level package (`openai`)
+        before this ever runs, and TypeScript's `_external_name` does the equivalent for
+        npm imports. Splitting it again here would be wrong for a squashed id that still
+        contains `sep` for a reason other than depth: a scoped npm name (`@scope/pkg`)
+        or a workspace's `../sibling` outside name (M8) would be cut down to `@scope` or
+        `..`.
         """
         if module == self.project or within(module, self.project, self.sep):
             return None
-        name = module.split(self.sep)[0]
-        return None if name in self.ignored else name
+        return None if module in self.ignored else module
 
     def _explicit(self, module: str) -> str | None:
         hits = [
