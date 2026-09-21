@@ -83,8 +83,25 @@ class WorkspaceReport:
         return self.between.failed or any(report.failed for _, report in self.packages)
 
 
-def component_map(config: Config, project: str, sep: str) -> ComponentMap:
-    return ComponentMap(project, sep, config.components, frozenset(config.ignored))
+def component_map(config: Config, model: Model) -> ComponentMap:
+    return ComponentMap(
+        model.project,
+        model.separator,
+        config.components,
+        frozenset(config.ignored),
+        _extra_roots(model),
+    )
+
+
+def _extra_roots(model: Model) -> frozenset[str]:
+    """The extra top-level packages `build_model` graphed alongside the project
+    (issue #10): an internal node with no parent that is not the project itself -
+    exactly as `Node.parent` is `None` for the project's own root (ADR 0006)."""
+    return frozenset(
+        n.id
+        for n in model.nodes
+        if n.parent is None and n.kind != "external" and n.id != model.project
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +180,7 @@ def checked_imports(model: Model, config: Config) -> Model:
 
 def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     model = checked_imports(model, config)
-    components = component_map(config, model.project, model.separator)
+    components = component_map(config, model)
     present = present_components(model, components)
     _reject_outside_sources(model, config)
     edges = component_edges(model, components, config)

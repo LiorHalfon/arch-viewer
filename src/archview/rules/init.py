@@ -40,7 +40,7 @@ def infer_rules(model: Model, config: Config | None = None, externals: bool = Fa
     """
     config = config or Config()
     model = checked_imports(model, config)
-    components = component_map(config, model.project, model.separator)
+    components = component_map(config, model)
     present = present_components(model, components)
     edges = component_edges(model, components)
     cycles = find_cycles(present, edges.internal)

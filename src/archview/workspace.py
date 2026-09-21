@@ -327,7 +327,7 @@ def _outside_imports(package: Package) -> dict[str, list[Import]]:
     """
     project = package.project
     model = checked_imports(project.model, project.config)
-    components = component_map(project.config, model.project, model.separator)
+    components = component_map(project.config, model)
     edges = component_edges(model, components, replace(project.config, exceptions=()))
     by_outside: dict[str, list[Import]] = defaultdict(list)
     for (_, outside), imports in edges.outside.items():

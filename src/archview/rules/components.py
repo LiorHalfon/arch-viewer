@@ -5,6 +5,12 @@ belongs to `api`, as `shop/api/routes.ts` does, and the project's own root modul
 component named after the project. Explicit `[components]` patterns take precedence;
 when several match, the most specific pattern wins, then the component name. A module
 outside the project belongs to no component, but has an outside name of its own.
+
+A module under `extra_roots` is also internal, and belongs to a component named after
+that root's own top-level name - `tests.test_live` belongs to `tests`, exactly as the
+project's own root module belongs to a component named after the project (issue #10,
+ADR 0006). `extract/python.py`'s `build_model` graphs those roots alongside the
+project, so such a module is never mistaken for an outside name in the first place.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ class ComponentMap:
     sep: str
     explicit: Mapping[str, tuple[str, ...]]
     ignored: frozenset[str] = frozenset()
+    extra_roots: frozenset[str] = frozenset()
 
     def of(self, module: str) -> str | None:
         """The component `module` belongs to, or None if it is outside the project or ignored."""
@@ -58,9 +65,10 @@ class ComponentMap:
     def _default(self, module: str) -> str | None:
         if module == self.project:
             return self.project
-        if not within(module, self.project, self.sep):
-            return None
-        return module[len(self.project) + 1 :].split(self.sep)[0]
+        if within(module, self.project, self.sep):
+            return module[len(self.project) + 1 :].split(self.sep)[0]
+        top = module.split(self.sep)[0]
+        return top if top in self.extra_roots else None
 
     def unmatched_patterns(self, modules: Iterable[str]) -> list[tuple[str, str]]:
         """(component, pattern) pairs that match no module - usually a typo."""
