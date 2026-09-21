@@ -29,6 +29,7 @@ from archview.project import Project, open_project, project_report
 from archview.rules.baseline import apply_baseline, load_baseline
 from archview.rules.check import (
     Edges,
+    Notice,
     Pair,
     Problem,
     Report,
@@ -189,7 +190,7 @@ def cross_edges(ws: Workspace) -> CrossEdges:
                 continue
             by_package[(package.name, sibling)] += surviving
             for imp in surviving:
-                component = _component_of(imp, outside, sibling, ws, targets)
+                component = _component_of(imp, outside, package, sibling, ws, targets)
                 if component is None:
                     unplaced.append(imp)
                 else:
@@ -215,21 +216,27 @@ def _python_roots(ws: Workspace) -> dict[str, Path]:
 
 
 def _component_of(
-    imp: Import, outside: str, sibling: str, ws: Workspace, targets: dict[tuple[str, int], str]
+    imp: Import,
+    outside: str,
+    importer: Package,
+    sibling: str,
+    ws: Workspace,
+    targets: dict[tuple[str, int], str],
 ) -> str | None:
     """`sibling.component` for the part of `sibling` this import reaches, or None.
 
-    Python comes from the workspace resolution pass, which is the only thing that can
-    see past grimp's squashing. TypeScript's relative import already carries its full
-    path, and a bare npm name reaches the package's entry point, which is public by
-    construction. Only an npm subpath is unplaceable (ADR 0013).
+    Python comes from the workspace resolution pass, the only thing that can see past
+    grimp's squashing. TypeScript carries `Import.resolved`, the path tsc resolved
+    before the extractor squashed the target to a package name - so every TypeScript
+    form that tsc can resolve places, and one it cannot is reported rather than
+    guessed at (ADR 0013).
     """
-    resolved = targets.get((imp.importer, imp.line))
-    if resolved is not None:
-        return _qualified(resolved, sibling, ".")
-    if outside.startswith("../"):
-        return _qualified_by_path(outside, sibling, ws)
-    return sibling if outside in _package_by_name(ws, sibling).aliases else None
+    module = targets.get((imp.importer, imp.line))
+    if module is not None:
+        return _qualified(module, sibling, ".")
+    if imp.resolved is not None:
+        return _qualified_by_path(imp.resolved, importer, sibling, ws)
+    return None
 
 
 def _qualified(module: str, sibling: str, sep: str) -> str:
@@ -238,15 +245,23 @@ def _qualified(module: str, sibling: str, sep: str) -> str:
     return f"{sibling}{sep}{rest.split(sep)[0]}" if rest else sibling
 
 
-def _qualified_by_path(outside: str, sibling: str, ws: Workspace) -> str | None:
-    package = _package_by_name(ws, sibling)
-    target = (Path(outside)).as_posix()
-    root = package.project.source_root
+def _qualified_by_path(resolved: str, importer: Package, sibling: str, ws: Workspace) -> str | None:
+    """`resolved` is a path relative to the *importing* package's repo.
+
+    The component comes from the owner's own model rather than from path arithmetic:
+    a TypeScript node id drops the source root (`src/index.ts` -> `core/index.ts`), so
+    only the extractor that built the ids can map a file back to one.
+    """
+    owner = _package_by_name(ws, sibling)
     try:
-        inside = (package.path / target).resolve().relative_to(root.resolve())
+        inside = (importer.path / resolved).resolve().relative_to(owner.path.resolve())
     except ValueError:
         return None
-    return _qualified(f"{sibling}/{inside.as_posix()}", sibling, "/")
+    wanted = inside.as_posix()
+    node = next((n for n in owner.project.model.nodes if n.file == wanted), None)
+    if node is None:
+        return None
+    return _qualified(node.id, sibling, owner.project.model.separator)
 
 
 def _package_by_name(ws: Workspace, name: str) -> Package:
@@ -299,10 +314,28 @@ def _check_between(ws: Workspace) -> Report:
         *_component_problems(cross.by_component, ws, rules, config),
     ]
     ordered = tuple(sorted(problems, key=lambda p: (p.components, p.kind)))
-    report = Report(ws.name, present, ordered, ())
+    report = Report(ws.name, present, ordered, _unplaced_warnings(cross, ws))
     if rules.baseline:
         report = _apply_workspace_baseline(report, ws.root, rules.baseline)
     return report
+
+
+def _unplaced_warnings(cross: CrossEdges, ws: Workspace) -> tuple[Notice, ...]:
+    """An import we could not attribute to a component is named, never passed over.
+
+    It still counts at package level; what is missing is only the public-surface
+    check, and silently skipping that is exactly the "looks protected but is not"
+    failure this tool exists to prevent.
+    """
+    owner = {imp: name for (_, name), imps in cross.by_package.items() for imp in imps}
+    return tuple(
+        Notice(
+            "unplaced_import",
+            f"{imp.file}:{imp.line} {imp.text.strip()}: could not tell which component of "
+            f"{owner.get(imp, 'the sibling')} this reaches, so its public surface was not checked",
+        )
+        for imp in sorted(cross.unplaced, key=lambda i: (i.file, i.line))
+    )
 
 
 def _package(name: str) -> str:

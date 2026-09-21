@@ -14,7 +14,7 @@ from typing import Any
 from archview.model.graph import ExtractionWarning, Import, Model, Node
 from archview.model.view import View
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCHEMA = Path(__file__).with_name("schema.json")
 
 

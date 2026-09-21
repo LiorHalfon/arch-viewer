@@ -69,6 +69,9 @@ def test_lists_the_imports_behind_an_edge(capsys):
             "text": "from sample.services import pricing",
             "type_checking": False,
             "lazy": False,
+            # null for Python: grimp squashes an external target, so a single
+            # package's model cannot say more than `imported` already does.
+            "resolved": None,
         }
     ]
 

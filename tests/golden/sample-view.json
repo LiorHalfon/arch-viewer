@@ -82,7 +82,8 @@
           "line": 10,
           "text": "from sample.domain import Order",
           "type_checking": false,
-          "lazy": false
+          "lazy": false,
+          "resolved": null
         }
       ]
     },
@@ -101,7 +102,8 @@
           "line": 14,
           "text": "from sample.infra.db import Session",
           "type_checking": true,
-          "lazy": false
+          "lazy": false,
+          "resolved": null
         }
       ]
     },
@@ -120,7 +122,8 @@
           "line": 11,
           "text": "from sample.services import pricing",
           "type_checking": false,
-          "lazy": false
+          "lazy": false,
+          "resolved": null
         }
       ]
     },
@@ -139,7 +142,8 @@
           "line": 12,
           "text": "from sample.domain.ports import OrderStore",
           "type_checking": false,
-          "lazy": true
+          "lazy": true,
+          "resolved": null
         }
       ]
     },
@@ -158,7 +162,8 @@
           "line": 3,
           "text": "from sample.services import pricing",
           "type_checking": false,
-          "lazy": false
+          "lazy": false,
+          "resolved": null
         }
       ]
     },
@@ -177,7 +182,8 @@
           "line": 3,
           "text": "from ..domain import model",
           "type_checking": false,
-          "lazy": false
+          "lazy": false,
+          "resolved": null
         }
       ]
     },
@@ -196,7 +202,8 @@
           "line": 7,
           "text": "from sample.infra.cache import get_rate",
           "type_checking": false,
-          "lazy": true
+          "lazy": true,
+          "resolved": null
         }
       ]
     }

@@ -573,3 +573,60 @@ def test_a_package_without_public_draws_as_one_node(tmp_path):
     view = workspace_view(open_workspace(root))
     assert [n.id for n in view.nodes] == ["core", "plugin"]
     assert all(n.parent is None for n in view.nodes)
+
+
+def _ts_copy(tmp_path: Path, index: str, public: str | None = None) -> Path:
+    """A ts-workspace copy whose web/index.ts is `index`. symlinks=True keeps the
+    fixture's node_modules link, without which the TypeScript compiler is not found."""
+    root = tmp_path / "ts"
+    shutil.copytree(TS_FIXTURE, root, symlinks=True)
+    # The fixture's node_modules is a *relative* symlink to the ts-sample fixture's,
+    # which does not resolve from a temp copy; re-point it at the real one.
+    link = root / "node_modules"
+    link.unlink()
+    link.symlink_to((TS_FIXTURE / "node_modules").resolve())
+    (root / "web" / "src" / "index.ts").write_text(index)
+    if public is not None:
+        (root / "core" / "archview.toml").write_text(
+            '[archview]\nlanguage = "typescript"\npublic = ' + public + "\n"
+        )
+    return root
+
+
+@requires_typescript
+def test_a_typescript_relative_import_is_attributed_to_a_component(tmp_path):
+    root = _ts_copy(
+        tmp_path, 'import { Widget } from "../../core/src/index";\nexport const a = Widget;\n'
+    )
+    edges = cross_edges(open_workspace(root))
+    assert [t for _, t in edges.by_component] == ["core/index.ts"]
+    assert edges.unplaced == ()
+
+
+@requires_typescript
+def test_a_bare_npm_name_is_placed_when_tsconfig_maps_it(tmp_path):
+    """A real monorepo maps its siblings with tsconfig `paths`, so tsc resolves the
+    npm name to a real file and archview can say which component it reached."""
+    root = _ts_copy(tmp_path, 'import { helper } from "@fixture/core";\nexport const a = helper;\n')
+    edges = cross_edges(open_workspace(root))
+    assert [t for _, t in edges.by_component] == ["core/index.ts"]
+    assert edges.unplaced == ()
+
+
+@requires_typescript
+def test_an_import_tsc_cannot_resolve_is_reported_not_ignored(tmp_path):
+    """An unresolvable specifier still reaches the sibling by name, but we cannot say
+    which part of it - so it is reported rather than quietly treated as public."""
+    root = _ts_copy(tmp_path, 'import { x } from "core/missing";\nexport const a = x;\n')
+    edges = cross_edges(open_workspace(root))
+    assert edges.by_component == {}
+    assert len(edges.unplaced) == 1
+
+
+@requires_typescript
+def test_an_unplaced_import_becomes_a_workspace_warning(tmp_path):
+    """The cross-package report carried no warnings at all until now (ADR 0012)."""
+    root = _ts_copy(tmp_path, 'import { x } from "core/missing";\nexport const a = x;\n')
+    report = check_workspace(open_workspace(root))
+    assert [w.kind for w in report.between.warnings] == ["unplaced_import"]
+    assert "index.ts" in report.between.warnings[0].message
