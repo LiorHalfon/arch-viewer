@@ -71,3 +71,32 @@ def test_sys_path_is_left_as_it_was(tmp_path):
     before = list(sys.path)
     resolve_targets(two_packages(tmp_path))
     assert sys.path == before
+
+
+def test_a_member_name_already_imported_elsewhere_still_resolves(tmp_path):
+    """A member name colliding with something already imported in this process must
+    not make `resolve_targets` resolve against the wrong location.
+
+    `importlib.util.find_spec`, which grimp uses to locate each top-level package,
+    returns an already-imported module's cached spec without consulting `sys.path`
+    at all - so a process that has ever imported a same-named module from elsewhere
+    would otherwise silently resolve cross-package imports against the wrong
+    package (issue #10's `tests` collides with pytest's own `tests` package for
+    exactly this reason; here the collision is made real rather than mocked)."""
+    import importlib
+    import sys
+
+    decoy = tmp_path / "decoy"
+    write(decoy, "core/__init__.py", "")
+    sys.path.insert(0, str(decoy))
+    try:
+        importlib.import_module("core")
+    finally:
+        sys.path.remove(str(decoy))
+    assert Path(sys.modules["core"].__file__) == decoy / "core" / "__init__.py"
+    try:
+        found = resolve_targets(two_packages(tmp_path))
+        assert found[("plugin.adapter", 1)] == "core.ports"
+        assert found[("plugin.adapter", 2)] == "core.model"
+    finally:
+        del sys.modules["core"]

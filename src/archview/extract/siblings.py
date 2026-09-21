@@ -41,6 +41,44 @@ def _importable(roots: list[Path]):
                 sys.path.remove(entry)
 
 
+@contextmanager
+def _unimported(roots: Mapping[str, Path]):
+    """Evict a name from `sys.modules` for the resolution only, when it is already
+    imported from somewhere other than the root about to be graphed.
+
+    Grimp locates each top-level package with `importlib.util.find_spec`, which
+    returns an already-imported module's cached spec without consulting `sys.path`
+    at all. A process that has ever imported a same-named module from elsewhere -
+    this project's own test suite is itself a package called `tests`, so analysing
+    a project with a member or extra root also named `tests` (issue #10's own
+    example) hits this in this very process - would otherwise silently resolve
+    against the wrong package. Checking for a mismatch first, rather than evicting
+    every graphed name unconditionally, means a name already imported from exactly
+    the root we are about to graph it from - this project's own `archview` package,
+    self-checking itself - is never touched at all.
+    """
+    saved = {
+        name: sys.modules[name]
+        for name, root in roots.items()
+        if name in sys.modules and _elsewhere(sys.modules[name], root, name)
+    }
+    for name in saved:
+        del sys.modules[name]
+    try:
+        yield
+    finally:
+        sys.modules.update(saved)
+
+
+def _elsewhere(module, root: Path, name: str) -> bool:
+    """True if `module` (already imported as `name`) was not loaded from `root`."""
+    paths = getattr(module, "__path__", None)
+    if not paths:
+        return True
+    expected = (root / name).resolve()
+    return not any(Path(p).resolve() == expected for p in paths)
+
+
 def _owner(module: str, packages: frozenset[str]) -> str | None:
     """The package a module belongs to, or None if it belongs to none of them."""
     top = module.split(".")[0]
@@ -60,7 +98,7 @@ def resolve_targets(roots: Mapping[str, Path]) -> dict[Where, str]:
     if len(roots) < 2:
         return {}
     names = frozenset(roots)
-    with _importable(sorted(roots.values(), key=str)):
+    with _importable(sorted(roots.values(), key=str)), _unimported(roots):
         graph = grimp.build_graph(*sorted(names), include_external_packages=True, cache_dir=None)
         found = _cross_imports(graph, names)
     return dict(sorted(found.items()))

@@ -9,37 +9,15 @@ what grimp does not report (`extract/facts.py`).
 from __future__ import annotations
 
 import sys
-from contextlib import contextmanager
 from pathlib import Path
 
 import grimp
 
 from archview.extract.facts import FileFacts, scan
-from archview.extract.siblings import _importable
+from archview.extract.siblings import _importable, _unimported
 from archview.model.graph import ExtractionWarning, Import, Model, Node
 
 STDLIB = frozenset(sys.stdlib_module_names) | {"__future__"}
-
-
-@contextmanager
-def _unimported(names: frozenset[str]):
-    """Evict `names` from `sys.modules` for the extraction only.
-
-    Grimp locates each top-level package with `importlib.util.find_spec`, which
-    returns an already-imported module's cached spec without consulting `sys.path`
-    at all. A process that has ever imported a same-named module - this project's
-    own test suite is itself a package called `tests`, so analysing a project whose
-    extra root is *also* named `tests` (issue #10's own example) hits this in this
-    very process - would otherwise silently resolve to the wrong package. Evicting
-    it first forces a fresh lookup against the roots `_importable` just added.
-    """
-    saved = {n: m for n, m in sys.modules.items() if n.split(".")[0] in names}
-    for name in saved:
-        del sys.modules[name]
-    try:
-        yield
-    finally:
-        sys.modules.update(saved)
 
 
 def _source_file(module: str, source_root: Path, relative_to: Path) -> str | None:
@@ -90,7 +68,7 @@ def build_model(
     base = Path(relative_to).resolve() if relative_to else source_root
     roots = {package: source_root} | {name: Path(root).resolve() for name, root in extra}
     names = frozenset(roots)
-    with _importable(sorted(roots.values(), key=str)), _unimported(names):
+    with _importable(sorted(roots.values(), key=str)), _unimported(roots):
         graph = grimp.build_graph(*sorted(names), include_external_packages=True, cache_dir=None)
 
     internal_first = lambda m: (not _is_internal(m, names), m)  # noqa: E731
