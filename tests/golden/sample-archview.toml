@@ -12,7 +12,7 @@ fail_on_violations = true
 fail_on_cycles = false
 
 [archview.allowed]
-api = ["domain", "services"]
+api = ["domain", "infra", "services"]
 domain = []
 infra = ["domain", "services"]
 sample = ["domain"]

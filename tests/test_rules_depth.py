@@ -12,14 +12,33 @@ def kinds(report, failing_only=False):
     return [(p.kind, p.components) for p in report.problems if p.fails or not failing_only]
 
 
-def test_type_checking_imports_are_ignored_by_default_and_can_be_included():
+def test_type_checking_imports_are_included_by_default_and_can_be_ignored():
+    """type_checking_imports defaults to "include" (issue #8): a type-only import is
+    still a dependency, and is checked like any other unless a rules file opts out."""
     m = model(("app.domain.order", "app.infra.db"))
     m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
     rules = {"domain": (), "infra": ()}
 
-    assert check(m, Config(allowed=rules)).problems == ()
-    included = Config(allowed=rules, type_checking_imports="include")
-    assert kinds(check(m, included)) == [("not_allowed", ("domain", "infra"))]
+    assert kinds(check(m, Config(allowed=rules))) == [("not_allowed", ("domain", "infra"))]
+    ignored = Config(allowed=rules, type_checking_imports="ignore")
+    assert check(m, ignored).problems == ()
+
+
+def test_a_type_only_import_is_checked_by_default():
+    """A type-only import is still a dependency: it is a reason this file cannot be
+    understood without that one, and it becomes a runtime import the moment someone
+    needs a value (issue #8)."""
+    m = model(("shop.api", "shop.infra"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    report = check(m, Config(allowed={"api": [], "infra": []}))
+    assert [p.components for p in report.problems if p.fails] == [("api", "infra")]
+
+
+def test_ignore_restores_the_old_behaviour():
+    m = model(("shop.api", "shop.infra"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    report = check(m, Config(allowed={"api": [], "infra": []}, type_checking_imports="ignore"))
+    assert report.problems == ()
 
 
 def test_layers_forbid_importing_upwards_and_between_peers():

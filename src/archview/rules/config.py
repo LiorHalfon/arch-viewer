@@ -73,7 +73,7 @@ class Config:
     tsconfig: str | None = None
     source_roots: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
-    type_checking_imports: str = "ignore"
+    type_checking_imports: str = "include"
     fail_on_violations: bool = True
     fail_on_cycles: bool = True
     allowed: dict[str, tuple[str, ...] | str] | None = None
@@ -206,7 +206,7 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         components=_components(table.get("components", {}), f"{where}.components"),
         public=_optional_str_list(table, "public", where),
         type_checking_imports=_choice(
-            table, "type_checking_imports", ("ignore", "include"), "ignore", where
+            table, "type_checking_imports", ("ignore", "include"), "include", where
         ),
         layers=_layers(table.get("layers", []), f"{where}.layers"),
         independent=tuple(

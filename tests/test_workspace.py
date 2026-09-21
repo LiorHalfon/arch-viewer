@@ -340,14 +340,17 @@ class Adapter:
 '''
 
 
-def test_a_type_checking_only_cross_package_import_is_ignored_by_default(tmp_path):
+def test_a_type_checking_only_cross_package_import_is_included_by_default(tmp_path):
+    """type_checking_imports now defaults to "include" (issue #8): a type-only
+    cross-package import is a dependency across the workspace boundary too, so it is
+    counted unless a package's own rules file opts out."""
     root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ()})
     (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(TYPE_CHECKING_ADAPTER)
 
     report = check_workspace(open_workspace(root))
 
-    assert "core" not in {t for _, t in cross_edges(open_workspace(root)).by_package}
-    assert not report.between.failed
+    assert "core" in {t for _, t in cross_edges(open_workspace(root)).by_package}
+    assert report.between.failed
 
 
 def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path):
