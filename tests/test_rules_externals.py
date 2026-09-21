@@ -225,6 +225,25 @@ def test_a_partial_externals_table_says_what_it_does_not_cover():
     assert "openai" in note.message
 
 
+def test_partial_externals_reads_as_one_family_with_the_other_notices():
+    """The eight other notices are a single clause, semicolon-joined, no terminal
+    period - `partial_externals` keeps its second sentence (the lesson issue #5 asked
+    for) but must otherwise read the same way, and two granting keys join with an
+    Oxford "and", not a serial comma that collides with the trailing "but" (Fix 9,
+    review)."""
+    config = Config(
+        allowed={"wiring": (), "checkout": (), "book": ()},
+        externals={"wiring": ("openai",), "checkout": ("openai",)},
+    )
+    report = check(three_reach_openai(), config)
+    [note] = [w for w in report.warnings if w.kind == "partial_externals"]
+    assert note.message == (
+        "[archview.externals] allows openai for checkout and wiring, but book also "
+        "imports it and is unconstrained; only components named in "
+        "[archview.externals] are checked"
+    )
+
+
 def test_no_note_when_every_importer_is_constrained():
     config = Config(
         allowed=ALLOWED_BOTH,
@@ -312,6 +331,29 @@ def test_closed_mode_passes_when_every_reacher_is_declared():
         externals_undeclared="error",
     )
     assert [p for p in check(model_with_external(), config).problems if p.fails] == []
+
+
+def test_undeclared_externals_imports_are_sorted_by_file_and_line():
+    """`_undeclared_externals_problems` concatenates a component's imports by (source,
+    target) pair, sorted alphabetically by target - not by line - so a component
+    reaching two outside targets could read out of file order (Fix 6, review)."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.book", "shop", "module", "shop/book.py"),
+        Node("openai", None, "external"),
+        Node("anthropic", None, "external"),
+    )
+    imports = (
+        Import("shop.book", "openai", "shop/book.py", 1, "import openai"),
+        Import("shop.book", "anthropic", "shop/book.py", 2, "import anthropic"),
+    )
+    m = Model(project="shop", nodes=nodes, imports=imports)
+    config = Config(allowed={"book": ()}, externals_undeclared="error")
+    [problem] = [p for p in check(m, config).problems if p.kind == "undeclared_externals"]
+    assert [(i.file, i.line) for i in problem.imports] == [
+        ("shop/book.py", 1),
+        ("shop/book.py", 2),
+    ]
 
 
 def test_the_default_is_open():

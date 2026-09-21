@@ -342,12 +342,17 @@ def _undeclared_externals_problems(
 def _undeclared_externals(
     component: str, imports: list[Import], table: str, fails: bool
 ) -> Problem:
+    """`imports` arrives concatenated across every outside target `component` reaches,
+    grouped by (source, target) pair sorted alphabetically by target - not by line -
+    so it is re-sorted by file and line here for a reading order that matches the
+    file, not the alphabet (N1, Fix 6, review)."""
+    ordered = sorted(imports, key=lambda i: (i.file, i.line))
     return Problem(
         kind="undeclared_externals",
         rule=f"{table}.externals",
         components=(component,),
-        count=len(imports),
-        imports=tuple(imports),
+        count=len(ordered),
+        imports=tuple(ordered),
         hint=(
             f"{component} reaches outside the project but is not declared in "
             f"[{table}.externals]; add {component} = [] there, or list what it may "
@@ -508,17 +513,28 @@ def _importers_by_package(edges: Edges) -> dict[str, list[str]]:
     return by_package
 
 
+def _and_join(items: list[str]) -> str:
+    """`["a"]` -> "a", `["a", "b"]` -> "a and b", `["a", "b", "c"]` -> "a, b, and c" -
+    an Oxford "and" so a serial comma before a trailing "but" cannot be misread as one
+    more item in the list (Fix 9, review)."""
+    if len(items) <= 1:
+        return items[0] if items else ""
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
 def _partial_externals(
     table: str, keys: list[str], package: str, unconstrained: list[str]
 ) -> Notice:
-    grantors = ", ".join(keys)
-    who = ", ".join(unconstrained)
+    grantors = _and_join(keys)
+    who = _and_join(unconstrained)
     plural = len(unconstrained) > 1
     verb, be = ("also import", "are") if plural else ("also imports", "is")
     return Notice(
         "partial_externals",
         f"[{table}.externals] allows {package} for {grantors}, but {who} {verb} it and {be} "
-        f"unconstrained. Only components named in [{table}.externals] are checked.",
+        f"unconstrained; only components named in [{table}.externals] are checked",
     )
 
 

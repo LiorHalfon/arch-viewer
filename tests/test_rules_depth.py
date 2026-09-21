@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from archview.model.graph import Import, Model, Node
 from archview.rules.baseline import apply_baseline, baseline_of, load_baseline
 from archview.rules.check import check
 from archview.rules.config import Config, MetricRules, parse_config
@@ -162,6 +163,34 @@ def test_a_baselined_cycle_fails_again_when_it_grows():
         ("app.c.z", "app.a.x"),
     )
     assert apply_baseline(check(grown, rules), baseline).failed
+
+
+def _llm_reaching(*targets: str) -> Model:
+    """`shop.llm` imports each of `targets`, none declared anywhere."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.llm", "shop", "module", "shop/llm.py"),
+        *(Node(t, None, "external") for t in targets),
+    )
+    imports = tuple(
+        Import("shop.llm", t, "shop/llm.py", i + 1, f"import {t}") for i, t in enumerate(targets)
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)
+
+
+def test_a_baselined_undeclared_externals_does_not_refail_for_a_new_import():
+    """ADR 0014: `undeclared_externals` is a component-level completeness claim, not
+    an edge claim - unlike an ordinary rule problem, so it belongs in `WHOLE` next to
+    `cycle` and `zone`, not fingerprinted per import. A baselined component must not
+    re-fail just because it gained another outside import (Fix 5, review)."""
+    config = Config(allowed={"llm": ()}, externals_undeclared="error")
+    baseline = baseline_of(check(_llm_reaching("openai"), config))
+
+    report = apply_baseline(check(_llm_reaching("openai", "anthropic"), config), baseline)
+
+    problem = next(p for p in report.problems if p.kind == "undeclared_externals")
+    assert not problem.fails
+    assert not report.failed
 
 
 def test_warns_when_baseline_entries_are_fixed():
