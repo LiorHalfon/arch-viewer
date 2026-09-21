@@ -290,6 +290,21 @@ def test_closed_mode_fails_a_component_with_no_externals_entry():
     ]
 
 
+def test_closed_mode_silences_the_partial_externals_notice():
+    """`partial_externals` names the unconstrained importer as already failing
+    (`undeclared_externals`) under closed mode, and its own last sentence - "only
+    components named in [table.externals] are checked" - is exactly what closed mode
+    stops being true. Restating a failure and misdescribing the config at the same
+    time is worse than staying quiet (review)."""
+    config = Config(
+        allowed=ALLOWED_BOTH,
+        externals={"wiring": ("openai",)},
+        externals_undeclared="error",
+    )
+    report = check(two_reach_openai(), config)
+    assert [w for w in report.warnings if w.kind == "partial_externals"] == []
+
+
 def test_closed_mode_passes_when_every_reacher_is_declared():
     config = Config(
         allowed={"api": ["llm"], "llm": []},

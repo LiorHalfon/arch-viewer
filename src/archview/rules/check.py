@@ -470,7 +470,15 @@ def _partial_externals_warnings(edges: Edges, config: Config, table: str) -> lis
     package used to repeat the same unconstrained-importer list verbatim, once per
     key. Repetitive warnings train people to ignore warnings, which is the failure
     this milestone exists to fix - so the notice names every granting key once.
+
+    Silent under `externals_undeclared = "error"`: closed mode already fails every
+    unconstrained importer this notice would name, as `undeclared_externals`, and the
+    notice's own last sentence ("only components named in [table.externals] are
+    checked") is exactly what closed mode stops being true. The table cannot be
+    partial when it is closed.
     """
+    if config.externals_undeclared == "error":
+        return []
     externals = config.externals or {}
     importers = _importers_by_package(edges)
     warnings = []
