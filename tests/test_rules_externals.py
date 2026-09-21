@@ -180,3 +180,16 @@ def test_a_layers_derived_rule_still_warns_about_a_typo():
     config = Config(allowed={"api": ["llm"], "llm": []}, layers=[("api",), ("typo",)])
     report = check(model_with_external(), config)
     assert any("typo" in w.message for w in report.warnings)
+
+
+def test_public_outside_a_workspace_warns_that_it_does_nothing():
+    """`public` only constrains imports from other packages in a workspace."""
+    config = Config(allowed={"api": ["llm"], "llm": []}, public=("api",))
+    report = check(model_with_external(), config)
+    assert [w.kind for w in report.warnings if w.kind == "public_ignored"] == ["public_ignored"]
+
+
+def test_public_inside_a_workspace_does_not_warn():
+    config = Config(allowed={"api": ["llm"], "llm": []}, public=("api",))
+    report = check(model_with_external(), config, in_workspace=True)
+    assert not [w for w in report.warnings if w.kind == "public_ignored"]

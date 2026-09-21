@@ -258,3 +258,24 @@ def test_workspace_forbidden_exceptions_and_baseline_are_parsed(tmp_path):
     assert config.workspace.forbidden == (Forbidden("plugin", "core"),)
     assert config.workspace.exceptions == (Exemption("plugin.adapter", "core", "temporary, TT-1"),)
     assert config.workspace.baseline == "workspace-baseline.json"
+
+
+def test_public_is_parsed(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview]
+        package = "core"
+        public = ["ports", "types"]
+        """,
+    )
+    assert config.public == ("ports", "types")
+
+
+def test_no_public_key_means_none(tmp_path):
+    assert written(tmp_path, '[archview]\npackage = "core"\n').public is None
+
+
+def test_an_empty_public_list_is_not_none(tmp_path):
+    """`public = []` publishes nothing; an absent key publishes everything."""
+    assert written(tmp_path, '[archview]\npackage = "core"\npublic = []\n').public == ()

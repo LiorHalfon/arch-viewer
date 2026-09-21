@@ -152,7 +152,7 @@ def checked_imports(model: Model, config: Config) -> Model:
     return replace(model, imports=tuple(i for i in model.imports if not i.type_checking))
 
 
-def check(model: Model, config: Config) -> Report:
+def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     model = checked_imports(model, config)
     components = component_map(config, model.project, model.separator)
     present = present_components(model, components)
@@ -168,7 +168,9 @@ def check(model: Model, config: Config) -> Report:
         *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(model, config, components, present, edges.exceptions_used, table)
+    warnings = _warnings(
+        model, config, components, present, edges.exceptions_used, table, in_workspace
+    )
     return Report(
         model.project,
         present,
@@ -417,6 +419,7 @@ def _warnings(
     present: tuple[str, ...],
     used: set[int],
     table: str,
+    in_workspace: bool = False,
 ) -> list[Notice]:
     external = {n.id for n in model.nodes if n.kind == "external"}
     known_components = set(present)
@@ -473,6 +476,14 @@ def _warnings(
                         f"[{table}.{f.origin}] names {name!r}, which has no modules",
                     )
                 )
+    if config.public is not None and not in_workspace:
+        warnings.append(
+            Notice(
+                "public_ignored",
+                f"[{table}] public only constrains imports from other packages in a "
+                "workspace; it has no effect here",
+            )
+        )
     for index, e in enumerate(config.exceptions):
         if index not in used:
             warnings.append(
