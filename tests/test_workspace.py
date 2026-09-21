@@ -539,3 +539,37 @@ def test_public_does_not_warn_for_a_package_inside_a_workspace(tmp_path):
     report = check_workspace(open_workspace(root))
     warnings = [w for _, r in report.packages for w in r.warnings if w.kind == "public_ignored"]
     assert warnings == []
+
+
+def published_view(tmp_path: Path, statement: str):
+    """A workspace where core publishes `ports` only, and plugin imports `statement`."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, statement)
+    return workspace_view(open_workspace(root))
+
+
+def test_a_public_component_becomes_a_child_node(tmp_path):
+    view = published_view(tmp_path, "from core.ports import Port")
+    by_id = {n.id: n for n in view.nodes}
+    assert by_id["core.ports"].parent == "core"
+    assert by_id["core.ports"].name == "ports"
+    assert by_id["core"].parent is None
+
+
+def test_a_legal_edge_lands_on_the_public_component(tmp_path):
+    view = published_view(tmp_path, "from core.ports import Port")
+    assert ("plugin", "core.ports") in [(e.source, e.target) for e in view.edges]
+
+
+def test_an_edge_to_a_private_component_lands_on_the_package(tmp_path):
+    """It visibly bypasses the ports - which is the point of drawing them."""
+    view = published_view(tmp_path, "from core.model import Thing")
+    assert ("plugin", "core") in [(e.source, e.target) for e in view.edges]
+
+
+def test_a_package_without_public_draws_as_one_node(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    view = workspace_view(open_workspace(root))
+    assert [n.id for n in view.nodes] == ["core", "plugin"]
+    assert all(n.parent is None for n in view.nodes)

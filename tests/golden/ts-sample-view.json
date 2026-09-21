@@ -14,7 +14,8 @@
       "abstractness": 0.0,
       "instability": 1.0,
       "distance": 0.0,
-      "zone": "main_sequence"
+      "zone": "main_sequence",
+      "parent": null
     },
     {
       "id": "ts-sample/components",
@@ -29,7 +30,8 @@
       "abstractness": 0.0,
       "instability": 0.5,
       "distance": 0.5,
-      "zone": "pain"
+      "zone": "pain",
+      "parent": null
     },
     {
       "id": "ts-sample/domain",
@@ -44,7 +46,8 @@
       "abstractness": 0.667,
       "instability": 0.333,
       "distance": 0.0,
-      "zone": "main_sequence"
+      "zone": "main_sequence",
+      "parent": null
     },
     {
       "id": "ts-sample/services",
@@ -59,7 +62,8 @@
       "abstractness": 0.0,
       "instability": 0.667,
       "distance": 0.333,
-      "zone": "pain"
+      "zone": "pain",
+      "parent": null
     },
     {
       "id": "ts-sample/utils",
@@ -74,7 +78,8 @@
       "abstractness": 0.0,
       "instability": 0.0,
       "distance": 1.0,
-      "zone": "pain"
+      "zone": "pain",
+      "parent": null
     }
   ],
   "edges": [

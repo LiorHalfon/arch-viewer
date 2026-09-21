@@ -457,7 +457,8 @@ def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
     """
     by_name = {p.name: p for p in ws.packages}
     children = frozenset(by_name)
-    grouped = cross_edges(ws).by_package
+    cross = cross_edges(ws)
+    grouped = cross.by_package
     counts = {pair: len(imports) for pair, imports in grouped.items()}
 
     component = components(children, counts)
@@ -465,22 +466,75 @@ def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
     cycles = find_cycles(children, counts)
     cyclic = {name for cycle in cycles for name in cycle}
 
-    nodes = tuple(
+    nodes = [
         _package_node(by_name[name], grouped, layer[name], name in cyclic)
         for name in sorted(children)
-    )
+    ]
+    nodes += _public_nodes(ws, layer)
+    drawn = _drawn_edges(cross, ws)
     edges = tuple(
         ViewEdge(
             source=s,
             target=t,
             count=len(imports),
-            in_cycle=component[s] == component[t],
+            in_cycle=component[s] == component.get(_package(t), s),
             imports=tuple(imports),
             type_checking=all(i.type_checking for i in imports),
         )
-        for (s, t), imports in sorted(grouped.items())
+        for (s, t), imports in sorted(drawn.items())
     )
-    return View(root=ws.name, nodes=nodes, edges=edges, cycles=cycles)
+    return View(root=ws.name, nodes=tuple(nodes), edges=edges, cycles=cycles)
+
+
+def _public_nodes(ws: Workspace, layer: dict[str, int]) -> list[ViewNode]:
+    """One box per published component, drawn inside its package's box.
+
+    A package that declares no `public` list draws exactly as it did before: one node,
+    no children. Chosen over a label on the node because a legal dependency then
+    visibly terminates at a port and a violation visibly bypasses one (ADR 0013).
+    """
+    found = []
+    for package in ws.packages:
+        published = package.project.config.public
+        if published is None:
+            continue
+        sep = package.project.model.separator
+        for name in sorted(published):
+            found.append(
+                ViewNode(
+                    id=f"{package.name}{sep}{name}",
+                    name=name,
+                    kind="package",
+                    module_count=0,
+                    layer=layer.get(package.name, 0),
+                    in_cycle=False,
+                    fan_in=0,
+                    fan_out=0,
+                    parent=package.name,
+                )
+            )
+    return found
+
+
+def _drawn_edges(cross: CrossEdges, ws: Workspace) -> dict[Pair, list[Import]]:
+    """Cross-package edges, landing on a published component where there is one.
+
+    An import that reaches a private component keeps the package as its target, so it
+    is drawn going past the ports rather than through one.
+    """
+    published = {
+        p.name: p.project.config.public for p in ws.packages if p.project.config.public is not None
+    }
+    component_of = {imp: target for (_, target), imps in cross.by_component.items() for imp in imps}
+    drawn: dict[Pair, list[Import]] = defaultdict(list)
+    for (source, package), imports in cross.by_package.items():
+        for imp in imports:
+            target = component_of.get(imp)
+            surface = published.get(package)
+            reaches = target.split(".", 1)[1] if target and "." in target else None
+            landing = target if surface is not None and reaches in surface else package
+            drawn[(source, landing)].append(imp)
+    return _sorted_edges(drawn)
 
 
 def _package_node(

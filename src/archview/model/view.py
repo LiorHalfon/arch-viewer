@@ -29,6 +29,8 @@ class ViewNode:
     instability: float | None = None
     distance: float | None = None
     zone: str = "isolated"
+    parent: str | None = None
+    """The box this one is drawn inside, for a nested view. None for a top-level box."""
 
 
 @dataclass(frozen=True, slots=True)

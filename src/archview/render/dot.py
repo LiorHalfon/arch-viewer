@@ -28,7 +28,7 @@ Pair = tuple[str, str]
 
 def _label(node: ViewNode, tangled: bool) -> str:
     mark = " ⟲" if tangled else ""
-    if node.kind in ("module", "external"):
+    if node.kind in ("module", "external") or node.parent is not None:
         return node.name
     modules = "1 module" if node.module_count == 1 else f"{node.module_count} modules"
     return f"{node.name}{mark}\\n({modules})"
@@ -83,6 +83,33 @@ def _edge_line(edge: ViewEdge, violating: bool) -> str:
     return f'  "{edge.source}" -> "{edge.target}" [label="{edge.count}"{extra}{cls}];'
 
 
+def _node_lines(view: View, tangled: Collection[str]) -> list[str]:
+    """Node lines, with a package that publishes components drawn as a cluster.
+
+    The package node and its published components sit inside one box, so an edge to a
+    component lands on that component and an edge to the package lands on the package
+    itself - visibly going past the published surface rather than through it.
+    """
+    children: dict[str, list[ViewNode]] = defaultdict(list)
+    for node in view.nodes:
+        if node.parent is not None:
+            children[node.parent].append(node)
+    lines = []
+    for node in view.nodes:
+        if node.parent is not None:
+            continue
+        inside = children.get(node.id)
+        if not inside:
+            lines.append(_node_line(node, node.id in tangled))
+            continue
+        lines.append(f'  subgraph "cluster_{node.id}" {{')
+        lines.append('    style="rounded"; color="#7890a0"; labelloc=b; label="";')
+        lines.append("  " + _node_line(node, node.id in tangled).lstrip())
+        lines.extend("  " + _node_line(c, False).lstrip() for c in inside)
+        lines.append("  }")
+    return lines
+
+
 def to_dot(view: View, tangled: Collection[str] = (), violations: Collection[Pair] = ()) -> str:
     """`tangled`: packages with a cycle somewhere inside; `violations`: edges that break rules."""
     by_layer: dict[int, list[ViewNode]] = defaultdict(list)
@@ -91,9 +118,10 @@ def to_dot(view: View, tangled: Collection[str] = (), violations: Collection[Pai
 
     lines = [f'digraph "{view.root}" {{', *HEADER]
     for layer in sorted(by_layer):
-        ids = " ".join(f'"{n.id}"' for n in by_layer[layer])
-        lines.append(f"  {{ rank=same; {ids} }}")
-    lines.extend(_node_line(n, n.id in tangled) for n in view.nodes)
+        ids = " ".join(f'"{n.id}"' for n in by_layer[layer] if n.parent is None)
+        if ids:
+            lines.append(f"  {{ rank=same; {ids} }}")
+    lines.extend(_node_lines(view, tangled))
     lines.extend(_edge_line(e, (e.source, e.target) in violations) for e in view.edges)
     lines.append("}")
     return "\n".join(lines) + "\n"

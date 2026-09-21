@@ -14,7 +14,8 @@
       "abstractness": 0.0,
       "instability": 1.0,
       "distance": 0.0,
-      "zone": "main_sequence"
+      "zone": "main_sequence",
+      "parent": null
     },
     {
       "id": "sample.domain",
@@ -29,7 +30,8 @@
       "abstractness": 0.333,
       "instability": 0.0,
       "distance": 0.667,
-      "zone": "pain"
+      "zone": "pain",
+      "parent": null
     },
     {
       "id": "sample.infra",
@@ -44,7 +46,8 @@
       "abstractness": 0.0,
       "instability": 0.5,
       "distance": 0.5,
-      "zone": "pain"
+      "zone": "pain",
+      "parent": null
     },
     {
       "id": "sample.services",
@@ -59,7 +62,8 @@
       "abstractness": 0.0,
       "instability": 0.5,
       "distance": 0.5,
-      "zone": "pain"
+      "zone": "pain",
+      "parent": null
     }
   ],
   "edges": [
