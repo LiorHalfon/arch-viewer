@@ -76,6 +76,7 @@ source_roots = ["src"]                # default: discovered
 exclude = ["**/migrations/**"]        # file globs left out of everything
 ignored = ["scripts"]                 # components not checked
 type_checking_imports = "include"     # default; "ignore" checks runtime imports only
+externals_undeclared = "error"   # optional: close [archview.externals] (default "allow")
 fail_on_violations = true
 fail_on_cycles = true
 layers = ["api", ["billing", "shipping"], "domain"]   # no importing upwards; peers independent
@@ -89,7 +90,6 @@ domain = []
 [archview.externals]                  # component -> packages *outside* the project it may import
 llm = ["openai"]                      # a missing component here is unconstrained - no error
 ports = []                            # "may reach nothing outside the project"
-externals_undeclared = "error"        # optional: close the table (default "allow")
 
 [[archview.forbidden]]                # checked even when `allowed` says "all"
 from = "domain"
