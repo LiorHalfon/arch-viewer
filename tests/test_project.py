@@ -68,6 +68,25 @@ def test_a_root_that_never_wins_says_so_even_alongside_one_that_does(tmp_path):
     ]
 
 
+def test_a_root_holding_a_sibling_package_is_quiet(tmp_path):
+    """`source_roots = ["src", "plugins"]` is not a mistake when `a` lives under
+    `src/` and `b` lives under `plugins/` - `package` exists for exactly this repo
+    shape, and `--package a` must not accuse `plugins` of contributing no modules
+    when it produced a sibling package this run simply did not select (Fix 4,
+    review)."""
+    (tmp_path / "src" / "a").mkdir(parents=True)
+    (tmp_path / "src" / "a" / "__init__.py").write_text("")
+    (tmp_path / "src" / "a" / "m.py").write_text("x = 1\n")
+    (tmp_path / "plugins" / "b").mkdir(parents=True)
+    (tmp_path / "plugins" / "b" / "__init__.py").write_text("")
+    (tmp_path / "plugins" / "b" / "m.py").write_text("x = 1\n")
+    (tmp_path / "archview.toml").write_text(
+        '[archview]\npackage = "a"\nsource_roots = ["src", "plugins"]\n[archview.allowed]\nm = []\n'
+    )
+    report = project_report(open_project(tmp_path))
+    assert [w for w in report.warnings if w.kind == "empty_source_root"] == []
+
+
 def test_a_trailing_dot_slash_root_is_silent(tmp_path):
     """`"./"` names the same directory as `"."` - a spelling difference, not a
     different root."""

@@ -156,15 +156,21 @@ def _empty_source_root_warnings(project: Project) -> list[Notice]:
 
 def _empty_python_roots(project: Project, roots: tuple[str, ...]) -> list[str]:
     """`_packages`/`_choose` pick exactly one winning root per package, and
-    `project.source_root` is it - so this compares each configured root's *resolved*
-    path against the winner's, not strings, meaning `"."`, `"./"`, `"src/"` and
-    `"src/../src"` all normalise the same way. A single configured root is never
-    empty here: `_choose` raises `ProjectError` before `open_project` returns a
-    `Project` unless that lone root was the one that produced the package."""
+    `project.source_root` is it - so a naive version of this would compare each
+    configured root's *resolved* path against only the winner's. That over-reports:
+    `source_roots = ["src", "plugins"]` with `a` under `src/` and `b` under
+    `plugins/` is not a mistake - `package` exists for exactly this repo shape - so a
+    root that produced a *sibling* package the current `--package` run did not select
+    must not read as contributing nothing (Fix 4, review). This asks `_packages`
+    again - the same question `open_project` already asked to pick a winner - for
+    every root that produced *any* package, not just the chosen one, and only a root
+    absent from that whole set is reported. A single configured root is never empty
+    here: `_choose` raises `ProjectError` before `open_project` returns a `Project`
+    unless that lone root was the one that produced the package."""
     if len(roots) <= 1:
         return []
-    used = project.source_root.resolve()
-    return sorted(root for root in set(roots) if (project.repo / root).resolve() != used)
+    produced = {base.resolve() for base in _packages(project.repo, project.config).values()}
+    return sorted(root for root in set(roots) if (project.repo / root).resolve() not in produced)
 
 
 def _empty_typescript_roots(project: Project, roots: tuple[str, ...]) -> list[str]:
