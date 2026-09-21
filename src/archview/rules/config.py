@@ -42,13 +42,22 @@ class MetricRules:
     ignore: tuple[str, ...] = ()
 
 
+EXCEPTION_KINDS = ("type_only",)
+
+
 @dataclass(frozen=True, slots=True)
 class Exemption:
-    """One module-level import the rules tolerate, always with a reason."""
+    """One module-level import the rules tolerate, always with a reason.
+
+    `kind` narrows what the exemption covers: absent, it exempts any import between
+    `importer` and `imported`; `"type_only"` exempts only an import whose
+    `type_checking` flag is set, so a value import between the same pair still fails.
+    """
 
     importer: str
     imported: str
     reason: str
+    kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,11 +363,15 @@ def _reject_stdlib(name: str, where: str) -> None:
         )
 
 
-def _tables(value: Any, where: str, keys: set[str]) -> list[dict[str, Any]]:
+def _tables(
+    value: Any, where: str, keys: set[str], optional: set[str] = frozenset()
+) -> list[dict[str, Any]]:
+    """Every entry needs a non-empty string for each of `keys`; `optional` may also
+    be present (a typo in one of those is still caught) but is never required."""
     if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
         raise ConfigError(f"[[{where}]] must be an array of tables")
     for item in value:
-        _known_keys(item, keys, where)
+        _known_keys(item, keys | optional, where)
         for key in sorted(keys):
             if not isinstance(item.get(key), str) or not item[key]:
                 raise ConfigError(f"[[{where}]] every entry needs a non-empty {key!r}")
@@ -374,8 +387,20 @@ def _forbidden(value: Any, where: str, check_stdlib: bool) -> tuple[Forbidden, .
 
 
 def _exceptions(value: Any, where: str) -> tuple[Exemption, ...]:
-    items = _tables(value, where, {"importer", "imported", "reason"})
-    return tuple(Exemption(i["importer"], i["imported"], i["reason"]) for i in items)
+    items = _tables(value, where, {"importer", "imported", "reason"}, optional={"kind"})
+    return tuple(
+        Exemption(i["importer"], i["imported"], i["reason"], _kind(i, where)) for i in items
+    )
+
+
+def _kind(item: dict[str, Any], where: str) -> str | None:
+    if "kind" not in item:
+        return None
+    kind = item["kind"]
+    if kind not in EXCEPTION_KINDS:
+        options = ", ".join(map(repr, EXCEPTION_KINDS))
+        raise ConfigError(f"[[{where}]] kind must be one of {options}, not {kind!r}")
+    return kind
 
 
 def _components(value: Any, where: str) -> dict[str, tuple[str, ...]]:

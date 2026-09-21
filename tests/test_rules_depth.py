@@ -5,7 +5,7 @@ from dataclasses import replace
 from archview.model.graph import Import, Model, Node
 from archview.rules.baseline import apply_baseline, baseline_of, load_baseline
 from archview.rules.check import check
-from archview.rules.config import Config, MetricRules, parse_config
+from archview.rules.config import Config, Exemption, MetricRules, parse_config
 from tests.builders import model
 
 
@@ -40,6 +40,35 @@ def test_ignore_restores_the_old_behaviour():
     m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
     report = check(m, Config(allowed={"api": [], "infra": []}, type_checking_imports="ignore"))
     assert report.problems == ()
+
+
+def test_a_type_only_exception_exempts_a_type_only_import():
+    m = model(("web.screens", "web.api"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "prop shapes only", kind="type_only"),),
+    )
+    assert check(m, config).problems == ()
+
+
+def test_a_type_only_exception_does_not_exempt_a_value_import():
+    """The whole point: the carve-out must not widen to the call it forbids."""
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "prop shapes only", kind="type_only"),),
+    )
+    assert [p.components for p in check(m, config).problems] == [("screens", "api")]
+
+
+def test_an_exception_without_a_kind_still_exempts_anything():
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "legacy"),),
+    )
+    assert check(m, config).problems == ()
 
 
 def test_layers_forbid_importing_upwards_and_between_peers():

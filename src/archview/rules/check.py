@@ -152,8 +152,10 @@ def _pair(imp: Import, components: ComponentMap, external: set[str]) -> Pair | N
 
 def _exemption(imp: Import, exemptions, sep: str) -> int | None:
     for index, e in enumerate(exemptions):
-        if matches_name(e.importer, imp.importer, sep) and matches_name(
-            e.imported, imp.imported, sep
+        if (
+            matches_name(e.importer, imp.importer, sep)
+            and matches_name(e.imported, imp.imported, sep)
+            and (e.kind is None or (e.kind == "type_only" and imp.type_checking))
         ):
             return index
     return None

@@ -113,6 +113,38 @@ def test_requires_a_reason_for_every_exception():
         parse_config({"exceptions": [{"importer": "a.b", "imported": "c.d"}]})
 
 
+def test_an_unknown_exception_kind_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="kind"):
+        written(
+            tmp_path,
+            """
+            [archview]
+            package = "web"
+            [[archview.exceptions]]
+            importer = "web.screens"
+            imported = "web.api"
+            reason = "why"
+            kind = "lazy"
+        """,
+        )
+
+
+def test_kind_is_parsed(tmp_path):
+    config = written(
+        tmp_path,
+        """
+        [archview]
+        package = "web"
+        [[archview.exceptions]]
+        importer = "web.screens"
+        imported = "web.api"
+        reason = "prop shapes only"
+        kind = "type_only"
+    """,
+    )
+    assert config.exceptions[0].kind == "type_only"
+
+
 def test_rejects_invalid_toml_with_the_file_name(tmp_path):
     (tmp_path / "archview.toml").write_text("[archview\n")
 
