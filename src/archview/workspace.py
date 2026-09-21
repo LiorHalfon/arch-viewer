@@ -30,6 +30,7 @@ from archview.rules.baseline import apply_baseline, load_baseline
 from archview.rules.check import (
     Edges,
     Pair,
+    Problem,
     Report,
     WorkspaceReport,
     _cycle_problems,
@@ -40,6 +41,7 @@ from archview.rules.check import (
     component_map,
 )
 from archview.rules.config import (
+    ALL,
     RULES_FILE,
     Config,
     ConfigError,
@@ -278,23 +280,146 @@ def _outside_imports(package: Package) -> dict[str, list[Import]]:
 
 def check_workspace(ws: Workspace) -> WorkspaceReport:
     """Each package's own check, where it has rules, plus the rules between them."""
-    packages = tuple((p.name, project_report(p.project)) for p in ws.packages if p.has_rules)
+    packages = tuple(
+        (p.name, project_report(p.project, in_workspace=True)) for p in ws.packages if p.has_rules
+    )
     return WorkspaceReport(ws.name, packages, _check_between(ws))
 
 
 def _check_between(ws: Workspace) -> Report:
     rules = ws.config.workspace
     present = tuple(p.name for p in ws.packages)
-    edges = Edges(internal=cross_edges(ws).by_package, outside={}, exceptions_used=set())
+    cross = cross_edges(ws)
+    _reject_unpublished_grants(ws, rules)
+    edges = Edges(internal=cross.by_package, outside={}, exceptions_used=set())
     config = _between_config(ws.config, rules)
     problems = [
-        *_rule_problems(edges, present, config, config.table),
+        *_rule_problems(edges, present, _package_level(config, rules), config.table),
         *_cycle_problems(edges.internal, present, config, config.table),
+        *_component_problems(cross.by_component, ws, rules, config),
     ]
-    report = Report(ws.name, present, tuple(problems), ())
+    ordered = tuple(sorted(problems, key=lambda p: (p.components, p.kind)))
+    report = Report(ws.name, present, ordered, ())
     if rules.baseline:
         report = _apply_workspace_baseline(report, ws.root, rules.baseline)
     return report
+
+
+def _package(name: str) -> str:
+    """`core.ports` -> `core`; `core` -> `core`."""
+    return name.split(".", 1)[0]
+
+
+def _package_level(config: Config, rules: WorkspaceRules) -> Config:
+    """The workspace `allowed` table as the package-level check sees it.
+
+    A qualified grant (`core.ports`) grants the package; the narrowing it expresses is
+    enforced separately by `_component_problems`. Without this the package-level check
+    would deny the very import the grant exists to permit.
+    """
+    if not rules.allowed:
+        return config
+    widened = {
+        source: targets if targets == ALL else tuple(sorted({_package(t) for t in targets}))
+        for source, targets in rules.allowed.items()
+    }
+    return replace(config, allowed=widened)
+
+
+def _published(ws: Workspace, package: str) -> tuple[str, ...] | None:
+    """The components `package` offers its siblings, or None when it publishes all."""
+    owner = next((p for p in ws.packages if p.name == package), None)
+    return owner.project.config.public if owner else None
+
+
+def _reject_unpublished_grants(ws: Workspace, rules: WorkspaceRules) -> None:
+    """A grant naming a component its owner does not publish can never usefully fire.
+
+    `public` would override it, so it is a config error rather than a silent no-op -
+    the reasoning ADR 0011 used for a stdlib target. A deliberate one-off belongs in
+    `[[archview.workspace.exceptions]]`, which already requires a written reason.
+    """
+    for source, targets in sorted((rules.allowed or {}).items()):
+        for target in () if targets == ALL else targets:
+            if "." not in target:
+                continue
+            published = _published(ws, _package(target))
+            if published is not None and target.split(".", 1)[1] not in published:
+                package = _package(target)
+                may = ", ".join(f"{package}.{n}" for n in published) or "nothing"
+                raise ConfigError(
+                    f"[{ws.config.table}.workspace.allowed.{source}] names {target!r}, "
+                    f"which {package} does not publish. {package} publishes: {may}"
+                )
+
+
+def _component_problems(
+    by_component: dict[Pair, list[Import]],
+    ws: Workspace,
+    rules: WorkspaceRules,
+    config: Config,
+) -> list[Problem]:
+    """An import must satisfy both the owner's `public` and any qualified grant."""
+    allowed = rules.allowed or {}
+    problems = []
+    for (source, target), imports in by_component.items():
+        package = _package(target)
+        published = _published(ws, package)
+        component = target.split(".", 1)[1] if "." in target else None
+        if published is not None and (component is None or component not in published):
+            owner = next(p for p in ws.packages if p.name == package)
+            problems.append(
+                _private(source, target, imports, published, owner.project.config.table, config)
+            )
+            continue
+        grants = allowed.get(source)
+        qualified = () if grants in (None, ALL) else tuple(t for t in grants if "." in t)
+        constrains = qualified and _package(target) in {_package(t) for t in qualified}
+        if constrains and target not in qualified:
+            problems.append(_not_allowed_component(source, target, imports, qualified, config))
+    return problems
+
+
+def _private(
+    source: str,
+    target: str,
+    imports: list[Import],
+    published: tuple[str, ...],
+    owner_table: str,
+    config: Config,
+) -> Problem:
+    package = _package(target)
+    may = ", ".join(f"{package}.{name}" for name in published) or "nothing"
+    return Problem(
+        kind="private",
+        rule=f"{owner_table}.public",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{target} is not part of {package}'s public surface. {package} publishes: "
+            f"{may}. Import one of those, or ask {package}'s owner to publish it."
+        ),
+        fails=config.fail_on_violations,
+    )
+
+
+def _not_allowed_component(
+    source: str, target: str, imports: list[Import], qualified: tuple[str, ...], config: Config
+) -> Problem:
+    may = ", ".join(qualified)
+    return Problem(
+        kind="not_allowed",
+        rule=f"{config.table}.allowed.{source}",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{source} may import only: {may}. Move the code that needs {target}, go "
+            "through an allowed component, or ask a human to change the rule."
+        ),
+        fails=config.fail_on_violations,
+    )
 
 
 def _between_config(root: Config, rules: WorkspaceRules) -> Config:

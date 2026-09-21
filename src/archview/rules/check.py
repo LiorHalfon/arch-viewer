@@ -18,7 +18,9 @@ from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
 
-ProblemKind = Literal["not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside"]
+ProblemKind = Literal[
+    "not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside", "private"
+]
 Pair = tuple[str, str]
 # How an extractor warning reads in the report; the viewer uses the same words.
 WARNING_LABELS = {"dynamic_import": "dynamic import", "unresolved_import": "unresolved import"}

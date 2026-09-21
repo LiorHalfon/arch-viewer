@@ -463,3 +463,79 @@ def test_by_package_is_unchanged_by_component_attribution(tmp_path):
     plugin_imports(root, "from core.ports import Port")
     edges = cross_edges(open_workspace(root))
     assert [(s, t, len(i)) for (s, t), i in edges.by_package.items()] == [("plugin", "core", 1)]
+
+
+def test_reaching_a_private_component_fails(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.model import Thing")
+    report = check_workspace(open_workspace(root))
+    assert [(p.kind, p.components) for p in report.between.problems] == [
+        ("private", ("plugin", "core.model"))
+    ]
+    assert report.failed
+
+
+def test_reaching_a_public_component_passes(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.ports import Port")
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_a_package_with_no_public_list_publishes_everything(tmp_path):
+    """Every workspace that existed before this feature keeps its meaning."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, None)
+    plugin_imports(root, "from core.model import Thing")
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_an_empty_public_list_publishes_nothing(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, "[]")
+    plugin_imports(root, "from core.ports import Port")
+    assert [p.kind for p in check_workspace(open_workspace(root)).between.problems] == ["private"]
+
+
+def test_a_qualified_grant_narrows(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.ports",)})
+    core_rules(root, '["ports", "model"]')
+    plugin_imports(root, "from core.model import Thing")
+    report = check_workspace(open_workspace(root))
+    assert [p.kind for p in report.between.problems] == ["not_allowed"]
+
+
+def test_a_qualified_grant_naming_an_unpublished_component_is_an_error(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.model",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.ports import Port")
+    with pytest.raises(ConfigError, match=r"core\.model"):
+        check_workspace(open_workspace(root))
+
+
+def test_the_private_hint_names_what_the_package_publishes(tmp_path):
+    """An agent reading the report learns the contract without opening another file."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.model import Thing")
+    problem = check_workspace(open_workspace(root)).between.problems[0]
+    assert "core.ports" in problem.hint
+
+
+def test_a_qualified_grant_permits_the_component_it_names(tmp_path):
+    """The other half of narrowing: what it grants must actually be granted."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.ports",)})
+    core_rules(root, '["ports", "model"]')
+    plugin_imports(root, "from core.ports import Port")
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_public_does_not_warn_for_a_package_inside_a_workspace(tmp_path):
+    """The `has no effect here` notice is for a standalone repo, not a workspace member."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.ports import Port")
+    report = check_workspace(open_workspace(root))
+    warnings = [w for _, r in report.packages for w in r.warnings if w.kind == "public_ignored"]
+    assert warnings == []
