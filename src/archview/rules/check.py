@@ -170,9 +170,7 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
         *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(
-        model, config, components, present, edges.exceptions_used, table, in_workspace
-    )
+    warnings = _warnings(model, config, components, present, edges, table, in_workspace)
     return Report(
         model.project,
         present,
@@ -414,12 +412,60 @@ def _reject_outside_sources(model: Model, config: Config) -> None:
             )
 
 
+def _partial_externals_warnings(edges: Edges, config: Config, table: str) -> list[Notice]:
+    """`[table.externals]` reads as a fence but is an opt-in allow-list: a component
+    that is not a key is unconstrained. Flag this only for a package the table already
+    names - so a repo with thirty third-party dependencies and two constrained
+    components gets at most two lines, not thirty (issue #5). A component that is a
+    key but omits the package is already constrained and fails properly; it is not
+    this notice's business.
+    """
+    externals = config.externals or {}
+    importers = _importers_by_package(edges)
+    warnings = []
+    for package in _named_packages(externals):
+        unconstrained = sorted(c for c in importers.get(package, ()) if c not in externals)
+        if not unconstrained:
+            continue
+        for key in sorted(externals):
+            targets = externals[key]
+            if targets != ALL and package in targets:
+                warnings.append(_partial_externals(table, key, package, unconstrained))
+    return warnings
+
+
+def _named_packages(externals: dict[str, tuple[str, ...] | str]) -> list[str]:
+    """Every package a value in `externals` names, sorted - never `ALL`, which names
+    no package in particular."""
+    return sorted({name for targets in externals.values() if targets != ALL for name in targets})
+
+
+def _importers_by_package(edges: Edges) -> dict[str, list[str]]:
+    """Every package outside the project, mapped to the components that import it -
+    `component_edges`' `outside` bucket, regrouped by target instead of by pair."""
+    by_package: dict[str, list[str]] = defaultdict(list)
+    for source, target in edges.outside:
+        by_package[target].append(source)
+    return by_package
+
+
+def _partial_externals(table: str, key: str, package: str, unconstrained: list[str]) -> Notice:
+    who = ", ".join(unconstrained)
+    plural = len(unconstrained) > 1
+    verb, be = ("also import", "are") if plural else ("also imports", "is")
+    return Notice(
+        "partial_externals",
+        f"[{table}.externals].{key} allows {package}, but {who} {verb} it and {be} "
+        f"unconstrained. Only components named in [{table}.externals] are checked.",
+    )
+
+
 def _warnings(
     model: Model,
     config: Config,
     components: ComponentMap,
     present: tuple[str, ...],
-    used: set[int],
+    edges: Edges,
     table: str,
     in_workspace: bool = False,
 ) -> list[Notice]:
@@ -463,6 +509,7 @@ def _warnings(
                         f"[{table}.externals.{component}] names {name!r}, which nothing imports",
                     )
                 )
+    warnings += _partial_externals_warnings(edges, config, table)
     for f in config.all_forbidden():
         # A literal `forbidden` rule whose *target* is absent from the graph is the ban
         # working: the name is missing precisely because nobody imports it (issue #5).
@@ -487,7 +534,7 @@ def _warnings(
             )
         )
     for index, e in enumerate(config.exceptions):
-        if index not in used:
+        if index not in edges.exceptions_used:
             warnings.append(
                 Notice(
                     "unused_exception",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from archview.model.graph import Import, Model, Node
 from archview.rules.check import check, component_edges
 from archview.rules.components import ComponentMap
 from archview.rules.config import Config, ConfigError, Exemption, Forbidden
@@ -193,3 +194,50 @@ def test_public_inside_a_workspace_does_not_warn():
     config = Config(allowed={"api": ["llm"], "llm": []}, public=("api",))
     report = check(model_with_external(), config, in_workspace=True)
     assert not [w for w in report.warnings if w.kind == "public_ignored"]
+
+
+def two_reach_openai() -> Model:
+    """`wiring` and `book` both import openai; only `wiring` will be constrained."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.wiring", "shop", "module", "shop/wiring.py"),
+        Node("shop.book", "shop", "module", "shop/book.py"),
+        Node("openai", None, "external"),
+        Node("httpx", None, "external"),
+    )
+    imports = (
+        Import("shop.wiring", "openai", "shop/wiring.py", 1, "import openai"),
+        Import("shop.book", "openai", "shop/book.py", 1, "import openai"),
+        Import("shop.book", "httpx", "shop/book.py", 2, "import httpx"),
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)
+
+
+ALLOWED_BOTH = {"wiring": (), "book": ()}
+
+
+def test_a_partial_externals_table_says_what_it_does_not_cover():
+    """The whole of issue #5: the table reads as a fence and is an allow-list."""
+    config = Config(allowed=ALLOWED_BOTH, externals={"wiring": ("openai",)})
+    report = check(two_reach_openai(), config)
+    note = next(w for w in report.warnings if w.kind == "partial_externals")
+    assert "book" in note.message
+    assert "openai" in note.message
+
+
+def test_no_note_when_every_importer_is_constrained():
+    config = Config(
+        allowed=ALLOWED_BOTH,
+        externals={"wiring": ("openai",), "book": ("openai", "httpx")},
+    )
+    report = check(two_reach_openai(), config)
+    assert [w for w in report.warnings if w.kind == "partial_externals"] == []
+
+
+def test_no_note_for_a_package_the_table_does_not_name():
+    """httpx is imported by an unconstrained component, but the table never names it,
+    so it is not this notice's business - that is what keeps the notice quiet."""
+    config = Config(allowed=ALLOWED_BOTH, externals={"wiring": ("openai",)})
+    report = check(two_reach_openai(), config)
+    notes = [w for w in report.warnings if w.kind == "partial_externals"]
+    assert not any("httpx" in w.message for w in notes)
