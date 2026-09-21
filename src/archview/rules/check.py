@@ -505,6 +505,28 @@ def _partial_externals(table: str, key: str, package: str, unconstrained: list[s
     )
 
 
+def _empty_source_root_warnings(model: Model, config: Config) -> list[Notice]:
+    """A `source_roots` entry that contributed no modules to the model - only the
+    files under one chosen source root ever reach it (`open_project`), so a root kept
+    for another reason (a `tests/` package beside `src/`, say) silently contributes
+    nothing (issue #10). Recomputed here from `model` and `config.source_roots`
+    rather than carried on `Project`, so this stays the checker's concern."""
+    files = [n.file for n in model.nodes if n.file]
+    return [
+        Notice(
+            "empty_source_root",
+            f"source root {root!r} contributed no modules to package {model.project!r}; "
+            "only code under the package is analysed",
+        )
+        for root in sorted(set(config.source_roots))
+        if not any(_under_root(f, root) for f in files)
+    ]
+
+
+def _under_root(file: str, root: str) -> bool:
+    return file == root or file.startswith(f"{root}/")
+
+
 def _warnings(
     model: Model,
     config: Config,
@@ -555,6 +577,7 @@ def _warnings(
                     )
                 )
     warnings += _partial_externals_warnings(edges, config, table)
+    warnings += _empty_source_root_warnings(model, config)
     for f in config.all_forbidden():
         # A literal `forbidden` rule whose *target* is absent from the graph is the ban
         # working: the name is missing precisely because nobody imports it (issue #5).
