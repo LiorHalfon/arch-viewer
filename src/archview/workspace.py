@@ -47,6 +47,7 @@ from archview.rules.config import (
     Config,
     ConfigError,
     WorkspaceRules,
+    _read_toml,
     find_config,
     load_config,
 )
@@ -83,9 +84,38 @@ def open_workspace(
         config = load_config(path) if path else Config()
     if config.workspace is None:
         raise ConfigError(f"no [{config.table}.workspace] table in {path or root / RULES_FILE}")
+    if path is not None:
+        _reject_root_type_checking_imports(config, path)
     base = path.parent if path else root
     packages = _open_packages(config.workspace.packages, base)
     return Workspace(config.package or root.name, root, packages, config)
+
+
+def _reject_root_type_checking_imports(config: Config, path: Path) -> None:
+    """`type_checking_imports` is read into the root `Config` but never consulted -
+    each package is checked with its own config - so setting it at a workspace root
+    reads as applied when it is not (issue #8). Detecting this needs the raw table,
+    not the parsed `Config`: after Task 1's default flip, "include" no longer tells
+    a set value apart from an unset one.
+    """
+    if "type_checking_imports" in _root_table(path, config.table):
+        raise ConfigError(
+            f"[{config.table}] type_checking_imports has no effect at a workspace "
+            "root - each package is checked with its own config. Set it in the "
+            "package's own rules file instead."
+        )
+
+
+def _root_table(path: Path, table: str) -> dict:
+    """The raw table `table` names (e.g. "archview" or "tool.archview") in `path`,
+    parsed but not validated - so a rejected key can still be seen before `Config`
+    would ever carry it."""
+    data = _read_toml(path)
+    for key in table.split("."):
+        data = data.get(key) if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return {}
+    return data
 
 
 def _open_packages(entries: tuple[str, ...], base: Path) -> tuple[Package, ...]:

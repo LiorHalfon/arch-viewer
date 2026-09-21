@@ -367,6 +367,16 @@ def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path
     assert report.failed
 
 
+def test_type_checking_imports_at_a_workspace_root_is_an_error(tmp_path):
+    """It is read and never consulted there - each package is checked with its own
+    config - so writing it reads as applied when it is not (issue #8)."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    text = (root / "archview.toml").read_text()
+    (root / "archview.toml").write_text('[archview]\ntype_checking_imports = "include"\n' + text)
+    with pytest.raises(ConfigError, match="type_checking_imports"):
+        open_workspace(root)
+
+
 def test_a_cycle_between_packages_fails_by_default(tmp_path):
     root = _prepare_workspace(tmp_path, allowed={"core": ("plugin",), "plugin": ("core",)})
     (root / "core" / "src" / "core" / "uses_plugin.py").write_text("from plugin import Adapter\n")
