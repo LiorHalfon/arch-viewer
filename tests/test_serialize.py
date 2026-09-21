@@ -24,7 +24,7 @@ def test_round_trips_a_model_through_its_dict_form(sample):
 def test_declares_the_schema_version_language_and_separator(sample):
     data = model_to_dict(sample)
     assert (data["schema"], data["language"], data["separator"], data["project"]) == (
-        3,
+        4,
         "python",
         ".",
         "sample",

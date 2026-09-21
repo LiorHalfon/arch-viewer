@@ -1,5 +1,5 @@
 {
-  "schema": 3,
+  "schema": 4,
   "language": "python",
   "separator": ".",
   "project": "sample",
@@ -97,7 +97,8 @@
       "line": 3,
       "text": "from sample.domain.model import Order",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.api.routes",
@@ -106,7 +107,8 @@
       "line": 8,
       "text": "import grimp",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.api.routes",
@@ -115,7 +117,8 @@
       "line": 10,
       "text": "from sample.domain import Order",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.api.routes",
@@ -124,7 +127,8 @@
       "line": 14,
       "text": "from sample.infra.db import Session",
       "type_checking": true,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.api.routes",
@@ -133,7 +137,8 @@
       "line": 11,
       "text": "from sample.services import pricing",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.domain",
@@ -142,7 +147,8 @@
       "line": 1,
       "text": "from sample.domain.model import Order",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.infra.db",
@@ -151,7 +157,8 @@
       "line": 12,
       "text": "from sample.domain.ports import OrderStore",
       "type_checking": false,
-      "lazy": true
+      "lazy": true,
+      "resolved": null
     },
     {
       "importer": "sample.infra.db",
@@ -160,7 +167,8 @@
       "line": 3,
       "text": "from sample.services import pricing",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.services.pricing",
@@ -169,7 +177,8 @@
       "line": 3,
       "text": "from ..domain import model",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.services.pricing",
@@ -178,7 +187,8 @@
       "line": 7,
       "text": "from sample.infra.cache import get_rate",
       "type_checking": false,
-      "lazy": true
+      "lazy": true,
+      "resolved": null
     }
   ],
   "warnings": [

@@ -38,6 +38,11 @@ class Import:
     text: str
     type_checking: bool = False
     lazy: bool = False
+    resolved: str | None = None
+    """The exact module or file this import reaches, before the extractor squashes an
+    external target to its package name. None when the extractor cannot resolve it -
+    grimp squashes every external import, so Python leaves this unset and a workspace
+    resolves its cross-package imports separately (ADR 0013)."""
 
 
 @dataclass(frozen=True, slots=True)

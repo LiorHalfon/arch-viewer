@@ -14,7 +14,8 @@
       "abstractness": 0.0,
       "instability": null,
       "distance": null,
-      "zone": "isolated"
+      "zone": "isolated",
+      "parent": null
     },
     {
       "id": "sample.infra.db",
@@ -29,7 +30,8 @@
       "abstractness": 0.0,
       "instability": null,
       "distance": null,
-      "zone": "isolated"
+      "zone": "isolated",
+      "parent": null
     }
   ],
   "edges": [],

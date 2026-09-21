@@ -183,7 +183,7 @@ def test_every_typescript_alias_kind_is_attributed_to_the_sibling():
     (`@fixture/core`), and its bare package name (`core`). All three must join to the
     same sibling."""
     ws = open_workspace(TS_FIXTURE)
-    edges = cross_edges(ws)
+    edges = cross_edges(ws).by_package
     assert list(edges) == [("web", "core")]
     assert len(edges[("web", "core")]) == 3
 
@@ -299,7 +299,7 @@ def test_a_packages_own_exception_does_not_exempt_a_cross_package_import(tmp_pat
 def test_a_third_party_import_is_not_a_cross_package_edge(tmp_path):
     """plugin imports openai, which is nobody's sibling."""
     ws = workspace_with(tmp_path, allowed={"core": (), "plugin": ("core",)})
-    assert "openai" not in {t for _, t in cross_edges(ws)}
+    assert "openai" not in {t for _, t in cross_edges(ws).by_package}
 
 
 def test_a_workspace_baseline_makes_a_known_problem_not_fail(tmp_path):
@@ -346,7 +346,7 @@ def test_a_type_checking_only_cross_package_import_is_ignored_by_default(tmp_pat
 
     report = check_workspace(open_workspace(root))
 
-    assert "core" not in {t for _, t in cross_edges(open_workspace(root))}
+    assert "core" not in {t for _, t in cross_edges(open_workspace(root)).by_package}
     assert not report.between.failed
 
 
@@ -424,3 +424,209 @@ def test_workspace_cycles_reports_a_cross_package_cycle_with_a_path(tmp_path):
         "from plugin import Adapter",
         "from core.ports import Port",
     ]
+
+
+def core_rules(root: Path, public: str | None) -> None:
+    """Rewrite core's own rules file, optionally declaring a public surface."""
+    line = f"public = {public}\n" if public is not None else ""
+    (root / "core" / "archview.toml").write_text(
+        '[archview]\npackage = "core"\nsource_roots = ["src"]\n'
+        + line
+        + '[archview.allowed]\nmodel = []\nports = ["model"]\n'
+    )
+
+
+def plugin_imports(root: Path, statement: str) -> None:
+    (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(statement + "\n")
+
+
+def test_a_cross_package_import_is_attributed_to_its_component(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    plugin_imports(root, "from core.ports import Port\nfrom core.model import Thing")
+    edges = cross_edges(open_workspace(root))
+    assert set(edges.by_package) == {("plugin", "core")}
+    assert set(edges.by_component) == {("plugin", "core.ports"), ("plugin", "core.model")}
+    assert edges.unplaced == ()
+
+
+def test_an_aliased_re_export_is_attributed_to_the_real_module(tmp_path):
+    """The case that rules out reading the import line as text."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    plugin_imports(root, "from core import model as m2")
+    edges = cross_edges(open_workspace(root))
+    assert set(edges.by_component) == {("plugin", "core.model")}
+
+
+def test_by_package_is_unchanged_by_component_attribution(tmp_path):
+    """The M8 view of the same edges must not move."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    plugin_imports(root, "from core.ports import Port")
+    edges = cross_edges(open_workspace(root))
+    assert [(s, t, len(i)) for (s, t), i in edges.by_package.items()] == [("plugin", "core", 1)]
+
+
+def test_reaching_a_private_component_fails(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.model import Thing")
+    report = check_workspace(open_workspace(root))
+    assert [(p.kind, p.components) for p in report.between.problems] == [
+        ("private", ("plugin", "core.model"))
+    ]
+    assert report.failed
+
+
+def test_reaching_a_public_component_passes(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.ports import Port")
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_a_package_with_no_public_list_publishes_everything(tmp_path):
+    """Every workspace that existed before this feature keeps its meaning."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, None)
+    plugin_imports(root, "from core.model import Thing")
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_an_empty_public_list_publishes_nothing(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, "[]")
+    plugin_imports(root, "from core.ports import Port")
+    assert [p.kind for p in check_workspace(open_workspace(root)).between.problems] == ["private"]
+
+
+def test_a_qualified_grant_narrows(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.ports",)})
+    core_rules(root, '["ports", "model"]')
+    plugin_imports(root, "from core.model import Thing")
+    report = check_workspace(open_workspace(root))
+    assert [p.kind for p in report.between.problems] == ["not_allowed"]
+
+
+def test_a_qualified_grant_naming_an_unpublished_component_is_an_error(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.model",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.ports import Port")
+    with pytest.raises(ConfigError, match=r"core\.model"):
+        check_workspace(open_workspace(root))
+
+
+def test_the_private_hint_names_what_the_package_publishes(tmp_path):
+    """An agent reading the report learns the contract without opening another file."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.model import Thing")
+    problem = check_workspace(open_workspace(root)).between.problems[0]
+    assert "core.ports" in problem.hint
+
+
+def test_a_qualified_grant_permits_the_component_it_names(tmp_path):
+    """The other half of narrowing: what it grants must actually be granted."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.ports",)})
+    core_rules(root, '["ports", "model"]')
+    plugin_imports(root, "from core.ports import Port")
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_public_does_not_warn_for_a_package_inside_a_workspace(tmp_path):
+    """The `has no effect here` notice is for a standalone repo, not a workspace member."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, "from core.ports import Port")
+    report = check_workspace(open_workspace(root))
+    warnings = [w for _, r in report.packages for w in r.warnings if w.kind == "public_ignored"]
+    assert warnings == []
+
+
+def published_view(tmp_path: Path, statement: str):
+    """A workspace where core publishes `ports` only, and plugin imports `statement`."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    core_rules(root, '["ports"]')
+    plugin_imports(root, statement)
+    return workspace_view(open_workspace(root))
+
+
+def test_a_public_component_becomes_a_child_node(tmp_path):
+    view = published_view(tmp_path, "from core.ports import Port")
+    by_id = {n.id: n for n in view.nodes}
+    assert by_id["core.ports"].parent == "core"
+    assert by_id["core.ports"].name == "ports"
+    assert by_id["core"].parent is None
+
+
+def test_a_legal_edge_lands_on_the_public_component(tmp_path):
+    view = published_view(tmp_path, "from core.ports import Port")
+    assert ("plugin", "core.ports") in [(e.source, e.target) for e in view.edges]
+
+
+def test_an_edge_to_a_private_component_lands_on_the_package(tmp_path):
+    """It visibly bypasses the ports - which is the point of drawing them."""
+    view = published_view(tmp_path, "from core.model import Thing")
+    assert ("plugin", "core") in [(e.source, e.target) for e in view.edges]
+
+
+def test_a_package_without_public_draws_as_one_node(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    view = workspace_view(open_workspace(root))
+    assert [n.id for n in view.nodes] == ["core", "plugin"]
+    assert all(n.parent is None for n in view.nodes)
+
+
+def _ts_copy(tmp_path: Path, index: str, public: str | None = None) -> Path:
+    """A ts-workspace copy whose web/index.ts is `index`. symlinks=True keeps the
+    fixture's node_modules link, without which the TypeScript compiler is not found."""
+    root = tmp_path / "ts"
+    shutil.copytree(TS_FIXTURE, root, symlinks=True)
+    # The fixture's node_modules is a *relative* symlink to the ts-sample fixture's,
+    # which does not resolve from a temp copy; re-point it at the real one.
+    link = root / "node_modules"
+    link.unlink()
+    link.symlink_to((TS_FIXTURE / "node_modules").resolve())
+    (root / "web" / "src" / "index.ts").write_text(index)
+    if public is not None:
+        (root / "core" / "archview.toml").write_text(
+            '[archview]\nlanguage = "typescript"\npublic = ' + public + "\n"
+        )
+    return root
+
+
+@requires_typescript
+def test_a_typescript_relative_import_is_attributed_to_a_component(tmp_path):
+    root = _ts_copy(
+        tmp_path, 'import { Widget } from "../../core/src/index";\nexport const a = Widget;\n'
+    )
+    edges = cross_edges(open_workspace(root))
+    assert [t for _, t in edges.by_component] == ["core/index.ts"]
+    assert edges.unplaced == ()
+
+
+@requires_typescript
+def test_a_bare_npm_name_is_placed_when_tsconfig_maps_it(tmp_path):
+    """A real monorepo maps its siblings with tsconfig `paths`, so tsc resolves the
+    npm name to a real file and archview can say which component it reached."""
+    root = _ts_copy(tmp_path, 'import { helper } from "@fixture/core";\nexport const a = helper;\n')
+    edges = cross_edges(open_workspace(root))
+    assert [t for _, t in edges.by_component] == ["core/index.ts"]
+    assert edges.unplaced == ()
+
+
+@requires_typescript
+def test_an_import_tsc_cannot_resolve_is_reported_not_ignored(tmp_path):
+    """An unresolvable specifier still reaches the sibling by name, but we cannot say
+    which part of it - so it is reported rather than quietly treated as public."""
+    root = _ts_copy(tmp_path, 'import { x } from "core/missing";\nexport const a = x;\n')
+    edges = cross_edges(open_workspace(root))
+    assert edges.by_component == {}
+    assert len(edges.unplaced) == 1
+
+
+@requires_typescript
+def test_an_unplaced_import_becomes_a_workspace_warning(tmp_path):
+    """The cross-package report carried no warnings at all until now (ADR 0012)."""
+    root = _ts_copy(tmp_path, 'import { x } from "core/missing";\nexport const a = x;\n')
+    report = check_workspace(open_workspace(root))
+    assert [w.kind for w in report.between.warnings] == ["unplaced_import"]
+    assert "index.ts" in report.between.warnings[0].message

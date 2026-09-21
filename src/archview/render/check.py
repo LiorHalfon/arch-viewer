@@ -18,10 +18,11 @@ LABELS = {
     "cycle": "CYCLE",
     "zone": "ZONE",
     "outside": "OUTSIDE",
+    "private": "PRIVATE",
 }
 ZONE_NAMES = {"pain": "the zone of pain", "useless": "the zone of uselessness"}
 # Problem kinds rendered as "A -> B" in text and as from/to in JSON.
-PAIRS = ("not_allowed", "forbidden", "outside")
+PAIRS = ("not_allowed", "forbidden", "outside", "private")
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:

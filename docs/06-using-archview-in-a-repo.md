@@ -174,6 +174,42 @@ TypeScript `../`-relative import, the sibling whose directory contains the resol
 file. A name that matches no sibling is an ordinary third-party dependency, governed
 by that package's own `[archview.externals]` if it has one.
 
+### What a package publishes
+
+By default a sibling may reach any part of a package it is allowed to import. A
+package narrows that by naming its contract in **its own** rules file:
+
+```toml
+# core/archview.toml
+[archview]
+package = "core"
+public  = ["ports", "types"]   # component names, as in [archview.allowed]
+```
+
+Now `openai = ["core"]` at the root means core's `ports` and `types` only. Reaching
+anything else is a `PRIVATE` problem naming the file, the line, and what core does
+publish. The contract lives with the package that owns it, so adding a sixth plugin
+needs no new rule.
+
+Three things follow from that:
+
+- **No `public` key means the whole package is public**, so every workspace written
+  before this keeps its meaning. `public = []` means it publishes nothing.
+- **A grant may narrow further** with a qualified name — `server = ["core.ports"]`
+  allows core's ports and nothing else of core.
+- **A grant may not widen.** Naming a component its owner does not publish is an
+  error at load time, not a silent no-op, because `public` would override it. Use
+  `[[archview.workspace.exceptions]]`, which requires a written reason, for a
+  deliberate one-off.
+
+Outside a workspace `public` does nothing, and `check` says so rather than ignoring it.
+
+The component an import reaches is resolved, never guessed: for Python by analysing
+the sibling packages together, which sees past the squashing grimp applies to an
+external import; for TypeScript from the path tsc resolved. An import tsc cannot
+resolve — usually a monorepo with no tsconfig `paths` mapping for its siblings — is
+reported as unplaced rather than assumed public. See ADR 0013.
+
 **`undeclared` applies here, unlike `[archview.externals]`.** A package missing from
 `[archview.workspace.allowed]` fails the check: the set of workspace packages is
 closed and every one of them was added on purpose, so a new one is exactly the kind

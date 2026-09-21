@@ -116,9 +116,9 @@ def baseline_path(project: Project) -> Path:
     return base / (project.config.baseline or BASELINE_FILE)
 
 
-def project_report(project: Project) -> Report:
+def project_report(project: Project, in_workspace: bool = False) -> Report:
     """`archview check` for this project, with its baseline applied when there is one."""
-    report = check(project.model, project.config)
+    report = check(project.model, project.config, in_workspace)
     path = baseline_path(project)
     if path.is_file():
         report = apply_baseline(report, load_baseline(path), path.name)

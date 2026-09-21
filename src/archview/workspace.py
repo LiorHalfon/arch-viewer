@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from archview.extract.siblings import resolve_targets
 from archview.model.cycles import components, find_cycles
 from archview.model.graph import Import, Model
 from archview.model.layers import assign_layers
@@ -28,7 +29,9 @@ from archview.project import Project, open_project, project_report
 from archview.rules.baseline import apply_baseline, load_baseline
 from archview.rules.check import (
     Edges,
+    Notice,
     Pair,
+    Problem,
     Report,
     WorkspaceReport,
     _cycle_problems,
@@ -39,6 +42,7 @@ from archview.rules.check import (
     component_map,
 )
 from archview.rules.config import (
+    ALL,
     RULES_FILE,
     Config,
     ConfigError,
@@ -148,15 +152,33 @@ def _owner_by_path(outside: str, importer: Package, packages: tuple[Package, ...
     )
 
 
-def cross_edges(ws: Workspace) -> dict[Pair, list[Import]]:
-    """Every package's outside edges (M7) whose target is a sibling, grouped by
-    (source package, target package) and sorted.
+@dataclass(frozen=True, slots=True)
+class CrossEdges:
+    """One pass over the workspace, three views of the same imports.
+
+    `by_package` is what M8 checked: (source package, target package). `by_component`
+    narrows the target to the component actually reached - (source package,
+    "target.component") - which is what a public surface is checked against (issue #4).
+    `unplaced` holds the imports whose component could not be determined; they are still
+    checked at package level and reported, never silently passed.
+    """
+
+    by_package: dict[Pair, list[Import]]
+    by_component: dict[Pair, list[Import]]
+    unplaced: tuple[Import, ...]
+
+
+def cross_edges(ws: Workspace) -> CrossEdges:
+    """Every package's outside edges (M7) whose target is a sibling, attributed.
 
     A workspace exception exempts a cross-package import the same way a package's own
     `[archview.exceptions]` exempt an internal one - `_exemption` is the same helper.
     """
     exceptions = ws.config.workspace.exceptions
-    cross: dict[Pair, list[Import]] = defaultdict(list)
+    targets = resolve_targets(_python_roots(ws))
+    by_package: dict[Pair, list[Import]] = defaultdict(list)
+    by_component: dict[Pair, list[Import]] = defaultdict(list)
+    unplaced: list[Import] = []
     for package in ws.packages:
         for outside, imports in _outside_imports(package).items():
             sibling = _owner(outside, package, ws.packages)
@@ -164,11 +186,86 @@ def cross_edges(ws: Workspace) -> dict[Pair, list[Import]]:
                 continue
             sep = package.project.model.separator
             surviving = [imp for imp in imports if _exemption(imp, exceptions, sep) is None]
-            if surviving:
-                cross[(package.name, sibling)] += surviving
+            if not surviving:
+                continue
+            by_package[(package.name, sibling)] += surviving
+            for imp in surviving:
+                component = _component_of(imp, outside, package, sibling, ws, targets)
+                if component is None:
+                    unplaced.append(imp)
+                else:
+                    by_component[(package.name, component)].append(imp)
+    return CrossEdges(
+        _sorted_edges(by_package),
+        _sorted_edges(by_component),
+        tuple(sorted(unplaced, key=lambda i: (i.file, i.line))),
+    )
+
+
+def _sorted_edges(edges: dict[Pair, list[Import]]) -> dict[Pair, list[Import]]:
     return {
-        pair: sorted(imps, key=lambda i: (i.file, i.line)) for pair, imps in sorted(cross.items())
+        pair: sorted(imps, key=lambda i: (i.file, i.line)) for pair, imps in sorted(edges.items())
     }
+
+
+def _python_roots(ws: Workspace) -> dict[str, Path]:
+    """The source roots of the workspace's Python packages, for `resolve_targets`."""
+    return {
+        p.name: p.project.source_root for p in ws.packages if p.project.model.language == "python"
+    }
+
+
+def _component_of(
+    imp: Import,
+    outside: str,
+    importer: Package,
+    sibling: str,
+    ws: Workspace,
+    targets: dict[tuple[str, int], str],
+) -> str | None:
+    """`sibling.component` for the part of `sibling` this import reaches, or None.
+
+    Python comes from the workspace resolution pass, the only thing that can see past
+    grimp's squashing. TypeScript carries `Import.resolved`, the path tsc resolved
+    before the extractor squashed the target to a package name - so every TypeScript
+    form that tsc can resolve places, and one it cannot is reported rather than
+    guessed at (ADR 0013).
+    """
+    module = targets.get((imp.importer, imp.line))
+    if module is not None:
+        return _qualified(module, sibling, ".")
+    if imp.resolved is not None:
+        return _qualified_by_path(imp.resolved, importer, sibling, ws)
+    return None
+
+
+def _qualified(module: str, sibling: str, sep: str) -> str:
+    """`core.model.Thing` -> `core.model`; the package root itself -> `core`."""
+    rest = module[len(sibling) :].lstrip(sep)
+    return f"{sibling}{sep}{rest.split(sep)[0]}" if rest else sibling
+
+
+def _qualified_by_path(resolved: str, importer: Package, sibling: str, ws: Workspace) -> str | None:
+    """`resolved` is a path relative to the *importing* package's repo.
+
+    The component comes from the owner's own model rather than from path arithmetic:
+    a TypeScript node id drops the source root (`src/index.ts` -> `core/index.ts`), so
+    only the extractor that built the ids can map a file back to one.
+    """
+    owner = _package_by_name(ws, sibling)
+    try:
+        inside = (importer.path / resolved).resolve().relative_to(owner.path.resolve())
+    except ValueError:
+        return None
+    wanted = inside.as_posix()
+    node = next((n for n in owner.project.model.nodes if n.file == wanted), None)
+    if node is None:
+        return None
+    return _qualified(node.id, sibling, owner.project.model.separator)
+
+
+def _package_by_name(ws: Workspace, name: str) -> Package:
+    return next(p for p in ws.packages if p.name == name)
 
 
 def _outside_imports(package: Package) -> dict[str, list[Import]]:
@@ -198,23 +295,164 @@ def _outside_imports(package: Package) -> dict[str, list[Import]]:
 
 def check_workspace(ws: Workspace) -> WorkspaceReport:
     """Each package's own check, where it has rules, plus the rules between them."""
-    packages = tuple((p.name, project_report(p.project)) for p in ws.packages if p.has_rules)
+    packages = tuple(
+        (p.name, project_report(p.project, in_workspace=True)) for p in ws.packages if p.has_rules
+    )
     return WorkspaceReport(ws.name, packages, _check_between(ws))
 
 
 def _check_between(ws: Workspace) -> Report:
     rules = ws.config.workspace
     present = tuple(p.name for p in ws.packages)
-    edges = Edges(internal=cross_edges(ws), outside={}, exceptions_used=set())
+    cross = cross_edges(ws)
+    _reject_unpublished_grants(ws, rules)
+    edges = Edges(internal=cross.by_package, outside={}, exceptions_used=set())
     config = _between_config(ws.config, rules)
     problems = [
-        *_rule_problems(edges, present, config, config.table),
+        *_rule_problems(edges, present, _package_level(config, rules), config.table),
         *_cycle_problems(edges.internal, present, config, config.table),
+        *_component_problems(cross.by_component, ws, rules, config),
     ]
-    report = Report(ws.name, present, tuple(problems), ())
+    ordered = tuple(sorted(problems, key=lambda p: (p.components, p.kind)))
+    report = Report(ws.name, present, ordered, _unplaced_warnings(cross, ws))
     if rules.baseline:
         report = _apply_workspace_baseline(report, ws.root, rules.baseline)
     return report
+
+
+def _unplaced_warnings(cross: CrossEdges, ws: Workspace) -> tuple[Notice, ...]:
+    """An import we could not attribute to a component is named, never passed over.
+
+    It still counts at package level; what is missing is only the public-surface
+    check, and silently skipping that is exactly the "looks protected but is not"
+    failure this tool exists to prevent.
+    """
+    owner = {imp: name for (_, name), imps in cross.by_package.items() for imp in imps}
+    return tuple(
+        Notice(
+            "unplaced_import",
+            f"{imp.file}:{imp.line} {imp.text.strip()}: could not tell which component of "
+            f"{owner.get(imp, 'the sibling')} this reaches, so its public surface was not checked",
+        )
+        for imp in sorted(cross.unplaced, key=lambda i: (i.file, i.line))
+    )
+
+
+def _package(name: str) -> str:
+    """`core.ports` -> `core`; `core` -> `core`."""
+    return name.split(".", 1)[0]
+
+
+def _package_level(config: Config, rules: WorkspaceRules) -> Config:
+    """The workspace `allowed` table as the package-level check sees it.
+
+    A qualified grant (`core.ports`) grants the package; the narrowing it expresses is
+    enforced separately by `_component_problems`. Without this the package-level check
+    would deny the very import the grant exists to permit.
+    """
+    if not rules.allowed:
+        return config
+    widened = {
+        source: targets if targets == ALL else tuple(sorted({_package(t) for t in targets}))
+        for source, targets in rules.allowed.items()
+    }
+    return replace(config, allowed=widened)
+
+
+def _published(ws: Workspace, package: str) -> tuple[str, ...] | None:
+    """The components `package` offers its siblings, or None when it publishes all."""
+    owner = next((p for p in ws.packages if p.name == package), None)
+    return owner.project.config.public if owner else None
+
+
+def _reject_unpublished_grants(ws: Workspace, rules: WorkspaceRules) -> None:
+    """A grant naming a component its owner does not publish can never usefully fire.
+
+    `public` would override it, so it is a config error rather than a silent no-op -
+    the reasoning ADR 0011 used for a stdlib target. A deliberate one-off belongs in
+    `[[archview.workspace.exceptions]]`, which already requires a written reason.
+    """
+    for source, targets in sorted((rules.allowed or {}).items()):
+        for target in () if targets == ALL else targets:
+            if "." not in target:
+                continue
+            published = _published(ws, _package(target))
+            if published is not None and target.split(".", 1)[1] not in published:
+                package = _package(target)
+                may = ", ".join(f"{package}.{n}" for n in published) or "nothing"
+                raise ConfigError(
+                    f"[{ws.config.table}.workspace.allowed.{source}] names {target!r}, "
+                    f"which {package} does not publish. {package} publishes: {may}"
+                )
+
+
+def _component_problems(
+    by_component: dict[Pair, list[Import]],
+    ws: Workspace,
+    rules: WorkspaceRules,
+    config: Config,
+) -> list[Problem]:
+    """An import must satisfy both the owner's `public` and any qualified grant."""
+    allowed = rules.allowed or {}
+    problems = []
+    for (source, target), imports in by_component.items():
+        package = _package(target)
+        published = _published(ws, package)
+        component = target.split(".", 1)[1] if "." in target else None
+        if published is not None and (component is None or component not in published):
+            owner = next(p for p in ws.packages if p.name == package)
+            problems.append(
+                _private(source, target, imports, published, owner.project.config.table, config)
+            )
+            continue
+        grants = allowed.get(source)
+        qualified = () if grants in (None, ALL) else tuple(t for t in grants if "." in t)
+        constrains = qualified and _package(target) in {_package(t) for t in qualified}
+        if constrains and target not in qualified:
+            problems.append(_not_allowed_component(source, target, imports, qualified, config))
+    return problems
+
+
+def _private(
+    source: str,
+    target: str,
+    imports: list[Import],
+    published: tuple[str, ...],
+    owner_table: str,
+    config: Config,
+) -> Problem:
+    package = _package(target)
+    may = ", ".join(f"{package}.{name}" for name in published) or "nothing"
+    return Problem(
+        kind="private",
+        rule=f"{owner_table}.public",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{target} is not part of {package}'s public surface. {package} publishes: "
+            f"{may}. Import one of those, or ask {package}'s owner to publish it."
+        ),
+        fails=config.fail_on_violations,
+    )
+
+
+def _not_allowed_component(
+    source: str, target: str, imports: list[Import], qualified: tuple[str, ...], config: Config
+) -> Problem:
+    may = ", ".join(qualified)
+    return Problem(
+        kind="not_allowed",
+        rule=f"{config.table}.allowed.{source}",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{source} may import only: {may}. Move the code that needs {target}, go "
+            "through an allowed component, or ask a human to change the rule."
+        ),
+        fails=config.fail_on_violations,
+    )
 
 
 def _between_config(root: Config, rules: WorkspaceRules) -> Config:
@@ -252,7 +490,8 @@ def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
     """
     by_name = {p.name: p for p in ws.packages}
     children = frozenset(by_name)
-    grouped = cross_edges(ws)
+    cross = cross_edges(ws)
+    grouped = cross.by_package
     counts = {pair: len(imports) for pair, imports in grouped.items()}
 
     component = components(children, counts)
@@ -260,22 +499,75 @@ def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
     cycles = find_cycles(children, counts)
     cyclic = {name for cycle in cycles for name in cycle}
 
-    nodes = tuple(
+    nodes = [
         _package_node(by_name[name], grouped, layer[name], name in cyclic)
         for name in sorted(children)
-    )
+    ]
+    nodes += _public_nodes(ws, layer)
+    drawn = _drawn_edges(cross, ws)
     edges = tuple(
         ViewEdge(
             source=s,
             target=t,
             count=len(imports),
-            in_cycle=component[s] == component[t],
+            in_cycle=component[s] == component.get(_package(t), s),
             imports=tuple(imports),
             type_checking=all(i.type_checking for i in imports),
         )
-        for (s, t), imports in sorted(grouped.items())
+        for (s, t), imports in sorted(drawn.items())
     )
-    return View(root=ws.name, nodes=nodes, edges=edges, cycles=cycles)
+    return View(root=ws.name, nodes=tuple(nodes), edges=edges, cycles=cycles)
+
+
+def _public_nodes(ws: Workspace, layer: dict[str, int]) -> list[ViewNode]:
+    """One box per published component, drawn inside its package's box.
+
+    A package that declares no `public` list draws exactly as it did before: one node,
+    no children. Chosen over a label on the node because a legal dependency then
+    visibly terminates at a port and a violation visibly bypasses one (ADR 0013).
+    """
+    found = []
+    for package in ws.packages:
+        published = package.project.config.public
+        if published is None:
+            continue
+        sep = package.project.model.separator
+        for name in sorted(published):
+            found.append(
+                ViewNode(
+                    id=f"{package.name}{sep}{name}",
+                    name=name,
+                    kind="package",
+                    module_count=0,
+                    layer=layer.get(package.name, 0),
+                    in_cycle=False,
+                    fan_in=0,
+                    fan_out=0,
+                    parent=package.name,
+                )
+            )
+    return found
+
+
+def _drawn_edges(cross: CrossEdges, ws: Workspace) -> dict[Pair, list[Import]]:
+    """Cross-package edges, landing on a published component where there is one.
+
+    An import that reaches a private component keeps the package as its target, so it
+    is drawn going past the ports rather than through one.
+    """
+    published = {
+        p.name: p.project.config.public for p in ws.packages if p.project.config.public is not None
+    }
+    component_of = {imp: target for (_, target), imps in cross.by_component.items() for imp in imps}
+    drawn: dict[Pair, list[Import]] = defaultdict(list)
+    for (source, package), imports in cross.by_package.items():
+        for imp in imports:
+            target = component_of.get(imp)
+            surface = published.get(package)
+            reaches = target.split(".", 1)[1] if target and "." in target else None
+            landing = target if surface is not None and reaches in surface else package
+            drawn[(source, landing)].append(imp)
+    return _sorted_edges(drawn)
 
 
 def _package_node(

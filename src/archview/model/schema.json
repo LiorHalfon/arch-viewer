@@ -16,7 +16,7 @@
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": 3
+      "const": 4
     },
     "language": {
       "type": "string",
@@ -87,7 +87,8 @@
           "line",
           "text",
           "type_checking",
-          "lazy"
+          "lazy",
+          "resolved"
         ],
         "additionalProperties": false,
         "properties": {
@@ -107,6 +108,10 @@
           "text": {
             "type": "string",
             "description": "the source line, for display and for file:line jumps"
+          },
+          "resolved": {
+            "type": ["string", "null"],
+            "description": "the exact module or file reached, before an external target is squashed to its package name; null when the extractor cannot resolve it"
           },
           "type_checking": {
             "type": "boolean",

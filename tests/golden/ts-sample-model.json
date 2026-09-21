@@ -1,5 +1,5 @@
 {
-  "schema": 3,
+  "schema": 4,
   "language": "typescript",
   "separator": "/",
   "project": "ts-sample",
@@ -202,7 +202,8 @@
       "line": 4,
       "text": "import(\"@/app/screens/Home\")",
       "type_checking": false,
-      "lazy": true
+      "lazy": true,
+      "resolved": "app/screens/Home.tsx"
     },
     {
       "importer": "ts-sample/app/index.tsx",
@@ -211,7 +212,8 @@
       "line": 1,
       "text": "import { Button } from \"@/components\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "components/index.ts"
     },
     {
       "importer": "ts-sample/app/index.tsx",
@@ -220,7 +222,8 @@
       "line": 2,
       "text": "import { format } from \"@/utils/format\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "utils/format.ts"
     },
     {
       "importer": "ts-sample/app/screens/Home.tsx",
@@ -229,7 +232,8 @@
       "line": 2,
       "text": "import { total } from \"@/domain/order\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "domain/order.ts"
     },
     {
       "importer": "ts-sample/app/screens/Home.tsx",
@@ -238,7 +242,8 @@
       "line": 1,
       "text": "import type { Order } from \"@/domain/types\";",
       "type_checking": true,
-      "lazy": false
+      "lazy": false,
+      "resolved": "domain/types.ts"
     },
     {
       "importer": "ts-sample/app/screens/Home.web.tsx",
@@ -247,7 +252,8 @@
       "line": 1,
       "text": "import Home from \"./Home\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "app/screens/Home.tsx"
     },
     {
       "importer": "ts-sample/components/Button.tsx",
@@ -256,7 +262,8 @@
       "line": 1,
       "text": "import { useMutation, useQuery, } from \"@tanstack/react-query\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "ts-sample/components/Button.tsx",
@@ -265,7 +272,8 @@
       "line": 12,
       "text": "require(\"../utils/legacy.js\")",
       "type_checking": false,
-      "lazy": true
+      "lazy": true,
+      "resolved": "utils/legacy.js"
     },
     {
       "importer": "ts-sample/components/Transitions/Transitions.tsx",
@@ -274,7 +282,8 @@
       "line": 1,
       "text": "import { Fade } from \"./Transitions/Fade\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "components/Transitions/Transitions/Fade.tsx"
     },
     {
       "importer": "ts-sample/components/Transitions/Transitions/Fade.tsx",
@@ -283,7 +292,8 @@
       "line": 1,
       "text": "import React from \"react\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "ts-sample/components/index.ts",
@@ -292,7 +302,8 @@
       "line": 1,
       "text": "export { Button } from \"./Button\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "components/Button.tsx"
     },
     {
       "importer": "ts-sample/components/index.ts",
@@ -301,7 +312,8 @@
       "line": 2,
       "text": "export * from \"./Transitions/Transitions\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "components/Transitions/Transitions.tsx"
     },
     {
       "importer": "ts-sample/domain/Repository.ts",
@@ -310,7 +322,8 @@
       "line": 1,
       "text": "import type { Order } from \"./types\";",
       "type_checking": true,
-      "lazy": false
+      "lazy": false,
+      "resolved": "domain/types.ts"
     },
     {
       "importer": "ts-sample/domain/order.ts",
@@ -319,7 +332,8 @@
       "line": 1,
       "text": "import type { Order } from \"./types\";",
       "type_checking": true,
-      "lazy": false
+      "lazy": false,
+      "resolved": "domain/types.ts"
     },
     {
       "importer": "ts-sample/domain/order.ts",
@@ -328,7 +342,8 @@
       "line": 2,
       "text": "import { discount } from \"@/services/pricing\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "services/pricing.ts"
     },
     {
       "importer": "ts-sample/services/pricing.test.ts",
@@ -337,7 +352,8 @@
       "line": 1,
       "text": "import { discount } from \"./pricing\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "services/pricing.ts"
     },
     {
       "importer": "ts-sample/services/pricing.ts",
@@ -346,7 +362,8 @@
       "line": 1,
       "text": "import { total } from \"@/domain/order\";",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": "domain/order.ts"
     },
     {
       "importer": "ts-sample/services/pricing.ts",
@@ -355,7 +372,8 @@
       "line": 2,
       "text": "import type { Order } from \"@/domain/types\";",
       "type_checking": true,
-      "lazy": false
+      "lazy": false,
+      "resolved": "domain/types.ts"
     }
   ],
   "warnings": [

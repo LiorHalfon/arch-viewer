@@ -208,6 +208,9 @@ def _imports(files, targets, ids, project) -> tuple[list[Import], list[Extractio
                     fact["text"],
                     fact["type_only"],
                     fact["lazy"],
+                    # tsc already resolved this; `imported` may squash it to a package
+                    # name, so keep what it actually reached (issue #4).
+                    resolved=fact["resolved"],
                 )
             )
     return imports, warnings

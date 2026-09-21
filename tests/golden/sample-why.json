@@ -11,7 +11,8 @@
       "line": 11,
       "text": "from sample.services import pricing",
       "type_checking": false,
-      "lazy": false
+      "lazy": false,
+      "resolved": null
     },
     {
       "importer": "sample.services.pricing",
@@ -20,7 +21,8 @@
       "line": 7,
       "text": "from sample.infra.cache import get_rate",
       "type_checking": false,
-      "lazy": true
+      "lazy": true,
+      "resolved": null
     }
   ]
 }

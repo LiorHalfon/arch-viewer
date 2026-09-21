@@ -26,7 +26,8 @@
               "line": 3,
               "text": "from sample.services import pricing",
               "type_checking": false,
-              "lazy": false
+              "lazy": false,
+              "resolved": null
             }
           ]
         },
@@ -42,7 +43,8 @@
               "line": 7,
               "text": "from sample.infra.cache import get_rate",
               "type_checking": false,
-              "lazy": true
+              "lazy": true,
+              "resolved": null
             }
           ]
         }

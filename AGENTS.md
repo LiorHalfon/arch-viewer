@@ -7,19 +7,19 @@ AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1–M8 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
+**M1–M9 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
 Python, the TypeScript compiler API for TypeScript, ADR 0010), the model (views,
 cycles, layers, metrics, agent queries), the checker (`rules/`, with layers, zones,
 baseline and rules that name a package outside the project, ADR 0011), workspace
-mode (`workspace.py`, several packages checked and drawn as one architecture, ADR
-0012), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
+mode (`workspace.py`, several packages checked and drawn as one architecture, with
+a public surface per package, ADRs 0012 and 0013), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
 `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits its own
 `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions
 (`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
 Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
-2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M8
+2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M9
 3. `docs/superpowers/specs/` — the binding design specs a milestone is built from (ADRs 0011, 0012 both open by naming the one they record)
 4. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode
 5. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)

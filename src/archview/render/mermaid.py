@@ -19,11 +19,33 @@ def _id(node_id: str) -> str:
     return "n_" + re.sub(r"\W", "_", node_id)
 
 
-def _node(node: ViewNode) -> str:
+def _node(node: ViewNode, indent: str = "  ") -> str:
     modules = "1 module" if node.module_count == 1 else f"{node.module_count} modules"
-    label = node.name if node.kind != "package" else f"{node.name}<br/>{modules}"
+    nested = node.parent is not None
+    label = node.name if node.kind != "package" or nested else f"{node.name}<br/>{modules}"
     shape = f'(["{label}"])' if node.kind == "external" else f'["{label}"]'
-    return f"  {_id(node.id)}{shape}"
+    return f"{indent}{_id(node.id)}{shape}"
+
+
+def _nodes(view: View) -> list[str]:
+    """Node lines, nesting a package's published components inside a subgraph."""
+    children: dict[str, list[ViewNode]] = {}
+    for node in view.nodes:
+        if node.parent is not None:
+            children.setdefault(node.parent, []).append(node)
+    lines = []
+    for node in view.nodes:
+        if node.parent is not None:
+            continue
+        inside = children.get(node.id)
+        if not inside:
+            lines.append(_node(node))
+            continue
+        lines.append(f'  subgraph sg_{_id(node.id)}[" "]')
+        lines.append(_node(node, "    "))
+        lines.extend(_node(c, "    ") for c in inside)
+        lines.append("  end")
+    return lines
 
 
 def _arrow(edge: ViewEdge, violating: bool) -> str:
@@ -36,7 +58,7 @@ def _arrow(edge: ViewEdge, violating: bool) -> str:
 
 def to_mermaid(view: View, violations: Collection[Pair] = ()) -> str:
     lines = [f"%% archview: {view.root}", "flowchart TB"]
-    lines.extend(_node(n) for n in view.nodes)
+    lines.extend(_nodes(view))
     lines.extend(
         f"  {_id(e.source)} {_arrow(e, (e.source, e.target) in violations)} {_id(e.target)}"
         for e in view.edges

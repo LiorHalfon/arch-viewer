@@ -4,7 +4,21 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@fixture/core": [
+        "../core/src/index.ts"
+      ],
+      "@fixture/core/*": [
+        "../core/src/*"
+      ],
+      "core": [
+        "../core/src/index.ts"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

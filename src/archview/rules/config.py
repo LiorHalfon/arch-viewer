@@ -82,6 +82,7 @@ class Config:
     exceptions: tuple[Exemption, ...] = ()
     ignored: tuple[str, ...] = ()
     components: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    public: tuple[str, ...] | None = None
     layers: tuple[tuple[str, ...], ...] = ()
     independent: tuple[tuple[str, ...], ...] = ()
     metrics: MetricRules = field(default_factory=MetricRules)
@@ -130,6 +131,7 @@ TOP_KEYS = {
     "exceptions",
     "ignored",
     "components",
+    "public",
     "layers",
     "independent",
     "metrics",
@@ -202,6 +204,7 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
         ignored=_str_list(table, "ignored", where),
         components=_components(table.get("components", {}), f"{where}.components"),
+        public=_optional_str_list(table, "public", where),
         type_checking_imports=_choice(
             table, "type_checking_imports", ("ignore", "include"), "ignore", where
         ),
@@ -292,6 +295,17 @@ def _strings(value: Any, where: str) -> tuple[str, ...]:
 
 def _str_list(table: dict[str, Any], key: str, where: str) -> tuple[str, ...]:
     return _strings(table.get(key, []), f"{where}.{key}")
+
+
+def _optional_str_list(table: dict[str, Any], key: str, where: str) -> tuple[str, ...] | None:
+    """Like `_str_list`, but an absent key is None rather than an empty tuple.
+
+    `public` needs the distinction: no key means the whole package is public,
+    while an empty list means it publishes nothing.
+    """
+    if key not in table:
+        return None
+    return _strings(table[key], f"{where}.{key}")
 
 
 def _allowed(value: Any, where: str) -> dict[str, tuple[str, ...] | str] | None:
