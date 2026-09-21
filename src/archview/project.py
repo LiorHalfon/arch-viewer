@@ -6,7 +6,7 @@ the same model for the same repo.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from archview.extract import typescript
@@ -15,7 +15,7 @@ from archview.extract.python import build_model
 from archview.model.filter import without_files
 from archview.model.graph import Model
 from archview.rules.baseline import BASELINE_FILE, apply_baseline, load_baseline
-from archview.rules.check import Report, check
+from archview.rules.check import Notice, Report, check
 from archview.rules.config import Config, ConfigError, find_config, load_config
 
 
@@ -119,9 +119,35 @@ def baseline_path(project: Project) -> Path:
 def project_report(project: Project, in_workspace: bool = False) -> Report:
     """`archview check` for this project, with its baseline applied when there is one."""
     report = check(project.model, project.config, in_workspace)
+    report = replace(report, warnings=report.warnings + tuple(_empty_source_root_warnings(project)))
     path = baseline_path(project)
     if path.is_file():
         report = apply_baseline(report, load_baseline(path), path.name)
     elif project.config.baseline:
         raise ConfigError(f"baseline {path} does not exist; `archview check --update-baseline`")
     return report
+
+
+def _empty_source_root_warnings(project: Project) -> list[Notice]:
+    """A `source_roots` entry that did not contribute to the analysed package
+    (issue #10). `_packages`/`_choose` pick exactly one winning root per package, and
+    `project.source_root` is it - so this compares each configured root's *resolved*
+    path against the winner's, not strings, meaning `"."`, `"./"`, `"src/"` and
+    `"src/../src"` all normalise the same way. A single configured root is never
+    empty: `open_project` would have failed before returning a `Project` if it had
+    not been the one that produced the package (and for TypeScript, `source_root` is
+    always `project.repo` rather than the configured root, so this only means
+    anything once there is more than one root to tell apart)."""
+    roots = project.config.source_roots
+    if len(roots) <= 1:
+        return []
+    used = project.source_root.resolve()
+    return [
+        Notice(
+            "empty_source_root",
+            f"source root {root!r} contributed no modules to package {project.package!r}; "
+            "only code under the package is analysed",
+        )
+        for root in sorted(set(roots))
+        if (project.repo / root).resolve() != used
+    ]
