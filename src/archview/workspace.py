@@ -85,27 +85,36 @@ def open_workspace(
     if config.workspace is None:
         raise ConfigError(f"no [{config.table}.workspace] table in {path or root / RULES_FILE}")
     # Guards a synthetic `config` passed in with a workspace table but no file behind
-    # it (e.g. built in a test): there is no raw TOML to re-read `type_checking_imports`
-    # from, so the check below cannot run.
+    # it (e.g. built in a test): there is no raw TOML to re-read an inert key from, so
+    # the check below cannot run.
     if path is not None:
-        _reject_root_type_checking_imports(config, path)
+        _reject_inert_root_keys(config, path)
     base = path.parent if path else root
     packages = _open_packages(config.workspace.packages, base)
     return Workspace(config.package or root.name, root, packages, config)
 
 
-def _reject_root_type_checking_imports(config: Config, path: Path) -> None:
-    """`type_checking_imports` is read into the root `Config` but never consulted -
-    each package is checked with its own config - so setting it at a workspace root
-    reads as applied when it is not (issue #8). Detecting this needs the raw table,
-    not the parsed `Config`: after Task 1's default flip, "include" no longer tells
-    a set value apart from an unset one.
+# Keys `Config` happily parses at a workspace root's bare `[archview]` table but never
+# consults there: each member is checked with its own `Config` (`type_checking_imports`,
+# issue #8), and `between` is checked with a `Config` `_between_config` builds fresh,
+# which does not carry `externals_undeclared` either (review). Both used to read as
+# applied when they were not.
+_INERT_ROOT_KEYS = frozenset({"type_checking_imports", "externals_undeclared"})
+
+
+def _reject_inert_root_keys(config: Config, path: Path) -> None:
+    """A key in `_INERT_ROOT_KEYS`, set at a workspace root, can never take effect
+    there. Detecting this needs the raw table, not the parsed `Config`: a key's own
+    default (`type_checking_imports`'s "include", `externals_undeclared`'s "allow")
+    does not tell a set value apart from an unset one.
     """
-    if "type_checking_imports" in _root_table(path, config.table):
+    present = sorted(_INERT_ROOT_KEYS & _root_table(path, config.table).keys())
+    if present:
+        key = present[0]
         raise ConfigError(
-            f"[{config.table}] type_checking_imports has no effect at a workspace "
-            "root - each package is checked with its own config. Set it in the "
-            "package's own rules file instead."
+            f"[{config.table}] {key} has no effect at a workspace root - each "
+            "package is checked with its own config. Set it in the package's own "
+            "rules file instead."
         )
 
 

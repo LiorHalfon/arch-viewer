@@ -367,13 +367,23 @@ def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path
     assert report.failed
 
 
-def test_type_checking_imports_at_a_workspace_root_is_an_error(tmp_path):
-    """It is read and never consulted there - each package is checked with its own
-    config - so writing it reads as applied when it is not (issue #8)."""
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("type_checking_imports", '"include"'),
+        ("externals_undeclared", '"error"'),
+    ],
+)
+def test_an_inert_key_at_a_workspace_root_is_an_error(tmp_path, key, value):
+    """Both are read into the root `Config` and never consulted there - each package
+    is checked with its own config, and `between` with a `Config` `_between_config`
+    builds fresh, which does not carry `externals_undeclared` either - so writing
+    either at a workspace root used to read as applied when it was not (issue #8;
+    `externals_undeclared`, review)."""
     root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
     text = (root / "archview.toml").read_text()
-    (root / "archview.toml").write_text('[archview]\ntype_checking_imports = "include"\n' + text)
-    with pytest.raises(ConfigError, match="type_checking_imports"):
+    (root / "archview.toml").write_text(f"[archview]\n{key} = {value}\n" + text)
+    with pytest.raises(ConfigError, match=key):
         open_workspace(root)
 
 

@@ -135,7 +135,9 @@ must then be a key of `[archview.externals]`, exactly as `allowed` already requi
 a component that is not gets a failing `undeclared_externals` problem. The default
 stays `"allow"` so a repo can adopt `[externals]` one component at a time instead of
 having to enumerate every third-party package on day one; any other value is a
-`ConfigError`, so a typo cannot read as "off".
+`ConfigError`, so a typo cannot read as "off". In a workspace, set it in each
+package's own rules file - the root's bare `[archview]` table is a `ConfigError` if
+it names this key, for the same reason `type_checking_imports` is, below.
 
 A rule may also name a package outside the project - a PyPI or npm dependency, or a
 sibling package in a workspace; archview cannot tell those two apart from one
