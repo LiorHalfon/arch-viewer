@@ -91,6 +91,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C11 | Config evolution: unknown/legacy keys produce a clear error with a hint, not silent acceptance. | V2 | DC |
 | C12 | `allowed`/`forbidden`/`exceptions` can name a package outside the project (a PyPI/npm dependency, or a workspace sibling before M8 tells them apart) via a new `[archview.externals]` allow-list; `forbidden` needs no new syntax. A stdlib target is a config error, not a silent no-op. | MVP (M7) | GitHub issue #1; ADR 0011 |
 | C13 | A `[archview.workspace]` table at a repo's root lists several packages (Python and/or TypeScript), each opened with its own rules file when it has one; `check` runs every package's own check plus a declared `allowed`/`forbidden`/`exceptions` table for the imports *between* them, with one exit code. A cross-package import is attributed to its sibling by the M7 outside name it already produces. | MVP (M8) | GitHub issue #2; ADR 0012 |
+| C14 | A package declares its contract with `public` in its own rules file; a sibling may reach only those components, and the workspace tables accept qualified `package.component` targets. The component an import reaches is resolved, not guessed: the sibling packages are analysed together for Python, and `Import.resolved` carries tsc's resolution for TypeScript. A grant naming an unpublished component is a config error; an import that cannot be placed is reported, never assumed public. | MVP (M9) | GitHub issue #4; ADR 0013 |
 
 ## 7. Agent integration
 
@@ -132,7 +133,7 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-20, after M8)
+## 12. Implementation status (2026-09-22, after M9)
 
 | Area | Built | Not yet |
 |---|---|---|
@@ -150,6 +151,10 @@ Clarified during M5 (ADR 0009): the queries run on the filtered model, not on gr
 unless asked.
 
 M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on storygenerator.
+
+M9 (2026-09-22): a package publishes a contract its siblings are checked against
+(C14, ADR 0013); the model JSON is schema 4, carrying the resolved target of an
+import so TypeScript can say which component a cross-package import reaches.
 
 M7 (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
 `[archview.externals]`, `from = "*"`, a viewer overlay for the failing edge, and
