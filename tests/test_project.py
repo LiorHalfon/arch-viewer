@@ -31,3 +31,17 @@ def test_a_source_root_that_contributes_modules_is_quiet(tmp_path):
     )
     report = project_report(open_project(tmp_path))
     assert [w for w in report.warnings if w.kind == "empty_source_root"] == []
+
+
+def test_a_dot_source_root_is_not_a_false_positive(tmp_path):
+    """`Path.resolve()` inside `build_model` normalises away a `.` segment, so a file
+    built from a `.` root never literally starts with `./` - the naive prefix check
+    would wrongly say the root that built the model contributed nothing to it."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "a.py").write_text("x = 1\n")
+    (tmp_path / "archview.toml").write_text(
+        '[archview]\npackage = "pkg"\nsource_roots = ["."]\n[archview.allowed]\na = []\n'
+    )
+    report = project_report(open_project(tmp_path))
+    assert [w for w in report.warnings if w.kind == "empty_source_root"] == []

@@ -350,7 +350,8 @@ def _undeclared_externals(
         imports=tuple(imports),
         hint=(
             f"{component} reaches outside the project but is not declared in "
-            f"[{table}.externals]; add {component} = [the packages it may import] there."
+            f"[{table}.externals]; add {component} = [] there, or list what it may "
+            "import if some of it is legitimate."
         ),
         fails=fails,
     )
@@ -524,6 +525,11 @@ def _empty_source_root_warnings(model: Model, config: Config) -> list[Notice]:
 
 
 def _under_root(file: str, root: str) -> bool:
+    # `Path.resolve()` inside `build_model` normalises away a `.` (or empty) root
+    # segment, so a file it built from that root never literally starts with `./` -
+    # every file is under it, by definition.
+    if root in (".", ""):
+        return True
     return file == root or file.startswith(f"{root}/")
 
 
