@@ -243,6 +243,41 @@ def test_no_note_for_a_package_the_table_does_not_name():
     assert not any("httpx" in w.message for w in notes)
 
 
+def three_reach_openai() -> Model:
+    """`wiring` and `checkout` both grant themselves `openai`; `book` also imports it
+    but is a key of neither."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.wiring", "shop", "module", "shop/wiring.py"),
+        Node("shop.checkout", "shop", "module", "shop/checkout.py"),
+        Node("shop.book", "shop", "module", "shop/book.py"),
+        Node("openai", None, "external"),
+    )
+    imports = (
+        Import("shop.wiring", "openai", "shop/wiring.py", 1, "import openai"),
+        Import("shop.checkout", "openai", "shop/checkout.py", 1, "import openai"),
+        Import("shop.book", "openai", "shop/book.py", 1, "import openai"),
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)
+
+
+def test_two_keys_granting_the_same_package_still_produce_one_note():
+    """The repetition Fix A1 removes: `wiring` and `checkout` both grant `openai`, so
+    the old per-(key, package) loop emitted the same 'book is unconstrained' notice
+    twice, verbatim. There must be exactly one notice for the package, naming both
+    granting keys."""
+    config = Config(
+        allowed={"wiring": (), "checkout": (), "book": ()},
+        externals={"wiring": ("openai",), "checkout": ("openai",)},
+    )
+    report = check(three_reach_openai(), config)
+    notes = [w for w in report.warnings if w.kind == "partial_externals"]
+    assert len(notes) == 1
+    assert "wiring" in notes[0].message
+    assert "checkout" in notes[0].message
+    assert "book" in notes[0].message
+
+
 def test_closed_mode_fails_a_component_with_no_externals_entry():
     config = Config(
         allowed={"api": ["llm"], "llm": []},

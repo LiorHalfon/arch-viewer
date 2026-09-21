@@ -465,6 +465,11 @@ def _partial_externals_warnings(edges: Edges, config: Config, table: str) -> lis
     components gets at most two lines, not thirty (issue #5). A component that is a
     key but omits the package is already constrained and fails properly; it is not
     this notice's business.
+
+    One notice per *package*, not per (key, package) pair: two keys granting the same
+    package used to repeat the same unconstrained-importer list verbatim, once per
+    key. Repetitive warnings train people to ignore warnings, which is the failure
+    this milestone exists to fix - so the notice names every granting key once.
     """
     externals = config.externals or {}
     importers = _importers_by_package(edges)
@@ -473,10 +478,10 @@ def _partial_externals_warnings(edges: Edges, config: Config, table: str) -> lis
         unconstrained = sorted(c for c in importers.get(package, ()) if c not in externals)
         if not unconstrained:
             continue
-        for key in sorted(externals):
-            targets = externals[key]
-            if targets != ALL and package in targets:
-                warnings.append(_partial_externals(table, key, package, unconstrained))
+        keys = sorted(
+            key for key, targets in externals.items() if targets != ALL and package in targets
+        )
+        warnings.append(_partial_externals(table, keys, package, unconstrained))
     return warnings
 
 
@@ -495,13 +500,16 @@ def _importers_by_package(edges: Edges) -> dict[str, list[str]]:
     return by_package
 
 
-def _partial_externals(table: str, key: str, package: str, unconstrained: list[str]) -> Notice:
+def _partial_externals(
+    table: str, keys: list[str], package: str, unconstrained: list[str]
+) -> Notice:
+    grantors = ", ".join(keys)
     who = ", ".join(unconstrained)
     plural = len(unconstrained) > 1
     verb, be = ("also import", "are") if plural else ("also imports", "is")
     return Notice(
         "partial_externals",
-        f"[{table}.externals].{key} allows {package}, but {who} {verb} it and {be} "
+        f"[{table}.externals] allows {package} for {grantors}, but {who} {verb} it and {be} "
         f"unconstrained. Only components named in [{table}.externals] are checked.",
     )
 

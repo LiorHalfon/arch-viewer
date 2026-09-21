@@ -84,6 +84,9 @@ def open_workspace(
         config = load_config(path) if path else Config()
     if config.workspace is None:
         raise ConfigError(f"no [{config.table}.workspace] table in {path or root / RULES_FILE}")
+    # Guards a synthetic `config` passed in with a workspace table but no file behind
+    # it (e.g. built in a test): there is no raw TOML to re-read `type_checking_imports`
+    # from, so the check below cannot run.
     if path is not None:
         _reject_root_type_checking_imports(config, path)
     base = path.parent if path else root
