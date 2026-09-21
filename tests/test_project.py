@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 from archview.project import open_project, project_report
+from tests.typescript_support import TS_SAMPLE, requires_typescript
 
 
 def test_a_source_root_that_contributes_nothing_says_so(tmp_path):
@@ -85,6 +88,41 @@ def test_a_trailing_slash_root_is_silent(tmp_path):
     (tmp_path / "src" / "pkg" / "a.py").write_text("x = 1\n")
     (tmp_path / "archview.toml").write_text(
         '[archview]\npackage = "pkg"\nsource_roots = ["src/"]\n[archview.allowed]\na = []\n'
+    )
+    report = project_report(open_project(tmp_path))
+    assert [w for w in report.warnings if w.kind == "empty_source_root"] == []
+
+
+def _ts_project(tmp_path):
+    """A minimal TypeScript project - a `src/` layout, mirroring how
+    test_typescript_project.py's `test_init_pins_the_inferred_source_root_...` builds
+    one inline."""
+    (tmp_path / "node_modules").symlink_to(TS_SAMPLE / "node_modules")
+    (tmp_path / "src" / "api").mkdir(parents=True)
+    (tmp_path / "package.json").write_text(json.dumps({"name": "@acme/proj"}))
+    (tmp_path / "tsconfig.json").write_text(json.dumps({"include": ["src"]}))
+    (tmp_path / "src" / "api" / "a.ts").write_text("export const a = 1;\n")
+
+
+@requires_typescript
+def test_a_typescript_source_root_that_matches_nothing_says_so(tmp_path):
+    """`open_project`'s TypeScript path never checks that a configured root matched
+    any file - `_below` just filters, so a typo'd single root still lets it succeed,
+    with an almost-empty model, unless something else says so (issue #10)."""
+    _ts_project(tmp_path)
+    (tmp_path / "archview.toml").write_text(
+        '[archview]\npackage = "proj"\nsource_roots = ["lib"]\n'
+    )
+    report = project_report(open_project(tmp_path))
+    note = next(w for w in report.warnings if w.kind == "empty_source_root")
+    assert "lib" in note.message
+
+
+@requires_typescript
+def test_a_typescript_source_root_that_matches_is_quiet(tmp_path):
+    _ts_project(tmp_path)
+    (tmp_path / "archview.toml").write_text(
+        '[archview]\npackage = "proj"\nsource_roots = ["src"]\n'
     )
     report = project_report(open_project(tmp_path))
     assert [w for w in report.warnings if w.kind == "empty_source_root"] == []

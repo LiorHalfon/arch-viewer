@@ -6,6 +6,7 @@ the same model for the same repo.
 
 from __future__ import annotations
 
+import posixpath
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -130,24 +131,64 @@ def project_report(project: Project, in_workspace: bool = False) -> Report:
 
 def _empty_source_root_warnings(project: Project) -> list[Notice]:
     """A `source_roots` entry that did not contribute to the analysed package
-    (issue #10). `_packages`/`_choose` pick exactly one winning root per package, and
-    `project.source_root` is it - so this compares each configured root's *resolved*
-    path against the winner's, not strings, meaning `"."`, `"./"`, `"src/"` and
-    `"src/../src"` all normalise the same way. A single configured root is never
-    empty: `open_project` would have failed before returning a `Project` if it had
-    not been the one that produced the package (and for TypeScript, `source_root` is
-    always `project.repo` rather than the configured root, so this only means
-    anything once there is more than one root to tell apart)."""
+    (issue #10). Each language has its own truthful way to answer "did this root
+    contribute anything", so this asks that language's own question rather than
+    guessing from one shared rule - mirroring the existing `language`-gated seams for
+    this same `source_root` discrepancy (`workspace.py`'s `p.project.model.language
+    == "python"`, `server/state.py`'s branch on `"typescript"`)."""
     roots = project.config.source_roots
-    if len(roots) <= 1:
+    if not roots:
         return []
-    used = project.source_root.resolve()
+    empty = (
+        _empty_typescript_roots(project, roots)
+        if project.model.language == "typescript"
+        else _empty_python_roots(project, roots)
+    )
     return [
         Notice(
             "empty_source_root",
             f"source root {root!r} contributed no modules to package {project.package!r}; "
             "only code under the package is analysed",
         )
-        for root in sorted(set(roots))
-        if (project.repo / root).resolve() != used
+        for root in empty
     ]
+
+
+def _empty_python_roots(project: Project, roots: tuple[str, ...]) -> list[str]:
+    """`_packages`/`_choose` pick exactly one winning root per package, and
+    `project.source_root` is it - so this compares each configured root's *resolved*
+    path against the winner's, not strings, meaning `"."`, `"./"`, `"src/"` and
+    `"src/../src"` all normalise the same way. A single configured root is never
+    empty here: `_choose` raises `ProjectError` before `open_project` returns a
+    `Project` unless that lone root was the one that produced the package."""
+    if len(roots) <= 1:
+        return []
+    used = project.source_root.resolve()
+    return sorted(root for root in set(roots) if (project.repo / root).resolve() != used)
+
+
+def _empty_typescript_roots(project: Project, roots: tuple[str, ...]) -> list[str]:
+    """Unlike the Python path, `typescript.build_model`'s own root filter (`_below`)
+    never validates that a configured root matched anything, so a bad single root -
+    the only multiplicity TypeScript allows, `_typescript_model` rejects more than
+    one - still lets `open_project` succeed, silently, with an almost-empty model.
+    Ask the model directly instead: a TypeScript `Node.file` carries the configured
+    root as a literal prefix by construction, so a root none of them start with
+    contributed nothing - exactly what the base commit's string check got right for
+    this language."""
+    files = [n.file for n in project.model.nodes if n.file]
+    return sorted(root for root in set(roots) if not any(_under_ts_root(f, root) for f in files))
+
+
+def _under_ts_root(file: str, root: str) -> bool:
+    prefix = _ts_root_prefix(root)
+    return not prefix or file == prefix or file.startswith(f"{prefix}/")
+
+
+def _ts_root_prefix(root: str) -> str:
+    """Normalise a configured root the way `posixpath.normpath` would resolve it -
+    handling `"./"`, a trailing slash and `"a/../a"` - without touching the
+    filesystem: `Node.file` here is a path string from the model, not a real path
+    relative to this process's cwd."""
+    normalized = posixpath.normpath(root)
+    return "" if normalized in (".", "") else normalized
