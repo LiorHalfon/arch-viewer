@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from archview.model.graph import Import, Model, Node
 from archview.rules.check import check, component_edges
 from archview.rules.components import ComponentMap
 from archview.rules.config import Config, ConfigError, Exemption, Forbidden
@@ -193,3 +194,168 @@ def test_public_inside_a_workspace_does_not_warn():
     config = Config(allowed={"api": ["llm"], "llm": []}, public=("api",))
     report = check(model_with_external(), config, in_workspace=True)
     assert not [w for w in report.warnings if w.kind == "public_ignored"]
+
+
+def two_reach_openai() -> Model:
+    """`wiring` and `book` both import openai; only `wiring` will be constrained."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.wiring", "shop", "module", "shop/wiring.py"),
+        Node("shop.book", "shop", "module", "shop/book.py"),
+        Node("openai", None, "external"),
+        Node("httpx", None, "external"),
+    )
+    imports = (
+        Import("shop.wiring", "openai", "shop/wiring.py", 1, "import openai"),
+        Import("shop.book", "openai", "shop/book.py", 1, "import openai"),
+        Import("shop.book", "httpx", "shop/book.py", 2, "import httpx"),
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)
+
+
+ALLOWED_BOTH = {"wiring": (), "book": ()}
+
+
+def test_a_partial_externals_table_says_what_it_does_not_cover():
+    """The whole of issue #5: the table reads as a fence and is an allow-list."""
+    config = Config(allowed=ALLOWED_BOTH, externals={"wiring": ("openai",)})
+    report = check(two_reach_openai(), config)
+    note = next(w for w in report.warnings if w.kind == "partial_externals")
+    assert "book" in note.message
+    assert "openai" in note.message
+
+
+def test_partial_externals_reads_as_one_family_with_the_other_notices():
+    """The eight other notices are a single clause, semicolon-joined, no terminal
+    period - `partial_externals` keeps its second sentence (the lesson issue #5 asked
+    for) but must otherwise read the same way, and two granting keys join with an
+    Oxford "and", not a serial comma that collides with the trailing "but" (Fix 9,
+    review)."""
+    config = Config(
+        allowed={"wiring": (), "checkout": (), "book": ()},
+        externals={"wiring": ("openai",), "checkout": ("openai",)},
+    )
+    report = check(three_reach_openai(), config)
+    [note] = [w for w in report.warnings if w.kind == "partial_externals"]
+    assert note.message == (
+        "[archview.externals] allows openai for checkout and wiring, but book also "
+        "imports it and is unconstrained; only components named in "
+        "[archview.externals] are checked"
+    )
+
+
+def test_no_note_when_every_importer_is_constrained():
+    config = Config(
+        allowed=ALLOWED_BOTH,
+        externals={"wiring": ("openai",), "book": ("openai", "httpx")},
+    )
+    report = check(two_reach_openai(), config)
+    assert [w for w in report.warnings if w.kind == "partial_externals"] == []
+
+
+def test_no_note_for_a_package_the_table_does_not_name():
+    """httpx is imported by an unconstrained component, but the table never names it,
+    so it is not this notice's business - that is what keeps the notice quiet."""
+    config = Config(allowed=ALLOWED_BOTH, externals={"wiring": ("openai",)})
+    report = check(two_reach_openai(), config)
+    notes = [w for w in report.warnings if w.kind == "partial_externals"]
+    assert not any("httpx" in w.message for w in notes)
+
+
+def three_reach_openai() -> Model:
+    """`wiring` and `checkout` both grant themselves `openai`; `book` also imports it
+    but is a key of neither."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.wiring", "shop", "module", "shop/wiring.py"),
+        Node("shop.checkout", "shop", "module", "shop/checkout.py"),
+        Node("shop.book", "shop", "module", "shop/book.py"),
+        Node("openai", None, "external"),
+    )
+    imports = (
+        Import("shop.wiring", "openai", "shop/wiring.py", 1, "import openai"),
+        Import("shop.checkout", "openai", "shop/checkout.py", 1, "import openai"),
+        Import("shop.book", "openai", "shop/book.py", 1, "import openai"),
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)
+
+
+def test_two_keys_granting_the_same_package_still_produce_one_note():
+    """The repetition Fix A1 removes: `wiring` and `checkout` both grant `openai`, so
+    the old per-(key, package) loop emitted the same 'book is unconstrained' notice
+    twice, verbatim. There must be exactly one notice for the package, naming both
+    granting keys."""
+    config = Config(
+        allowed={"wiring": (), "checkout": (), "book": ()},
+        externals={"wiring": ("openai",), "checkout": ("openai",)},
+    )
+    report = check(three_reach_openai(), config)
+    notes = [w for w in report.warnings if w.kind == "partial_externals"]
+    assert len(notes) == 1
+    assert "wiring" in notes[0].message
+    assert "checkout" in notes[0].message
+    assert "book" in notes[0].message
+
+
+def test_closed_mode_fails_a_component_with_no_externals_entry():
+    config = Config(
+        allowed={"api": ["llm"], "llm": []},
+        externals={"api": ()},
+        externals_undeclared="error",
+    )
+    report = check(model_with_external(), config)
+    assert [(p.kind, p.components) for p in report.problems if p.fails] == [
+        ("undeclared_externals", ("llm",))
+    ]
+
+
+def test_closed_mode_silences_the_partial_externals_notice():
+    """`partial_externals` names the unconstrained importer as already failing
+    (`undeclared_externals`) under closed mode, and its own last sentence - "only
+    components named in [table.externals] are checked" - is exactly what closed mode
+    stops being true. Restating a failure and misdescribing the config at the same
+    time is worse than staying quiet (review)."""
+    config = Config(
+        allowed=ALLOWED_BOTH,
+        externals={"wiring": ("openai",)},
+        externals_undeclared="error",
+    )
+    report = check(two_reach_openai(), config)
+    assert [w for w in report.warnings if w.kind == "partial_externals"] == []
+
+
+def test_closed_mode_passes_when_every_reacher_is_declared():
+    config = Config(
+        allowed={"api": ["llm"], "llm": []},
+        externals={"llm": ("openai",)},
+        externals_undeclared="error",
+    )
+    assert [p for p in check(model_with_external(), config).problems if p.fails] == []
+
+
+def test_undeclared_externals_imports_are_sorted_by_file_and_line():
+    """`_undeclared_externals_problems` concatenates a component's imports by (source,
+    target) pair, sorted alphabetically by target - not by line - so a component
+    reaching two outside targets could read out of file order (Fix 6, review)."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.book", "shop", "module", "shop/book.py"),
+        Node("openai", None, "external"),
+        Node("anthropic", None, "external"),
+    )
+    imports = (
+        Import("shop.book", "openai", "shop/book.py", 1, "import openai"),
+        Import("shop.book", "anthropic", "shop/book.py", 2, "import anthropic"),
+    )
+    m = Model(project="shop", nodes=nodes, imports=imports)
+    config = Config(allowed={"book": ()}, externals_undeclared="error")
+    [problem] = [p for p in check(m, config).problems if p.kind == "undeclared_externals"]
+    assert [(i.file, i.line) for i in problem.imports] == [
+        ("shop/book.py", 1),
+        ("shop/book.py", 2),
+    ]
+
+
+def test_the_default_is_open():
+    config = Config(allowed={"api": ["llm"], "llm": []}, externals={"api": ()})
+    assert [p for p in check(model_with_external(), config).problems if p.fails] == []

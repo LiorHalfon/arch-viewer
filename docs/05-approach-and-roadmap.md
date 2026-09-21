@@ -61,7 +61,7 @@ Everything else — views per root, aggregated edges with counts, cycles, layers
 package = "tiny_tale"                     # top-level package to analyse
 source_roots = ["src"]
 exclude = ["**/tests/**", "**/migrations/**"]
-type_checking_imports = "ignore"          # or "include"
+type_checking_imports = "include"         # default (M10, ADR 0014); "ignore" for runtime imports only
 fail_on_violations = true
 fail_on_cycles = true
 
@@ -124,6 +124,7 @@ Upgrade path (V2 interactions: focus, collapse in place, hover popups, metrics b
 | **M7 — outside rules** (done) | A rule can name a package outside the project: `[archview.externals]` allow-list, `from = "*"`, stdlib rejected at parse time, `forbidden`/`exceptions` widened, viewer draws a failing outside edge without `--externals`, `init --externals` (ADR 0011) | `archview check` fails a forbidden outside import with its file:line, passes on this repo with a live outside rule (`model` -> `grimp`) in its own `archview.toml` (done 2026-09-20) |
 | **M8 — workspace mode** (done) | `[archview.workspace]` federates several packages' own `Project`s (`src/archview/workspace.py`); a cross-package import is attributed to a sibling via M7's outside edges and each package's aliases; `check`/`graph`/`cycles` run over the whole workspace by default and drill into one with `--package`; the viewer's top level is the packages (ADR 0012) | `archview check` at a workspace root checks every package plus the rules between them with one exit code, on Python and TypeScript packages alike; a repo without `[archview.workspace]` is unchanged (done 2026-09-20) |
 | **M9 — public surface** (done) | A package declares `public` in its own rules file; a cross-package import is resolved to the component it really reaches (a grimp pass over the sibling packages for Python, `Import.resolved` for TypeScript, model schema 4) and checked against that contract; qualified targets in the workspace tables; published components drawn on the package boundary (ADR 0013) | A plugin reaching the core's private domain fails `archview check` with file and line; a workspace with no `public` anywhere behaves exactly as on v0.3 (done 2026-09-22) |
+| **M10 — say what is not checked** (done) | `type_checking_imports` defaults to `"include"` and is a `ConfigError` at a workspace root's bare `[archview]` table; `[archview.externals]` emits a `partial_externals` notice, one per package, when it covers a package for some component and not a neighbour reaching the same package; `externals_undeclared = "error"` closes the table (`undeclared_externals`); a `source_roots` entry that contributes no modules gets an `empty_source_root` notice (ADR 0014) | Issues #5, #8 and #10's reported silences are closed; `tests/test_self_check.py` still asserts zero warnings on this repo (done 2026-09-22) |
 
 Suggested order of work inside M1–M3: tests and fixture first (Bob's PROJECT_NOTES process), then the smallest vertical slice that reaches the browser, then iterate — a story or two, look at the result, reorganise (35:46–41:36).
 

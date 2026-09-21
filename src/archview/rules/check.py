@@ -19,7 +19,14 @@ from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
 
 ProblemKind = Literal[
-    "not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside", "private"
+    "not_allowed",
+    "forbidden",
+    "undeclared",
+    "cycle",
+    "zone",
+    "outside",
+    "private",
+    "undeclared_externals",
 ]
 Pair = tuple[str, str]
 # How an extractor warning reads in the report; the viewer uses the same words.
@@ -170,9 +177,7 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
         *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(
-        model, config, components, present, edges.exceptions_used, table, in_workspace
-    )
+    warnings = _warnings(model, config, components, present, edges, table, in_workspace)
     return Report(
         model.project,
         present,
@@ -266,6 +271,7 @@ def _rule_problems(
         elif allowed is not None and source in allowed and not _may(allowed, source, target):
             problems.append(_not_allowed(source, target, imports, allowed, table, fails))
     problems += _outside_problems(edges.outside, forbidden, config, table)
+    problems += _undeclared_externals_problems(edges.outside, config, table)
     return sorted(problems, key=lambda p: (p.components, p.kind))
 
 
@@ -308,6 +314,49 @@ def _outside(
             f"{source} may reach {may}. Declare {target} in [{table}.externals].{source}, "
             f"or define the interface {source} needs inside {source} and let another "
             "component depend on the package."
+        ),
+        fails=fails,
+    )
+
+
+def _undeclared_externals_problems(
+    outside: dict[Pair, list[Import]], config: Config, table: str
+) -> list[Problem]:
+    """Closed mode (`externals_undeclared = "error"`): every component that reaches
+    outside the project must be a key of `[table.externals]`, exactly as `allowed`
+    requires a component to be declared (issue #5)."""
+    if config.externals_undeclared != "error":
+        return []
+    externals = config.externals or {}
+    fails = config.fail_on_violations
+    by_component: dict[str, list[Import]] = defaultdict(list)
+    for (source, _target), imports in outside.items():
+        if source not in externals:
+            by_component[source] += imports
+    return [
+        _undeclared_externals(component, imports, table, fails)
+        for component, imports in sorted(by_component.items())
+    ]
+
+
+def _undeclared_externals(
+    component: str, imports: list[Import], table: str, fails: bool
+) -> Problem:
+    """`imports` arrives concatenated across every outside target `component` reaches,
+    grouped by (source, target) pair sorted alphabetically by target - not by line -
+    so it is re-sorted by file and line here for a reading order that matches the
+    file, not the alphabet (N1, Fix 6, review)."""
+    ordered = sorted(imports, key=lambda i: (i.file, i.line))
+    return Problem(
+        kind="undeclared_externals",
+        rule=f"{table}.externals",
+        components=(component,),
+        count=len(ordered),
+        imports=tuple(ordered),
+        hint=(
+            f"{component} reaches outside the project but is not declared in "
+            f"[{table}.externals]; add {component} = [] there, or list what it may "
+            "import if some of it is legitimate."
         ),
         fails=fails,
     )
@@ -414,12 +463,87 @@ def _reject_outside_sources(model: Model, config: Config) -> None:
             )
 
 
+def _partial_externals_warnings(edges: Edges, config: Config, table: str) -> list[Notice]:
+    """`[table.externals]` reads as a fence but is an opt-in allow-list: a component
+    that is not a key is unconstrained. Flag this only for a package the table already
+    names - so a repo with thirty third-party dependencies and two constrained
+    components gets at most two lines, not thirty (issue #5). A component that is a
+    key but omits the package is already constrained and fails properly; it is not
+    this notice's business.
+
+    One notice per *package*, not per (key, package) pair: two keys granting the same
+    package used to repeat the same unconstrained-importer list verbatim, once per
+    key. Repetitive warnings train people to ignore warnings, which is the failure
+    this milestone exists to fix - so the notice names every granting key once.
+
+    Silent under `externals_undeclared = "error"`: closed mode already fails every
+    unconstrained importer this notice would name, as `undeclared_externals`, and the
+    notice's own last sentence ("only components named in [table.externals] are
+    checked") is exactly what closed mode stops being true. The table cannot be
+    partial when it is closed.
+    """
+    if config.externals_undeclared == "error":
+        return []
+    externals = config.externals or {}
+    importers = _importers_by_package(edges)
+    warnings = []
+    for package in _named_packages(externals):
+        unconstrained = sorted(c for c in importers.get(package, ()) if c not in externals)
+        if not unconstrained:
+            continue
+        keys = sorted(
+            key for key, targets in externals.items() if targets != ALL and package in targets
+        )
+        warnings.append(_partial_externals(table, keys, package, unconstrained))
+    return warnings
+
+
+def _named_packages(externals: dict[str, tuple[str, ...] | str]) -> list[str]:
+    """Every package a value in `externals` names, sorted - never `ALL`, which names
+    no package in particular."""
+    return sorted({name for targets in externals.values() if targets != ALL for name in targets})
+
+
+def _importers_by_package(edges: Edges) -> dict[str, list[str]]:
+    """Every package outside the project, mapped to the components that import it -
+    `component_edges`' `outside` bucket, regrouped by target instead of by pair."""
+    by_package: dict[str, list[str]] = defaultdict(list)
+    for source, target in edges.outside:
+        by_package[target].append(source)
+    return by_package
+
+
+def _and_join(items: list[str]) -> str:
+    """`["a"]` -> "a", `["a", "b"]` -> "a and b", `["a", "b", "c"]` -> "a, b, and c" -
+    an Oxford "and" so a serial comma before a trailing "but" cannot be misread as one
+    more item in the list (Fix 9, review)."""
+    if len(items) <= 1:
+        return items[0] if items else ""
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _partial_externals(
+    table: str, keys: list[str], package: str, unconstrained: list[str]
+) -> Notice:
+    grantors = _and_join(keys)
+    who = _and_join(unconstrained)
+    plural = len(unconstrained) > 1
+    verb, be = ("also import", "are") if plural else ("also imports", "is")
+    return Notice(
+        "partial_externals",
+        f"[{table}.externals] allows {package} for {grantors}, but {who} {verb} it and {be} "
+        f"unconstrained; only components named in [{table}.externals] are checked",
+    )
+
+
 def _warnings(
     model: Model,
     config: Config,
     components: ComponentMap,
     present: tuple[str, ...],
-    used: set[int],
+    edges: Edges,
     table: str,
     in_workspace: bool = False,
 ) -> list[Notice]:
@@ -463,6 +587,7 @@ def _warnings(
                         f"[{table}.externals.{component}] names {name!r}, which nothing imports",
                     )
                 )
+    warnings += _partial_externals_warnings(edges, config, table)
     for f in config.all_forbidden():
         # A literal `forbidden` rule whose *target* is absent from the graph is the ban
         # working: the name is missing precisely because nobody imports it (issue #5).
@@ -487,7 +612,7 @@ def _warnings(
             )
         )
     for index, e in enumerate(config.exceptions):
-        if index not in used:
+        if index not in edges.exceptions_used:
             warnings.append(
                 Notice(
                     "unused_exception",

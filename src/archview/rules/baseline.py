@@ -29,7 +29,7 @@ class Baseline:
         return json.dumps({"archview_baseline": FORMAT, "entries": rows}, indent=1) + "\n"
 
 
-WHOLE = ("cycle", "zone", "undeclared")  # fingerprinted as a whole, not per import
+WHOLE = ("cycle", "zone", "undeclared", "undeclared_externals")  # not fingerprinted per import
 
 
 def _fingerprints(problem: Problem) -> list[tuple[str, ...]]:

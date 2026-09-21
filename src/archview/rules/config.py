@@ -73,11 +73,12 @@ class Config:
     tsconfig: str | None = None
     source_roots: tuple[str, ...] = ()
     exclude: tuple[str, ...] = ()
-    type_checking_imports: str = "ignore"
+    type_checking_imports: str = "include"
     fail_on_violations: bool = True
     fail_on_cycles: bool = True
     allowed: dict[str, tuple[str, ...] | str] | None = None
     externals: dict[str, tuple[str, ...] | str] | None = None
+    externals_undeclared: str = "allow"
     forbidden: tuple[Forbidden, ...] = ()
     exceptions: tuple[Exemption, ...] = ()
     ignored: tuple[str, ...] = ()
@@ -127,6 +128,7 @@ TOP_KEYS = {
     "fail_on_cycles",
     "allowed",
     "externals",
+    "externals_undeclared",
     "forbidden",
     "exceptions",
     "ignored",
@@ -200,13 +202,16 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         fail_on_cycles=_bool(table, "fail_on_cycles", where),
         allowed=_allowed(table.get("allowed"), f"{where}.allowed"),
         externals=_externals(table.get("externals"), f"{where}.externals", check_stdlib),
+        externals_undeclared=_choice(
+            table, "externals_undeclared", ("allow", "error"), "allow", where
+        ),
         forbidden=_forbidden(table.get("forbidden", []), f"{where}.forbidden", check_stdlib),
         exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
         ignored=_str_list(table, "ignored", where),
         components=_components(table.get("components", {}), f"{where}.components"),
         public=_optional_str_list(table, "public", where),
         type_checking_imports=_choice(
-            table, "type_checking_imports", ("ignore", "include"), "ignore", where
+            table, "type_checking_imports", ("ignore", "include"), "include", where
         ),
         layers=_layers(table.get("layers", []), f"{where}.layers"),
         independent=tuple(

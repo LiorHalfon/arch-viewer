@@ -47,6 +47,7 @@ from archview.rules.config import (
     Config,
     ConfigError,
     WorkspaceRules,
+    _read_toml,
     find_config,
     load_config,
 )
@@ -83,9 +84,50 @@ def open_workspace(
         config = load_config(path) if path else Config()
     if config.workspace is None:
         raise ConfigError(f"no [{config.table}.workspace] table in {path or root / RULES_FILE}")
+    # Guards a synthetic `config` passed in with a workspace table but no file behind
+    # it (e.g. built in a test): there is no raw TOML to re-read an inert key from, so
+    # the check below cannot run.
+    if path is not None:
+        _reject_inert_root_keys(config, path)
     base = path.parent if path else root
     packages = _open_packages(config.workspace.packages, base)
     return Workspace(config.package or root.name, root, packages, config)
+
+
+# Keys `Config` happily parses at a workspace root's bare `[archview]` table but never
+# consults there: each member is checked with its own `Config` (`type_checking_imports`,
+# issue #8), and `between` is checked with a `Config` `_between_config` builds fresh,
+# which does not carry `externals_undeclared` either (review). Both used to read as
+# applied when they were not.
+_INERT_ROOT_KEYS = frozenset({"type_checking_imports", "externals_undeclared"})
+
+
+def _reject_inert_root_keys(config: Config, path: Path) -> None:
+    """A key in `_INERT_ROOT_KEYS`, set at a workspace root, can never take effect
+    there. Detecting this needs the raw table, not the parsed `Config`: a key's own
+    default (`type_checking_imports`'s "include", `externals_undeclared`'s "allow")
+    does not tell a set value apart from an unset one.
+    """
+    present = sorted(_INERT_ROOT_KEYS & _root_table(path, config.table).keys())
+    if present:
+        key = present[0]
+        raise ConfigError(
+            f"[{config.table}] {key} has no effect at a workspace root - each "
+            "package is checked with its own config. Set it in the package's own "
+            "rules file instead."
+        )
+
+
+def _root_table(path: Path, table: str) -> dict:
+    """The raw table `table` names (e.g. "archview" or "tool.archview") in `path`,
+    parsed but not validated - so a rejected key can still be seen before `Config`
+    would ever carry it."""
+    data = _read_toml(path)
+    for key in table.split("."):
+        data = data.get(key) if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return {}
+    return data
 
 
 def _open_packages(entries: tuple[str, ...], base: Path) -> tuple[Package, ...]:

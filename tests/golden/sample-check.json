@@ -55,7 +55,7 @@
   "metrics": {
     "api": {
       "ca": 0,
-      "ce": 2,
+      "ce": 3,
       "instability": 1.0,
       "abstractness": 0.0,
       "distance": 0.0,
@@ -70,11 +70,11 @@
       "zone": "pain"
     },
     "infra": {
-      "ca": 1,
+      "ca": 2,
       "ce": 2,
-      "instability": 0.667,
+      "instability": 0.5,
       "abstractness": 0.0,
-      "distance": 0.333,
+      "distance": 0.5,
       "zone": "pain"
     },
     "sample": {

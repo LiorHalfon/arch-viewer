@@ -46,7 +46,11 @@ def test_init_writes_the_current_dependencies_and_switches_off_existing_cycles(r
 def test_removing_one_allowed_dependency_fails_with_file_and_line(repo, capsys):
     run(capsys, "init", str(repo))
     rules = repo / "archview.toml"
-    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+    rules.write_text(
+        rules.read_text().replace(
+            'api = ["domain", "infra", "services"]', 'api = ["domain", "infra"]'
+        )
+    )
 
     code, out, _ = run(capsys, "check", str(repo))
 
@@ -123,7 +127,11 @@ def test_check_reads_a_rules_file_given_explicitly(repo, tmp_path, capsys):
 def test_update_baseline_records_known_problems_so_only_new_ones_fail(repo, capsys):
     run(capsys, "init", str(repo))
     rules = repo / "archview.toml"
-    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+    rules.write_text(
+        rules.read_text().replace(
+            'api = ["domain", "infra", "services"]', 'api = ["domain", "infra"]'
+        )
+    )
     assert run(capsys, "check", str(repo))[0] == 1
 
     code, out, _ = run(capsys, "check", str(repo), "--update-baseline")
@@ -152,7 +160,11 @@ def test_metrics_prints_one_row_per_component(repo, capsys):
 def test_graph_prints_mermaid_with_violations_marked(repo, capsys):
     run(capsys, "init", str(repo))
     rules = repo / "archview.toml"
-    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+    rules.write_text(
+        rules.read_text().replace(
+            'api = ["domain", "infra", "services"]', 'api = ["domain", "infra"]'
+        )
+    )
 
     code, out, _ = run(capsys, "graph", str(repo), "--mermaid")
 

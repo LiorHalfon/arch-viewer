@@ -340,14 +340,17 @@ class Adapter:
 '''
 
 
-def test_a_type_checking_only_cross_package_import_is_ignored_by_default(tmp_path):
+def test_a_type_checking_only_cross_package_import_is_included_by_default(tmp_path):
+    """type_checking_imports now defaults to "include" (issue #8): a type-only
+    cross-package import is a dependency across the workspace boundary too, so it is
+    counted unless a package's own rules file opts out."""
     root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ()})
     (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(TYPE_CHECKING_ADAPTER)
 
     report = check_workspace(open_workspace(root))
 
-    assert "core" not in {t for _, t in cross_edges(open_workspace(root)).by_package}
-    assert not report.between.failed
+    assert "core" in {t for _, t in cross_edges(open_workspace(root)).by_package}
+    assert report.between.failed
 
 
 def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path):
@@ -362,6 +365,26 @@ def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path
 
     assert not_allowed(report.between) == [("plugin", "core")]
     assert report.failed
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("type_checking_imports", '"include"'),
+        ("externals_undeclared", '"error"'),
+    ],
+)
+def test_an_inert_key_at_a_workspace_root_is_an_error(tmp_path, key, value):
+    """Both are read into the root `Config` and never consulted there - each package
+    is checked with its own config, and `between` with a `Config` `_between_config`
+    builds fresh, which does not carry `externals_undeclared` either - so writing
+    either at a workspace root used to read as applied when it was not (issue #8;
+    `externals_undeclared`, review)."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    text = (root / "archview.toml").read_text()
+    (root / "archview.toml").write_text(f"[archview]\n{key} = {value}\n" + text)
+    with pytest.raises(ConfigError, match=key):
+        open_workspace(root)
 
 
 def test_a_cycle_between_packages_fails_by_default(tmp_path):

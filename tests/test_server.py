@@ -196,7 +196,11 @@ def rules_with_one_violation(repo):
 
     main(["init", str(repo)])
     rules = repo / "archview.toml"
-    rules.write_text(rules.read_text().replace('api = ["domain", "services"]', 'api = ["domain"]'))
+    rules.write_text(
+        rules.read_text().replace(
+            'api = ["domain", "infra", "services"]', 'api = ["domain", "infra"]'
+        )
+    )
 
 
 def test_marks_edges_and_imports_that_break_the_rules(repo, capsys):

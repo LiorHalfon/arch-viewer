@@ -19,6 +19,7 @@ LABELS = {
     "zone": "ZONE",
     "outside": "OUTSIDE",
     "private": "PRIVATE",
+    "undeclared_externals": "UNDECLARED EXTERNALS",
 }
 ZONE_NAMES = {"pain": "the zone of pain", "useless": "the zone of uselessness"}
 # Problem kinds rendered as "A -> B" in text and as from/to in JSON.
@@ -64,7 +65,7 @@ def _headline(problem: Problem, report: Report) -> str:
         return f"{label} {describe_cycle(c)} ({_plural(problem.count, 'edge')})"
     if problem.kind == "zone":
         return f"{label} {c[0]} is in {ZONE_NAMES[report.metrics[c[0]].zone]}"
-    if problem.kind == "undeclared":
+    if problem.kind in ("undeclared", "undeclared_externals"):
         return f"{label} {c[0]} is not in [{problem.rule}]"
     assert problem.kind in PAIRS
     reason = "forbidden by" if problem.kind == "forbidden" else "not allowed by"

@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from archview.model.graph import Import, Model, Node
 from archview.rules.baseline import apply_baseline, baseline_of, load_baseline
 from archview.rules.check import check
 from archview.rules.config import Config, MetricRules, parse_config
@@ -12,14 +13,33 @@ def kinds(report, failing_only=False):
     return [(p.kind, p.components) for p in report.problems if p.fails or not failing_only]
 
 
-def test_type_checking_imports_are_ignored_by_default_and_can_be_included():
+def test_type_checking_imports_are_included_by_default_and_can_be_ignored():
+    """type_checking_imports defaults to "include" (issue #8): a type-only import is
+    still a dependency, and is checked like any other unless a rules file opts out."""
     m = model(("app.domain.order", "app.infra.db"))
     m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
     rules = {"domain": (), "infra": ()}
 
-    assert check(m, Config(allowed=rules)).problems == ()
-    included = Config(allowed=rules, type_checking_imports="include")
-    assert kinds(check(m, included)) == [("not_allowed", ("domain", "infra"))]
+    assert kinds(check(m, Config(allowed=rules))) == [("not_allowed", ("domain", "infra"))]
+    ignored = Config(allowed=rules, type_checking_imports="ignore")
+    assert check(m, ignored).problems == ()
+
+
+def test_a_type_only_import_is_checked_by_default():
+    """A type-only import is still a dependency: it is a reason this file cannot be
+    understood without that one, and it becomes a runtime import the moment someone
+    needs a value (issue #8)."""
+    m = model(("shop.api", "shop.infra"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    report = check(m, Config(allowed={"api": [], "infra": []}))
+    assert [p.components for p in report.problems if p.fails] == [("api", "infra")]
+
+
+def test_ignore_restores_the_old_behaviour():
+    m = model(("shop.api", "shop.infra"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    report = check(m, Config(allowed={"api": [], "infra": []}, type_checking_imports="ignore"))
+    assert report.problems == ()
 
 
 def test_layers_forbid_importing_upwards_and_between_peers():
@@ -143,6 +163,34 @@ def test_a_baselined_cycle_fails_again_when_it_grows():
         ("app.c.z", "app.a.x"),
     )
     assert apply_baseline(check(grown, rules), baseline).failed
+
+
+def _llm_reaching(*targets: str) -> Model:
+    """`shop.llm` imports each of `targets`, none declared anywhere."""
+    nodes = (
+        Node("shop", None, "package"),
+        Node("shop.llm", "shop", "module", "shop/llm.py"),
+        *(Node(t, None, "external") for t in targets),
+    )
+    imports = tuple(
+        Import("shop.llm", t, "shop/llm.py", i + 1, f"import {t}") for i, t in enumerate(targets)
+    )
+    return Model(project="shop", nodes=nodes, imports=imports)
+
+
+def test_a_baselined_undeclared_externals_does_not_refail_for_a_new_import():
+    """ADR 0014: `undeclared_externals` is a component-level completeness claim, not
+    an edge claim - unlike an ordinary rule problem, so it belongs in `WHOLE` next to
+    `cycle` and `zone`, not fingerprinted per import. A baselined component must not
+    re-fail just because it gained another outside import (Fix 5, review)."""
+    config = Config(allowed={"llm": ()}, externals_undeclared="error")
+    baseline = baseline_of(check(_llm_reaching("openai"), config))
+
+    report = apply_baseline(check(_llm_reaching("openai", "anthropic"), config), baseline)
+
+    problem = next(p for p in report.problems if p.kind == "undeclared_externals")
+    assert not problem.fails
+    assert not report.failed
 
 
 def test_warns_when_baseline_entries_are_fixed():

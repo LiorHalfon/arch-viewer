@@ -103,6 +103,11 @@ def test_rejects_an_allowed_entry_that_is_not_a_list():
         parse_config({"allowed": {"api": "domain"}})
 
 
+def test_a_bad_externals_undeclared_value_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="externals_undeclared"):
+        written(tmp_path, '[archview]\npackage = "shop"\nexternals_undeclared = "warn"\n')
+
+
 def test_requires_a_reason_for_every_exception():
     with pytest.raises(ConfigError, match="needs a non-empty 'reason'"):
         parse_config({"exceptions": [{"importer": "a.b", "imported": "c.d"}]})

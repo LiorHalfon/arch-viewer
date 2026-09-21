@@ -75,7 +75,8 @@ package = "shop"                      # default: the only package found
 source_roots = ["src"]                # default: discovered
 exclude = ["**/migrations/**"]        # file globs left out of everything
 ignored = ["scripts"]                 # components not checked
-type_checking_imports = "ignore"      # or "include": check `if TYPE_CHECKING:` imports too
+type_checking_imports = "include"     # default; "ignore" checks runtime imports only
+externals_undeclared = "error"   # optional: close [archview.externals] (default "allow")
 fail_on_violations = true
 fail_on_cycles = true
 layers = ["api", ["billing", "shipping"], "domain"]   # no importing upwards; peers independent
@@ -112,25 +113,56 @@ fail_on_zones = ["pain"]              # optional: fail when a component enters a
 ignore = ["common"]
 ```
 
-Unknown keys are errors with a suggestion. A component that is not in `allowed` fails
-the check, because a new top-level package is a human decision.
+Unknown keys are errors with a suggestion.
+
+`[archview.allowed]` and `[archview.externals]` sit next to each other in every rules
+file and mean opposite things for the same shape of gap. **A component missing from
+`allowed` fails the check** - a new top-level package is a human decision, so an agent
+that adds one has to ask. **A component missing from `externals` is unconstrained** -
+no error, nothing reported, that component may import anything outside the project.
+`[archview.externals]` reads like a fence; it is an opt-in allow-list, live only for
+the components you have already listed. `check` narrows that gap where it can: a
+package that *is* named in the table for some component, but is also reached by a
+component that is not a key at all, gets a `partial_externals` notice naming both -
+"`[archview.externals]` allows `openai` for `llm`, but `checkout` also imports it and
+is unconstrained." The notice only fires for a package the table already names, so a
+repo with thirty third-party dependencies and two constrained components gets at most
+two lines, not thirty; a package nothing imports yet is invisible to it regardless.
+
+Set `externals_undeclared = "error"` beside the table once adoption is done, and the
+asymmetry above goes away: every component that imports anything outside the project
+must then be a key of `[archview.externals]`, exactly as `allowed` already requires -
+a component that is not gets a failing `undeclared_externals` problem. The default
+stays `"allow"` so a repo can adopt `[externals]` one component at a time instead of
+having to enumerate every third-party package on day one; any other value is a
+`ConfigError`, so a typo cannot read as "off". In a workspace, set it in each
+package's own rules file - the root's bare `[archview]` table is a `ConfigError` if
+it names this key, for the same reason `type_checking_imports` is, below.
 
 A rule may also name a package outside the project - a PyPI or npm dependency, or a
 sibling package in a workspace; archview cannot tell those two apart from one
-package's model alone (ADR 0011). `[archview.externals]` is the allow-list for these:
-unlike `[archview.allowed]`, a component missing from it is unconstrained, not an
-error, so it can be adopted one component at a time. `[[archview.forbidden]]` can
-also target one, and the rule is enforced whether or not `[archview.externals]`
-declares anything. `from` always
-names a component (or `"*"`); an outside name there is a `ConfigError`, since nothing
-archview can see imports *out of* a third-party package. Naming a stdlib module in
-`to` is a separate `ConfigError` at load time, since the extractor already drops
-stdlib imports from the graph and such a rule could never fire; that check is skipped
-for a repo that has declared `language = "typescript"` or a `tsconfig`, since npm has
-packages named `queue` or `string` that collide with Python stdlib module names.
-`archview init --externals` writes `[archview.externals]` from
-today's imports, the same freeze-then-delete starting point `init` already gives
+package's model alone (ADR 0011). `[[archview.forbidden]]` can target one too, and the
+rule is enforced whether or not `[archview.externals]` declares anything. `from`
+always names a component (or `"*"`); an outside name there is a `ConfigError`, since
+nothing archview can see imports *out of* a third-party package. Naming a stdlib
+module in `to` is a separate `ConfigError` at load time, since the extractor already
+drops stdlib imports from the graph and such a rule could never fire; that check is
+skipped for a repo that has declared `language = "typescript"` or a `tsconfig`, since
+npm has packages named `queue` or `string` that collide with Python stdlib module
+names. `archview init --externals` writes `[archview.externals]` from today's
+imports, the same freeze-then-delete starting point `init` already gives
 `[archview.allowed]`; a plain `archview init` leaves the table out.
+
+`type_checking_imports` defaults to `"include"`: a type-only import (`if
+TYPE_CHECKING:` in Python, `import type` in TypeScript) is checked exactly like a
+runtime one, because it is still a reason one file cannot be understood without the
+other. Set it to `"ignore"` to check runtime imports only. In a workspace, set it in
+each package's own rules file - the root's bare `[archview]` table is a `ConfigError`
+if it names this key, since the root config is never consulted per-package.
+
+Only code under `package` is analysed, even when `source_roots` lists more than one
+root; a root that contributes no modules to that package gets an `empty_source_root`
+notice naming it.
 
 ## Workspace mode
 
@@ -173,6 +205,11 @@ matching it against the sibling's aliases: its top-level module name (Python), i
 TypeScript `../`-relative import, the sibling whose directory contains the resolved
 file. A name that matches no sibling is an ordinary third-party dependency, governed
 by that package's own `[archview.externals]` if it has one.
+
+That also means `externals_undeclared = "error"` in a **member's** own rules file
+reaches sibling packages too: a member sees a sibling it imports as an outside edge,
+same as a PyPI or npm one, so closed mode there demands the member declare every
+sibling it reaches, not just its third-party dependencies.
 
 ### What a package publishes
 

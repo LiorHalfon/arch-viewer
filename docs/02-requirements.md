@@ -92,6 +92,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C12 | `allowed`/`forbidden`/`exceptions` can name a package outside the project (a PyPI/npm dependency, or a workspace sibling before M8 tells them apart) via a new `[archview.externals]` allow-list; `forbidden` needs no new syntax. A stdlib target is a config error, not a silent no-op. | MVP (M7) | GitHub issue #1; ADR 0011 |
 | C13 | A `[archview.workspace]` table at a repo's root lists several packages (Python and/or TypeScript), each opened with its own rules file when it has one; `check` runs every package's own check plus a declared `allowed`/`forbidden`/`exceptions` table for the imports *between* them, with one exit code. A cross-package import is attributed to its sibling by the M7 outside name it already produces. | MVP (M8) | GitHub issue #2; ADR 0012 |
 | C14 | A package declares its contract with `public` in its own rules file; a sibling may reach only those components, and the workspace tables accept qualified `package.component` targets. The component an import reaches is resolved, not guessed: the sibling packages are analysed together for Python, and `Import.resolved` carries tsc's resolution for TypeScript. A grant naming an unpublished component is a config error; an import that cannot be placed is reported, never assumed public. | MVP (M9) | GitHub issue #4; ADR 0013 |
+| C15 | `check` says what it is not checking. `type_checking_imports` defaults to `"include"`, and the key is a `ConfigError` where it cannot take effect (a workspace root's bare `[archview]` table). A `[archview.externals]` table that covers one component and not a neighbour reaching the same package says so, by name (`partial_externals`). `externals_undeclared = "error"` closes the table, failing a component that reaches outside without a key (`undeclared_externals`). A `source_roots` entry that contributes no modules to the package says so (`empty_source_root`). | MVP (M10) | GitHub issues #5, #8, #10; ADR 0014 |
 
 ## 7. Agent integration
 
@@ -133,13 +134,13 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-22, after M9)
+## 12. Implementation status (2026-09-22, after M10)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012) | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C13. C5 text + JSON | C5 GitHub Actions annotations |
+| Checker | C1–C4, C6–C15. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
@@ -155,6 +156,16 @@ M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on sto
 M9 (2026-09-22): a package publishes a contract its siblings are checked against
 (C14, ADR 0013); the model JSON is schema 4, carrying the resolved target of an
 import so TypeScript can say which component a cross-package import reaches.
+
+M10 (2026-09-22): archview says what it is not checking (C15, ADR 0014), closing three
+issues that all reported the same failure: a rule that reads as enforced but is not.
+`type_checking_imports` now defaults to `"include"`, a breaking change landed while
+v0.4.0 is untagged; setting it where it cannot take effect is a `ConfigError`.
+`[archview.externals]` gets a `partial_externals` notice when it covers a package for
+one component and not a neighbour reaching the same package, and an opt-in closed mode
+(`externals_undeclared = "error"`) that fails an undeclared reacher outright. A
+`source_roots` entry that contributes no modules to the package gets an
+`empty_source_root` notice.
 
 M7 (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
 `[archview.externals]`, `from = "*"`, a viewer overlay for the failing edge, and
