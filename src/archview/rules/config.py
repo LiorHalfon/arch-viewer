@@ -78,6 +78,7 @@ class Config:
     fail_on_cycles: bool = True
     allowed: dict[str, tuple[str, ...] | str] | None = None
     externals: dict[str, tuple[str, ...] | str] | None = None
+    externals_undeclared: str = "allow"
     forbidden: tuple[Forbidden, ...] = ()
     exceptions: tuple[Exemption, ...] = ()
     ignored: tuple[str, ...] = ()
@@ -127,6 +128,7 @@ TOP_KEYS = {
     "fail_on_cycles",
     "allowed",
     "externals",
+    "externals_undeclared",
     "forbidden",
     "exceptions",
     "ignored",
@@ -200,6 +202,9 @@ def parse_config(table: dict[str, Any], where: str = "archview", path: str | Non
         fail_on_cycles=_bool(table, "fail_on_cycles", where),
         allowed=_allowed(table.get("allowed"), f"{where}.allowed"),
         externals=_externals(table.get("externals"), f"{where}.externals", check_stdlib),
+        externals_undeclared=_choice(
+            table, "externals_undeclared", ("allow", "error"), "allow", where
+        ),
         forbidden=_forbidden(table.get("forbidden", []), f"{where}.forbidden", check_stdlib),
         exceptions=_exceptions(table.get("exceptions", []), f"{where}.exceptions"),
         ignored=_str_list(table, "ignored", where),

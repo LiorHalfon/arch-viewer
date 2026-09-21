@@ -19,7 +19,14 @@ from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
 
 ProblemKind = Literal[
-    "not_allowed", "forbidden", "undeclared", "cycle", "zone", "outside", "private"
+    "not_allowed",
+    "forbidden",
+    "undeclared",
+    "cycle",
+    "zone",
+    "outside",
+    "private",
+    "undeclared_externals",
 ]
 Pair = tuple[str, str]
 # How an extractor warning reads in the report; the viewer uses the same words.
@@ -264,6 +271,7 @@ def _rule_problems(
         elif allowed is not None and source in allowed and not _may(allowed, source, target):
             problems.append(_not_allowed(source, target, imports, allowed, table, fails))
     problems += _outside_problems(edges.outside, forbidden, config, table)
+    problems += _undeclared_externals_problems(edges.outside, config, table)
     return sorted(problems, key=lambda p: (p.components, p.kind))
 
 
@@ -306,6 +314,43 @@ def _outside(
             f"{source} may reach {may}. Declare {target} in [{table}.externals].{source}, "
             f"or define the interface {source} needs inside {source} and let another "
             "component depend on the package."
+        ),
+        fails=fails,
+    )
+
+
+def _undeclared_externals_problems(
+    outside: dict[Pair, list[Import]], config: Config, table: str
+) -> list[Problem]:
+    """Closed mode (`externals_undeclared = "error"`): every component that reaches
+    outside the project must be a key of `[table.externals]`, exactly as `allowed`
+    requires a component to be declared (issue #5)."""
+    if config.externals_undeclared != "error":
+        return []
+    externals = config.externals or {}
+    fails = config.fail_on_violations
+    by_component: dict[str, list[Import]] = defaultdict(list)
+    for (source, _target), imports in outside.items():
+        if source not in externals:
+            by_component[source] += imports
+    return [
+        _undeclared_externals(component, imports, table, fails)
+        for component, imports in sorted(by_component.items())
+    ]
+
+
+def _undeclared_externals(
+    component: str, imports: list[Import], table: str, fails: bool
+) -> Problem:
+    return Problem(
+        kind="undeclared_externals",
+        rule=f"{table}.externals",
+        components=(component,),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{component} reaches outside the project but is not declared in "
+            f"[{table}.externals]; add {component} = [the packages it may import] there."
         ),
         fails=fails,
     )

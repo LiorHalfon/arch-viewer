@@ -241,3 +241,29 @@ def test_no_note_for_a_package_the_table_does_not_name():
     report = check(two_reach_openai(), config)
     notes = [w for w in report.warnings if w.kind == "partial_externals"]
     assert not any("httpx" in w.message for w in notes)
+
+
+def test_closed_mode_fails_a_component_with_no_externals_entry():
+    config = Config(
+        allowed={"api": ["llm"], "llm": []},
+        externals={"api": ()},
+        externals_undeclared="error",
+    )
+    report = check(model_with_external(), config)
+    assert [(p.kind, p.components) for p in report.problems if p.fails] == [
+        ("undeclared_externals", ("llm",))
+    ]
+
+
+def test_closed_mode_passes_when_every_reacher_is_declared():
+    config = Config(
+        allowed={"api": ["llm"], "llm": []},
+        externals={"llm": ("openai",)},
+        externals_undeclared="error",
+    )
+    assert [p for p in check(model_with_external(), config).problems if p.fails] == []
+
+
+def test_the_default_is_open():
+    config = Config(allowed={"api": ["llm"], "llm": []}, externals={"api": ()})
+    assert [p for p in check(model_with_external(), config).problems if p.fails] == []
