@@ -160,6 +160,10 @@ other. Set it to `"ignore"` to check runtime imports only. In a workspace, set i
 each package's own rules file - the root's bare `[archview]` table is a `ConfigError`
 if it names this key, since the root config is never consulted per-package.
 
+Only code under `package` is analysed, even when `source_roots` lists more than one
+root; a root that contributes no modules to that package gets an `empty_source_root`
+notice naming it.
+
 ## Workspace mode
 
 A `[archview.workspace]` table at the repo root turns several packages — Python,
@@ -201,6 +205,11 @@ matching it against the sibling's aliases: its top-level module name (Python), i
 TypeScript `../`-relative import, the sibling whose directory contains the resolved
 file. A name that matches no sibling is an ordinary third-party dependency, governed
 by that package's own `[archview.externals]` if it has one.
+
+That also means `externals_undeclared = "error"` in a **member's** own rules file
+reaches sibling packages too: a member sees a sibling it imports as an outside edge,
+same as a PyPI or npm one, so closed mode there demands the member declare every
+sibling it reaches, not just its third-party dependencies.
 
 ### What a package publishes
 

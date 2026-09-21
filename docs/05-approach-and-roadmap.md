@@ -61,7 +61,7 @@ Everything else — views per root, aggregated edges with counts, cycles, layers
 package = "tiny_tale"                     # top-level package to analyse
 source_roots = ["src"]
 exclude = ["**/tests/**", "**/migrations/**"]
-type_checking_imports = "ignore"          # or "include"
+type_checking_imports = "include"         # default (M10, ADR 0014); "ignore" for runtime imports only
 fail_on_violations = true
 fail_on_cycles = true
 

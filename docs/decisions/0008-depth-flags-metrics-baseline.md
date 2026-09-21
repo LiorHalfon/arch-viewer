@@ -47,7 +47,8 @@ a baseline records. The choices below are the ones the code relies on.
 
 - `type_checking_imports = "ignore"` (default) drops TYPE_CHECKING imports before
   anything is checked, `init` included. The viewer still draws them, dotted,
-  and edge counts include them.
+  and edge counts include them. Amendment (M10, ADR 0014): the default flipped to
+  `"include"`; `"ignore"` still checks runtime imports only.
 - `layers = [top, [peer, peer], bottom]` forbids importing any layer above, and
   peers in the same list may not import each other. `independent = [[a, b, c]]`
   forbids imports between the members. Both expand into `forbidden` pairs

@@ -120,10 +120,12 @@ checking.
 
 ## Consequences
 
-Agents get a hard stop, or at minimum a visible note, at every place a person could
-write a rule, see green, and be wrong about what it covers.
+Agents get a hard stop, or at minimum a visible note, for each of the three silences
+issues #5, #8 and #10 reported: a partial `[archview.externals]` table, a type-only
+import checked or not depending on a default nobody chose, and a `source_roots` entry
+that quietly did nothing.
 
-Limitations, stated plainly:
+Known limitations:
 
 - **The `partial_externals` notice sees only what the graph contains.** A package
   named in `[archview.externals]` that nothing currently imports produces no notice
