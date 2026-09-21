@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from archview.extract.siblings import resolve_targets
 from archview.model.cycles import components, find_cycles
 from archview.model.graph import Import, Model
 from archview.model.layers import assign_layers
@@ -148,15 +149,33 @@ def _owner_by_path(outside: str, importer: Package, packages: tuple[Package, ...
     )
 
 
-def cross_edges(ws: Workspace) -> dict[Pair, list[Import]]:
-    """Every package's outside edges (M7) whose target is a sibling, grouped by
-    (source package, target package) and sorted.
+@dataclass(frozen=True, slots=True)
+class CrossEdges:
+    """One pass over the workspace, three views of the same imports.
+
+    `by_package` is what M8 checked: (source package, target package). `by_component`
+    narrows the target to the component actually reached - (source package,
+    "target.component") - which is what a public surface is checked against (issue #4).
+    `unplaced` holds the imports whose component could not be determined; they are still
+    checked at package level and reported, never silently passed.
+    """
+
+    by_package: dict[Pair, list[Import]]
+    by_component: dict[Pair, list[Import]]
+    unplaced: tuple[Import, ...]
+
+
+def cross_edges(ws: Workspace) -> CrossEdges:
+    """Every package's outside edges (M7) whose target is a sibling, attributed.
 
     A workspace exception exempts a cross-package import the same way a package's own
     `[archview.exceptions]` exempt an internal one - `_exemption` is the same helper.
     """
     exceptions = ws.config.workspace.exceptions
-    cross: dict[Pair, list[Import]] = defaultdict(list)
+    targets = resolve_targets(_python_roots(ws))
+    by_package: dict[Pair, list[Import]] = defaultdict(list)
+    by_component: dict[Pair, list[Import]] = defaultdict(list)
+    unplaced: list[Import] = []
     for package in ws.packages:
         for outside, imports in _outside_imports(package).items():
             sibling = _owner(outside, package, ws.packages)
@@ -164,11 +183,72 @@ def cross_edges(ws: Workspace) -> dict[Pair, list[Import]]:
                 continue
             sep = package.project.model.separator
             surviving = [imp for imp in imports if _exemption(imp, exceptions, sep) is None]
-            if surviving:
-                cross[(package.name, sibling)] += surviving
+            if not surviving:
+                continue
+            by_package[(package.name, sibling)] += surviving
+            for imp in surviving:
+                component = _component_of(imp, outside, sibling, ws, targets)
+                if component is None:
+                    unplaced.append(imp)
+                else:
+                    by_component[(package.name, component)].append(imp)
+    return CrossEdges(
+        _sorted_edges(by_package),
+        _sorted_edges(by_component),
+        tuple(sorted(unplaced, key=lambda i: (i.file, i.line))),
+    )
+
+
+def _sorted_edges(edges: dict[Pair, list[Import]]) -> dict[Pair, list[Import]]:
     return {
-        pair: sorted(imps, key=lambda i: (i.file, i.line)) for pair, imps in sorted(cross.items())
+        pair: sorted(imps, key=lambda i: (i.file, i.line)) for pair, imps in sorted(edges.items())
     }
+
+
+def _python_roots(ws: Workspace) -> dict[str, Path]:
+    """The source roots of the workspace's Python packages, for `resolve_targets`."""
+    return {
+        p.name: p.project.source_root for p in ws.packages if p.project.model.language == "python"
+    }
+
+
+def _component_of(
+    imp: Import, outside: str, sibling: str, ws: Workspace, targets: dict[tuple[str, int], str]
+) -> str | None:
+    """`sibling.component` for the part of `sibling` this import reaches, or None.
+
+    Python comes from the workspace resolution pass, which is the only thing that can
+    see past grimp's squashing. TypeScript's relative import already carries its full
+    path, and a bare npm name reaches the package's entry point, which is public by
+    construction. Only an npm subpath is unplaceable (ADR 0013).
+    """
+    resolved = targets.get((imp.importer, imp.line))
+    if resolved is not None:
+        return _qualified(resolved, sibling, ".")
+    if outside.startswith("../"):
+        return _qualified_by_path(outside, sibling, ws)
+    return sibling if outside in _package_by_name(ws, sibling).aliases else None
+
+
+def _qualified(module: str, sibling: str, sep: str) -> str:
+    """`core.model.Thing` -> `core.model`; the package root itself -> `core`."""
+    rest = module[len(sibling) :].lstrip(sep)
+    return f"{sibling}{sep}{rest.split(sep)[0]}" if rest else sibling
+
+
+def _qualified_by_path(outside: str, sibling: str, ws: Workspace) -> str | None:
+    package = _package_by_name(ws, sibling)
+    target = (Path(outside)).as_posix()
+    root = package.project.source_root
+    try:
+        inside = (package.path / target).resolve().relative_to(root.resolve())
+    except ValueError:
+        return None
+    return _qualified(f"{sibling}/{inside.as_posix()}", sibling, "/")
+
+
+def _package_by_name(ws: Workspace, name: str) -> Package:
+    return next(p for p in ws.packages if p.name == name)
 
 
 def _outside_imports(package: Package) -> dict[str, list[Import]]:
@@ -205,7 +285,7 @@ def check_workspace(ws: Workspace) -> WorkspaceReport:
 def _check_between(ws: Workspace) -> Report:
     rules = ws.config.workspace
     present = tuple(p.name for p in ws.packages)
-    edges = Edges(internal=cross_edges(ws), outside={}, exceptions_used=set())
+    edges = Edges(internal=cross_edges(ws).by_package, outside={}, exceptions_used=set())
     config = _between_config(ws.config, rules)
     problems = [
         *_rule_problems(edges, present, config, config.table),
@@ -252,7 +332,7 @@ def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
     """
     by_name = {p.name: p for p in ws.packages}
     children = frozenset(by_name)
-    grouped = cross_edges(ws)
+    grouped = cross_edges(ws).by_package
     counts = {pair: len(imports) for pair, imports in grouped.items()}
 
     component = components(children, counts)

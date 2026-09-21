@@ -183,7 +183,7 @@ def test_every_typescript_alias_kind_is_attributed_to_the_sibling():
     (`@fixture/core`), and its bare package name (`core`). All three must join to the
     same sibling."""
     ws = open_workspace(TS_FIXTURE)
-    edges = cross_edges(ws)
+    edges = cross_edges(ws).by_package
     assert list(edges) == [("web", "core")]
     assert len(edges[("web", "core")]) == 3
 
@@ -299,7 +299,7 @@ def test_a_packages_own_exception_does_not_exempt_a_cross_package_import(tmp_pat
 def test_a_third_party_import_is_not_a_cross_package_edge(tmp_path):
     """plugin imports openai, which is nobody's sibling."""
     ws = workspace_with(tmp_path, allowed={"core": (), "plugin": ("core",)})
-    assert "openai" not in {t for _, t in cross_edges(ws)}
+    assert "openai" not in {t for _, t in cross_edges(ws).by_package}
 
 
 def test_a_workspace_baseline_makes_a_known_problem_not_fail(tmp_path):
@@ -346,7 +346,7 @@ def test_a_type_checking_only_cross_package_import_is_ignored_by_default(tmp_pat
 
     report = check_workspace(open_workspace(root))
 
-    assert "core" not in {t for _, t in cross_edges(open_workspace(root))}
+    assert "core" not in {t for _, t in cross_edges(open_workspace(root)).by_package}
     assert not report.between.failed
 
 
@@ -424,3 +424,42 @@ def test_workspace_cycles_reports_a_cross_package_cycle_with_a_path(tmp_path):
         "from plugin import Adapter",
         "from core.ports import Port",
     ]
+
+
+def core_rules(root: Path, public: str | None) -> None:
+    """Rewrite core's own rules file, optionally declaring a public surface."""
+    line = f"public = {public}\n" if public is not None else ""
+    (root / "core" / "archview.toml").write_text(
+        '[archview]\npackage = "core"\nsource_roots = ["src"]\n'
+        + line
+        + '[archview.allowed]\nmodel = []\nports = ["model"]\n'
+    )
+
+
+def plugin_imports(root: Path, statement: str) -> None:
+    (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(statement + "\n")
+
+
+def test_a_cross_package_import_is_attributed_to_its_component(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    plugin_imports(root, "from core.ports import Port\nfrom core.model import Thing")
+    edges = cross_edges(open_workspace(root))
+    assert set(edges.by_package) == {("plugin", "core")}
+    assert set(edges.by_component) == {("plugin", "core.ports"), ("plugin", "core.model")}
+    assert edges.unplaced == ()
+
+
+def test_an_aliased_re_export_is_attributed_to_the_real_module(tmp_path):
+    """The case that rules out reading the import line as text."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    plugin_imports(root, "from core import model as m2")
+    edges = cross_edges(open_workspace(root))
+    assert set(edges.by_component) == {("plugin", "core.model")}
+
+
+def test_by_package_is_unchanged_by_component_attribution(tmp_path):
+    """The M8 view of the same edges must not move."""
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
+    plugin_imports(root, "from core.ports import Port")
+    edges = cross_edges(open_workspace(root))
+    assert [(s, t, len(i)) for (s, t), i in edges.by_package.items()] == [("plugin", "core", 1)]
