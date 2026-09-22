@@ -53,7 +53,8 @@ def _workspace_toml(table: dict) -> str:
         lines.append(f"to = {_toml_scalar(forbidden['to'])}")
     for exception in table.get("exceptions", ()):
         lines.append("[[archview.workspace.exceptions]]")
-        lines += [f"{k} = {_toml_scalar(exception[k])}" for k in ("importer", "imported", "reason")]
+        keys = ("importer", "imported", "reason") + (("kind",) if "kind" in exception else ())
+        lines += [f"{k} = {_toml_scalar(exception[k])}" for k in keys]
     return "\n".join(lines) + "\n"
 
 
@@ -362,6 +363,50 @@ def test_a_type_checking_only_cross_package_import_counts_when_included(tmp_path
     )
 
     report = check_workspace(open_workspace(root))
+
+    assert not_allowed(report.between) == [("plugin", "core")]
+    assert report.failed
+
+
+def test_a_type_only_workspace_exception_exempts_a_type_only_cross_package_import(tmp_path):
+    """`_exemption` is shared by the package-level and workspace-level paths, so a
+    `kind = "type_only"` exception works here too (issue #8)."""
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": (), "plugin": ()},
+        exceptions=[
+            {
+                "importer": "plugin.adapter",
+                "imported": "core",
+                "reason": "prop shapes only",
+                "kind": "type_only",
+            }
+        ],
+    )
+    (root / "plugin" / "src" / "plugin" / "adapter.py").write_text(TYPE_CHECKING_ADAPTER)
+
+    report = check_workspace(open_workspace(root))
+
+    assert not report.between.failed
+
+
+def test_a_type_only_workspace_exception_does_not_exempt_a_value_import(tmp_path):
+    """The whole point, at workspace level too: the carve-out must not widen to the
+    call it forbids - the fixture's plugin.adapter imports core.ports.Port for real."""
+    ws = workspace_with(
+        tmp_path,
+        allowed={"core": (), "plugin": ()},
+        exceptions=[
+            {
+                "importer": "plugin.adapter",
+                "imported": "core",
+                "reason": "prop shapes only",
+                "kind": "type_only",
+            }
+        ],
+    )
+
+    report = check_workspace(ws)
 
     assert not_allowed(report.between) == [("plugin", "core")]
     assert report.failed

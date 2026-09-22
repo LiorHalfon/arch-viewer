@@ -16,7 +16,15 @@ from archview.model.graph import Import, Model
 from archview.model.metrics import Metrics, metrics
 from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
+from archview.rules.config import (
+    ALL,
+    ALL_COMPONENTS,
+    EXCEPTION_KINDS,
+    Config,
+    ConfigError,
+    Exemption,
+    Forbidden,
+)
 
 ProblemKind = Literal[
     "not_allowed",
@@ -83,8 +91,25 @@ class WorkspaceReport:
         return self.between.failed or any(report.failed for _, report in self.packages)
 
 
-def component_map(config: Config, project: str, sep: str) -> ComponentMap:
-    return ComponentMap(project, sep, config.components, frozenset(config.ignored))
+def component_map(config: Config, model: Model) -> ComponentMap:
+    return ComponentMap(
+        model.project,
+        model.separator,
+        config.components,
+        frozenset(config.ignored),
+        _extra_roots(model),
+    )
+
+
+def _extra_roots(model: Model) -> frozenset[str]:
+    """The extra top-level packages `build_model` graphed alongside the project
+    (issue #10): an internal node with no parent that is not the project itself -
+    exactly as `Node.parent` is `None` for the project's own root (ADR 0006)."""
+    return frozenset(
+        n.id
+        for n in model.nodes
+        if n.parent is None and n.kind != "external" and n.id != model.project
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,8 +160,10 @@ def _pair(imp: Import, components: ComponentMap, external: set[str]) -> Pair | N
 
 def _exemption(imp: Import, exemptions, sep: str) -> int | None:
     for index, e in enumerate(exemptions):
-        if matches_name(e.importer, imp.importer, sep) and matches_name(
-            e.imported, imp.imported, sep
+        if (
+            matches_name(e.importer, imp.importer, sep)
+            and matches_name(e.imported, imp.imported, sep)
+            and (e.kind is None or EXCEPTION_KINDS[e.kind](imp))
         ):
             return index
     return None
@@ -163,7 +190,7 @@ def checked_imports(model: Model, config: Config) -> Model:
 
 def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     model = checked_imports(model, config)
-    components = component_map(config, model.project, model.separator)
+    components = component_map(config, model)
     present = present_components(model, components)
     _reject_outside_sources(model, config)
     edges = component_edges(model, components, config)
@@ -538,6 +565,21 @@ def _partial_externals(
     )
 
 
+def _unused_exception_message(e: Exemption) -> str:
+    """An exception `kind` narrows on purpose - it excluding every import between
+    the pair is the feature working, not the exception going stale. Telling the
+    user to "remove it" is only right for `kind is None`; a narrowed exception gets
+    its own wording so the report does not steer someone into undoing the very
+    narrowing they asked for (Fix 5, review)."""
+    if e.kind is None:
+        return f"exception {e.importer} -> {e.imported} matches no import; remove it"
+    readable = e.kind.replace("_", "-")
+    return (
+        f"exception {e.importer} -> {e.imported} matches no {e.kind} import; "
+        f"the pair is imported, but not {readable}"
+    )
+
+
 def _warnings(
     model: Model,
     config: Config,
@@ -613,12 +655,7 @@ def _warnings(
         )
     for index, e in enumerate(config.exceptions):
         if index not in edges.exceptions_used:
-            warnings.append(
-                Notice(
-                    "unused_exception",
-                    f"exception {e.importer} -> {e.imported} matches no import; remove it",
-                )
-            )
+            warnings.append(Notice("unused_exception", _unused_exception_message(e)))
     for w in model.warnings:
         target = f" ({w.target})" if w.target else ""
         label = WARNING_LABELS.get(w.kind, w.kind.replace("_", " "))

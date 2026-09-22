@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from archview.project import open_project, project_report
 from tests.typescript_support import TS_SAMPLE, requires_typescript
@@ -145,3 +146,86 @@ def test_a_typescript_source_root_that_matches_is_quiet(tmp_path):
     )
     report = project_report(open_project(tmp_path))
     assert [w for w in report.warnings if w.kind == "empty_source_root"] == []
+
+
+def _repo(tmp_path, roots: str) -> Path:
+    """A src/-layout package beside a tests/ package, with `roots` as source_roots."""
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "src" / "pkg" / "api.py").write_text("x = 1\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "__init__.py").write_text("")
+    (tmp_path / "tests" / "test_api.py").write_text("from pkg import api\n")
+    (tmp_path / "archview.toml").write_text(
+        f'[archview]\npackage = "pkg"\nsource_roots = {roots}\n'
+        '[archview.allowed]\napi = []\ntests = ["api"]\n'
+    )
+    return tmp_path
+
+
+def test_a_package_under_another_root_becomes_a_component(tmp_path):
+    """issue #10: with `package` scoping, nothing outside src/<pkg>/ could be a component,
+    so no rule could reach a test file."""
+    report = project_report(open_project(_repo(tmp_path, '["src", "."]')))
+    assert "tests" in report.components
+    assert not report.failed
+
+
+def test_a_rule_reaches_test_code(tmp_path):
+    root = _repo(tmp_path, '["src", "."]')
+    (root / "archview.toml").write_text(
+        '[archview]\npackage = "pkg"\nsource_roots = ["src", "."]\n'
+        "[archview.allowed]\napi = []\ntests = []\n"
+    )
+    report = project_report(open_project(root))
+    assert [(p.kind, p.components) for p in report.problems if p.fails] == [
+        ("not_allowed", ("tests", "api"))
+    ]
+
+
+def test_the_wrong_spelling_contributes_nothing_and_still_warns(tmp_path):
+    """`tests/` is a package rooted at the repo, not at `tests/`. The issue used this
+    spelling and got silence; M10 made it warn and this milestone keeps it warning."""
+    report = project_report(open_project(_repo(tmp_path, '["src", "tests"]')))
+    assert "tests" not in report.components
+    assert [w.kind for w in report.warnings if w.kind == "empty_source_root"] == [
+        "empty_source_root"
+    ]
+
+
+def test_a_loose_module_under_a_root_contributes_nothing(tmp_path):
+    """Only packages count - grimp graphs packages, and a bare file has nothing to name."""
+    root = _repo(tmp_path, '["src", "."]')
+    (root / "stray.py").write_text("y = 1\n")
+    report = project_report(open_project(root))
+    assert "stray" not in report.components
+
+
+def test_a_single_root_repo_is_unchanged(tmp_path):
+    """Nothing about single-root analysis may move."""
+    root = _repo(tmp_path, '["src"]')
+    report = project_report(open_project(root))
+    assert report.components == ("api",)
+
+
+def test_a_zero_config_sibling_package_is_not_graphed_as_internal(tmp_path):
+    """Finding 1 (differential review, base vs. head): with no `source_roots` at
+    all, `_packages` falls back to `find_packages`, which can return more than one
+    top-level package (`--package` exists for exactly that repo shape - `_choose`'s
+    own `SeveralPackages` message says so). Extra roots must not fire here: this
+    repo shape never opted into them, so `b` - the sibling `--package a` did not
+    choose - must still be graphed as external, exactly as it was before extra
+    roots existed, not turned into an internal component that `undeclared` then
+    fails on."""
+    (tmp_path / "src" / "a").mkdir(parents=True)
+    (tmp_path / "src" / "a" / "__init__.py").write_text("")
+    (tmp_path / "src" / "a" / "x.py").write_text("from b import y\n")
+    (tmp_path / "src" / "b").mkdir(parents=True)
+    (tmp_path / "src" / "b" / "__init__.py").write_text("")
+    (tmp_path / "src" / "b" / "y.py").write_text("z = 1\n")
+    (tmp_path / "archview.toml").write_text(
+        '[archview]\npackage = "a"\n[archview.allowed]\nx = []\n'
+    )
+    report = project_report(open_project(tmp_path))
+    assert report.components == ("x",)
+    assert [(p.kind, p.components) for p in report.problems] == []

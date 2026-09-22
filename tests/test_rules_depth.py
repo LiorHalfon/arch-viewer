@@ -5,7 +5,7 @@ from dataclasses import replace
 from archview.model.graph import Import, Model, Node
 from archview.rules.baseline import apply_baseline, baseline_of, load_baseline
 from archview.rules.check import check
-from archview.rules.config import Config, MetricRules, parse_config
+from archview.rules.config import Config, Exemption, MetricRules, parse_config
 from tests.builders import model
 
 
@@ -40,6 +40,88 @@ def test_ignore_restores_the_old_behaviour():
     m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
     report = check(m, Config(allowed={"api": [], "infra": []}, type_checking_imports="ignore"))
     assert report.problems == ()
+
+
+def test_a_type_only_exception_exempts_a_type_only_import():
+    m = model(("web.screens", "web.api"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "prop shapes only", kind="type_only"),),
+    )
+    assert check(m, config).problems == ()
+
+
+def test_a_type_only_exception_does_not_exempt_a_value_import():
+    """The whole point: the carve-out must not widen to the call it forbids."""
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "prop shapes only", kind="type_only"),),
+    )
+    assert [p.components for p in check(m, config).problems] == [("screens", "api")]
+
+
+def test_unused_exception_says_the_kind_excluded_it_not_that_it_is_unused():
+    """(Fix 5, review) The pair *is* imported - the exception's own `kind` is what
+    keeps it from matching, deliberately. Telling the user to "remove it" in the
+    same report that fails this exact pair on `not_allowed` is the wrong steer."""
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "prop shapes only", kind="type_only"),),
+    )
+    [warning] = [w for w in check(m, config).warnings if w.kind == "unused_exception"]
+    assert warning.message == (
+        "exception web.screens -> web.api matches no type_only import; "
+        "the pair is imported, but not type-only"
+    )
+
+
+def test_unused_exception_says_so_when_type_checking_imports_are_ignored():
+    """The same misleading "remove it" appears when `type_checking_imports =
+    "ignore"` makes a `type_only` exception structurally unreachable repo-wide,
+    not just when this one pair happens to have no type-only import (Fix 5,
+    review)."""
+    m = model(("web.screens", "web.api"))
+    m = replace(m, imports=tuple(replace(i, type_checking=True) for i in m.imports))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        type_checking_imports="ignore",
+        exceptions=(Exemption("web.screens", "web.api", "prop shapes only", kind="type_only"),),
+    )
+    [warning] = [w for w in check(m, config).warnings if w.kind == "unused_exception"]
+    assert warning.message == (
+        "exception web.screens -> web.api matches no type_only import; "
+        "the pair is imported, but not type-only"
+    )
+
+
+def test_an_exception_without_a_kind_still_exempts_anything():
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "legacy"),),
+    )
+    assert check(m, config).problems == ()
+
+
+def test_a_new_exception_kind_is_driven_by_one_shared_predicate(monkeypatch):
+    """EXCEPTION_KINDS maps a kind name to the predicate that decides it, rather
+    than `_exemption` hardcoding a second, separate condition for `"type_only"`.
+    That is what makes adding a kind to the one mapping enough: a kind added here,
+    at the single source of truth, must be honoured by `_exemption` without any
+    change of its own - the failure mode this guards against is a kind that parses
+    and validates but the checker silently never exempts anything with it."""
+    from archview.rules import config as config_module
+
+    monkeypatch.setitem(config_module.EXCEPTION_KINDS, "always", lambda imp: True)
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "demo", kind="always"),),
+    )
+    assert check(m, config).problems == ()
 
 
 def test_layers_forbid_importing_upwards_and_between_peers():

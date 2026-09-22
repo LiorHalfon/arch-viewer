@@ -9,27 +9,15 @@ what grimp does not report (`extract/facts.py`).
 from __future__ import annotations
 
 import sys
-from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import grimp
 
 from archview.extract.facts import FileFacts, scan
+from archview.extract.siblings import _importable, _unimported
 from archview.model.graph import ExtractionWarning, Import, Model, Node
 
 STDLIB = frozenset(sys.stdlib_module_names) | {"__future__"}
-
-
-@contextmanager
-def _importable(source_root: Path):
-    """Put `source_root` on sys.path for the extraction only."""
-    entry = str(source_root)
-    sys.path.insert(0, entry)
-    try:
-        yield
-    finally:
-        with suppress(ValueError):
-            sys.path.remove(entry)
 
 
 def _source_file(module: str, source_root: Path, relative_to: Path) -> str | None:
@@ -41,12 +29,16 @@ def _source_file(module: str, source_root: Path, relative_to: Path) -> str | Non
     return None
 
 
-def _is_internal(module: str, package: str) -> bool:
-    return module == package or module.startswith(package + ".")
+def _is_internal(module: str, roots: frozenset[str]) -> bool:
+    """True if `module`'s top-level name is the analysed package or an extra root
+    (issue #10) - equivalent to `module == root or module.startswith(root + ".")`
+    for whichever `root` in `roots` it belongs to, since a top-level package name
+    never itself contains a dot."""
+    return module.split(".")[0] in roots
 
 
-def _kind(module: str, package: str, graph: grimp.ImportGraph) -> str:
-    if not _is_internal(module, package):
+def _kind(module: str, roots: frozenset[str], graph: grimp.ImportGraph) -> str:
+    if not _is_internal(module, roots):
         return "external"
     return "package" if graph.find_children(module) else "module"
 
@@ -59,25 +51,39 @@ def _facts(files: dict[str, str | None], base: Path) -> dict[str, FileFacts]:
     return facts
 
 
-def build_model(package: str, source_root: Path, relative_to: Path | None = None) -> Model:
-    """Build the model for one top-level package found under `source_root`."""
+def build_model(
+    package: str,
+    source_root: Path,
+    relative_to: Path | None = None,
+    extra: tuple[tuple[str, Path], ...] = (),
+) -> Model:
+    """Build the model for `package`, plus every other top-level package `extra`
+    names (issue #10): grimp graphs them together, exactly as `extract/siblings.py`
+    does for sibling packages (M9), so a module under an extra root is internal
+    rather than an outside name. Each extra root is one component, named after
+    itself - as the project's own root module is a component named after the
+    project (ADR 0006). `Model.project` always stays `package`.
+    """
     source_root = Path(source_root).resolve()
     base = Path(relative_to).resolve() if relative_to else source_root
-    with _importable(source_root):
-        graph = grimp.build_graph(package, include_external_packages=True, cache_dir=None)
+    roots = {package: source_root} | {name: Path(root).resolve() for name, root in extra}
+    names = frozenset(roots)
+    with _importable(sorted(roots.values(), key=str)), _unimported(roots):
+        graph = grimp.build_graph(*sorted(names), include_external_packages=True, cache_dir=None)
 
-    internal_first = lambda m: (not _is_internal(m, package), m)  # noqa: E731
+    internal_first = lambda m: (not _is_internal(m, names), m)  # noqa: E731
     modules = sorted((m for m in graph.modules if m not in STDLIB), key=internal_first)
     files = {
-        m: _source_file(m, source_root, base) if _is_internal(m, package) else None for m in modules
+        m: _source_file(m, roots[m.split(".")[0]], base) if _is_internal(m, names) else None
+        for m in modules
     }
     facts = _facts(files, base)
 
     nodes = tuple(
         Node(
             id=module,
-            parent=(module.rpartition(".")[0] or None) if _is_internal(module, package) else None,
-            kind=_kind(module, package, graph),
+            parent=(module.rpartition(".")[0] or None) if _is_internal(module, names) else None,
+            kind=_kind(module, names, graph),
             file=files[module],
             abstract=module in facts and facts[module].abstract,
         )
@@ -86,15 +92,15 @@ def build_model(package: str, source_root: Path, relative_to: Path | None = None
     return Model(
         project=package,
         nodes=nodes,
-        imports=_imports(graph, package, files, facts),
+        imports=_imports(graph, names, files, facts),
         warnings=_warnings(files, facts),
     )
 
 
-def _imports(graph, package, files, facts) -> tuple[Import, ...]:
+def _imports(graph, roots: frozenset[str], files, facts) -> tuple[Import, ...]:
     found = []
     for importer in graph.modules:
-        if not _is_internal(importer, package):
+        if not _is_internal(importer, roots):
             continue
         for imported in graph.find_modules_directly_imported_by(importer):
             if imported in STDLIB:
