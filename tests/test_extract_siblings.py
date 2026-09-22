@@ -100,3 +100,20 @@ def test_a_member_name_already_imported_elsewhere_still_resolves(tmp_path):
         assert found[("plugin.adapter", 2)] == "core.model"
     finally:
         del sys.modules["core"]
+
+
+def test_a_non_path_entry_in_path_does_not_crash_the_guard(tmp_path):
+    """A foreign package can put anything into `__path__` - not only a plain string
+    or `os.PathLike` - since Python never enforces its contents. `Path(p)` raises
+    `TypeError` on anything else, which would take down an extraction that
+    previously worked (Fix 6, review). An unrecognised entry is treated as not a
+    match - the safe direction, since it still lets the real collision cases evict."""
+    from archview.extract.siblings import _elsewhere
+
+    class Weird:
+        """Not a str and not an os.PathLike."""
+
+    class FakeModule:
+        __path__ = (Weird(),)
+
+    assert _elsewhere(FakeModule(), tmp_path, "weird") is True

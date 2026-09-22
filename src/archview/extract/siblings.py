@@ -17,6 +17,7 @@ same source, not a merged model (ADR 0012).
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Mapping
 from contextlib import contextmanager, suppress
@@ -71,12 +72,19 @@ def _unimported(roots: Mapping[str, Path]):
 
 
 def _elsewhere(module, root: Path, name: str) -> bool:
-    """True if `module` (already imported as `name`) was not loaded from `root`."""
+    """True if `module` (already imported as `name`) was not loaded from `root`.
+
+    `__path__` is a foreign package's own data - nothing enforces that every entry
+    is a `str` or `os.PathLike`, so `Path()` is not safe to call on all of them
+    unguarded. An entry of neither type is treated as not a match, the safe
+    direction here: it still lets a real collision evict, and simply cannot rule
+    the entry in as the expected root either.
+    """
     paths = getattr(module, "__path__", None)
     if not paths:
         return True
     expected = (root / name).resolve()
-    return not any(Path(p).resolve() == expected for p in paths)
+    return not any(Path(p).resolve() == expected for p in paths if isinstance(p, str | os.PathLike))
 
 
 def _owner(module: str, packages: frozenset[str]) -> str | None:
