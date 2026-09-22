@@ -49,7 +49,14 @@ what it permits.
 - **Only packages count, not loose modules.** grimp graphs packages; a bare `.py`
   sitting directly under a configured root has nothing to name. `_packages` only
   admits a directory that itself holds `.py` files, exactly as it already did for
-  the project's own package.
+  the project's own package - and, given an explicit root, without `find_packages`'
+  own `SKIP_DIRS`/dotfile filtering. That bypass is *why* the mechanism works at
+  all, not an accident of it: that same filtering is exactly what keeps `tests/`
+  invisible under zero-config discovery (`SKIP_DIRS` names `tests`, `test` and
+  `testing` outright), so making an explicit root contribute `tests/` requires not
+  applying it there. The bypass is not scoped to `tests/` - it reaches any other
+  directory holding `.py` files under that root just as readily (`docs/06` covers
+  the two ways to narrow it back down).
 
 - **Each extra root package is one component, named after itself** — `tests.test_live`
   belongs to component `tests` — consistent with ADR 0006's treatment of the
@@ -115,17 +122,47 @@ never meant to permit. Both land in existing tables; nothing about `allowed`,
 
 Known limitations:
 
-- **A regular (non-namespace) package whose `__path__` has several static entries**
-  — e.g. via `pkgutil.extend_path` — does not self-heal from a `sys.path` change,
-  and the guard skips eviction if any one entry matches, leaving a stale entry for
-  grimp to walk. This is the permissive direction, which is the worse one: a stale
-  entry can make the check silently pass against the wrong code rather than merely
-  fail to build. It needs a colliding top-level name that is itself a manually
-  multi-rooted regular package, a legacy pattern rare enough that this was accepted
-  rather than chased further. A namespace package, by contrast, recalculates its
-  `__path__` live and is safe regardless.
+- **A regular package whose `__path__` has several static entries** — via
+  `pkgutil.extend_path`, or simply a runtime `__path__.append(...)` in its own
+  `__init__.py` (a plugin-system idiom: `spec.submodule_search_locations` *is* the
+  same list object as `module.__path__` for a regular package, so a mutation of
+  one is a mutation of the other, and reaches grimp too) — does not self-heal from
+  a `sys.path` change, and the guard skips eviction if any one entry matches,
+  leaving a stale entry for grimp to walk. This is the permissive direction, which
+  is the worse one: a stale entry can make the check silently pass against the
+  wrong code rather than merely fail to build. It needs a colliding top-level name
+  that is itself a manually multi-rooted regular package, a legacy pattern rare
+  enough that this was accepted rather than chased further.
+- **A namespace package present at more than one location on `sys.path` contributes
+  all of them, not just the one under the graphed root.** grimp's own package
+  finder returns every entry of `spec.submodule_search_locations`
+  (`grimp/adaptors/packagefinder.py`, `determine_package_directories`) and walks
+  all of them. A namespace package recalculates `__path__` live from a fresh
+  `find_spec` - which is what makes the eviction guard unnecessary for it in the
+  first place, unlike the regular-package case above - and that live recalculation
+  always finds the *correct* directory; it does nothing to stop a second,
+  colliding one elsewhere on `sys.path` from being found and walked too. That is
+  inherent to namespace-package semantics (every matching location merges into one
+  `__path__`), not a gap this guard could close: there is no single "the"
+  `__path__` to compare against one expected root the way a regular package's is.
 - **Adding a root turns previously invisible modules into components.** An existing
   `[archview.allowed]` table will now fail as `undeclared` until it names them.
   That is the `undeclared` rule working (ADR 0006), and it only affects a repo that
   explicitly listed such a root — which until M10 did nothing at all and since M10
-  has been warning about it.
+  has been warning about it. `open_project` computes `extra` from the sibling
+  packages `_packages` found only when `config.source_roots` is non-empty
+  (`project.py`); a repo with no `source_roots` at all graphs exactly as it did
+  before this milestone, even one where `find_packages` happens to resolve to
+  several top-level packages - the shape `--package` exists for (Finding 1,
+  differential review, fixed the same milestone it shipped in).
+- **`_unimported`'s eviction mutates process-global `sys.modules`, live, while
+  `serve --watch` is running.** `watch()` calls `reload()` - hence `build_model`,
+  hence `resolve_targets`/`_unimported` - from a background daemon thread, while
+  FastAPI dispatches its own sync routes on a thread pool; both share this one
+  process's `sys.modules`. A project package whose top-level name collides with an
+  installed dependency (`rich`, `click`, `yaml`, …) could be evicted during that
+  window if a sync route happens to import that name while a reanalysis is
+  resolving cross-package imports. This is a different shape of exposure than
+  `_importable`'s pre-existing `sys.path` mutation, not merely a smaller one:
+  `sys.path` only affects names not yet cached, while eviction targets precisely
+  the names the process already holds.

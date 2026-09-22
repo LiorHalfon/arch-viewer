@@ -219,6 +219,15 @@ components. If `[archview.allowed]` already exists, those new components fail as
 `undeclared` until you name them - run `archview init --force` to regenerate the
 table with them included, then edit it down. See ADR 0015.
 
+**`"."` contributes every top-level directory that holds `.py` files, not only
+`tests/`.** Zero-config discovery skips `venv`, `build`, `node_modules` and the
+rest of its own list (plus dotfiles and `_private` names); an explicit root does
+not, because skipping `tests` there is exactly why `tests/` is invisible without
+one. On a typical repo the same rule reaches `scripts/`, `examples/`,
+`migrations/` or `alembic/` too, each becoming an `undeclared` component the
+moment `[archview.allowed]` exists. Keep one out of the rules with
+`ignored = ["scripts"]`, or drop its files entirely with `exclude`.
+
 ## Workspace mode
 
 A `[archview.workspace]` table at the repo root turns several packages — Python,
