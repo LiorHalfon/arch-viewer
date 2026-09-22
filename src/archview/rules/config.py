@@ -373,7 +373,7 @@ def _reject_stdlib(name: str, where: str) -> None:
 
 
 def _tables(
-    value: Any, where: str, keys: set[str], optional: set[str] = frozenset()
+    value: Any, where: str, keys: set[str], optional: frozenset[str] = frozenset()
 ) -> list[dict[str, Any]]:
     """Every entry needs a non-empty string for each of `keys`; `optional` may also
     be present (a typo in one of those is still caught) but is never required."""
