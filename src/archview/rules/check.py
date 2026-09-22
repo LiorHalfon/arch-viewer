@@ -22,6 +22,7 @@ from archview.rules.config import (
     EXCEPTION_KINDS,
     Config,
     ConfigError,
+    Exemption,
     Forbidden,
 )
 
@@ -564,6 +565,21 @@ def _partial_externals(
     )
 
 
+def _unused_exception_message(e: Exemption) -> str:
+    """An exception `kind` narrows on purpose - it excluding every import between
+    the pair is the feature working, not the exception going stale. Telling the
+    user to "remove it" is only right for `kind is None`; a narrowed exception gets
+    its own wording so the report does not steer someone into undoing the very
+    narrowing they asked for (Fix 5, review)."""
+    if e.kind is None:
+        return f"exception {e.importer} -> {e.imported} matches no import; remove it"
+    readable = e.kind.replace("_", "-")
+    return (
+        f"exception {e.importer} -> {e.imported} matches no {e.kind} import; "
+        f"the pair is imported, but not {readable}"
+    )
+
+
 def _warnings(
     model: Model,
     config: Config,
@@ -639,12 +655,7 @@ def _warnings(
         )
     for index, e in enumerate(config.exceptions):
         if index not in edges.exceptions_used:
-            warnings.append(
-                Notice(
-                    "unused_exception",
-                    f"exception {e.importer} -> {e.imported} matches no import; remove it",
-                )
-            )
+            warnings.append(Notice("unused_exception", _unused_exception_message(e)))
     for w in model.warnings:
         target = f" ({w.target})" if w.target else ""
         label = WARNING_LABELS.get(w.kind, w.kind.replace("_", " "))
