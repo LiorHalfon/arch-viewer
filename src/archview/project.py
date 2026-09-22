@@ -61,7 +61,11 @@ def open_project(
         )
     packages = _packages(repo, config)
     name = _choose(packages, repo, package or config.package)
-    extra = tuple(sorted((n, root) for n, root in packages.items() if n != name))
+    extra = (
+        tuple(sorted((n, root) for n, root in packages.items() if n != name))
+        if config.source_roots
+        else ()
+    )
     model = build_model(name, packages[name], relative_to=repo, extra=extra)
     return Project(repo, name, packages[name], config, path, without_files(model, config.exclude))
 

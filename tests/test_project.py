@@ -206,3 +206,26 @@ def test_a_single_root_repo_is_unchanged(tmp_path):
     root = _repo(tmp_path, '["src"]')
     report = project_report(open_project(root))
     assert report.components == ("api",)
+
+
+def test_a_zero_config_sibling_package_is_not_graphed_as_internal(tmp_path):
+    """Finding 1 (differential review, base vs. head): with no `source_roots` at
+    all, `_packages` falls back to `find_packages`, which can return more than one
+    top-level package (`--package` exists for exactly that repo shape - `_choose`'s
+    own `SeveralPackages` message says so). Extra roots must not fire here: this
+    repo shape never opted into them, so `b` - the sibling `--package a` did not
+    choose - must still be graphed as external, exactly as it was before extra
+    roots existed, not turned into an internal component that `undeclared` then
+    fails on."""
+    (tmp_path / "src" / "a").mkdir(parents=True)
+    (tmp_path / "src" / "a" / "__init__.py").write_text("")
+    (tmp_path / "src" / "a" / "x.py").write_text("from b import y\n")
+    (tmp_path / "src" / "b").mkdir(parents=True)
+    (tmp_path / "src" / "b" / "__init__.py").write_text("")
+    (tmp_path / "src" / "b" / "y.py").write_text("z = 1\n")
+    (tmp_path / "archview.toml").write_text(
+        '[archview]\npackage = "a"\n[archview.allowed]\nx = []\n'
+    )
+    report = project_report(open_project(tmp_path))
+    assert report.components == ("x",)
+    assert [(p.kind, p.components) for p in report.problems] == []
