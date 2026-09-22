@@ -93,6 +93,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C13 | A `[archview.workspace]` table at a repo's root lists several packages (Python and/or TypeScript), each opened with its own rules file when it has one; `check` runs every package's own check plus a declared `allowed`/`forbidden`/`exceptions` table for the imports *between* them, with one exit code. A cross-package import is attributed to its sibling by the M7 outside name it already produces. | MVP (M8) | GitHub issue #2; ADR 0012 |
 | C14 | A package declares its contract with `public` in its own rules file; a sibling may reach only those components, and the workspace tables accept qualified `package.component` targets. The component an import reaches is resolved, not guessed: the sibling packages are analysed together for Python, and `Import.resolved` carries tsc's resolution for TypeScript. A grant naming an unpublished component is a config error; an import that cannot be placed is reported, never assumed public. | MVP (M9) | GitHub issue #4; ADR 0013 |
 | C15 | `check` says what it is not checking. `type_checking_imports` defaults to `"include"`, and the key is a `ConfigError` where it cannot take effect (a workspace root's bare `[archview]` table). A `[archview.externals]` table that covers one component and not a neighbour reaching the same package says so, by name (`partial_externals`). `externals_undeclared = "error"` closes the table, failing a component that reaches outside without a key (`undeclared_externals`). A `source_roots` entry that contributes no modules to the package says so (`empty_source_root`). | MVP (M10) | GitHub issues #5, #8, #10; ADR 0014 |
+| C16 | A `source_roots` entry outside `package` contributes its top-level packages as components, so a rule can reach test code; `[[archview.exceptions]]` gains an optional `kind = "type_only"`, exempting only an import whose `type_checking` flag is set (a value import between the same pair still fails). | MVP (M11) | GitHub issues #8, #10; ADR 0015 |
 
 ## 7. Agent integration
 
@@ -134,13 +135,13 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-22, after M10)
+## 12. Implementation status (2026-09-22, after M11)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012) | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C15. C5 text + JSON | C5 GitHub Actions annotations |
+| Checker | C1–C4, C6–C16. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
@@ -166,6 +167,17 @@ one component and not a neighbour reaching the same package, and an opt-in close
 (`externals_undeclared = "error"`) that fails an undeclared reacher outright. A
 `source_roots` entry that contributes no modules to the package gets an
 `empty_source_root` notice.
+
+M11 (2026-09-22): test code under the rules, and type-only exceptions (C16, ADR
+0015), closing the second halves of issues #8 and #10. A `source_roots` entry
+outside `package` now contributes its top-level packages as components - the
+analysed package is graphed together with them, the multi-package call M9 already
+proved for siblings - so `["src", "."]` makes `tests/test_live.py` a module in a
+component named `tests` that a rule can reach; `["src", "tests"]`, the spelling
+issue #10 used, still contributes nothing and still warns.
+`[[archview.exceptions]]` gains `kind = "type_only"`, exempting only an import
+whose `type_checking` flag is set, so a value import between the same pair still
+fails.
 
 M7 (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
 `[archview.externals]`, `from = "*"`, a viewer overlay for the failing edge, and

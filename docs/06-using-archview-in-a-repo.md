@@ -104,6 +104,12 @@ importer = "shop.billing.legacy"
 imported = "shop.api.schemas"
 reason = "TT-123"
 
+[[archview.exceptions]]               # kind narrows what is exempted; omit it to exempt any import
+importer = "shop.screens"
+imported = "shop.api"
+kind = "type_only"                    # exempts only a type-checking-only import; a value import still fails
+reason = "a screen may name the shape of a prop it receives, never call the API"
+
 [archview.components]                 # dotted globs; a package pattern covers its subtree
 adapters = ["shop.db", "shop.http_*"]
 
@@ -160,9 +166,58 @@ other. Set it to `"ignore"` to check runtime imports only. In a workspace, set i
 each package's own rules file - the root's bare `[archview]` table is a `ConfigError`
 if it names this key, since the root config is never consulted per-package.
 
-Only code under `package` is analysed, even when `source_roots` lists more than one
-root; a root that contributes no modules to that package gets an `empty_source_root`
-notice naming it.
+An exception can be narrowed to type-only imports with `kind = "type_only"`, so it
+exempts only an import whose `type_checking` flag is set - a value import between
+the same importer and imported still fails. Leave `kind` out to exempt any import
+between the pair, exactly as before this key existed. Any other value is a
+`ConfigError`, so a typo cannot silently widen an exception. `kind` works the same
+way in `[[archview.workspace.exceptions]]` (below).
+
+## Test code under the rules
+
+**Use `source_roots = ["src", "."]`, not `["src", "tests"]`.** A `source_roots`
+entry outside `package` becomes a component when it is a package: `tests/` is a
+Python package (it has an `__init__.py`), and a package is rooted at the directory
+*above* it, not at itself - so the entry that makes `tests/` contribute is `"."`,
+the repo root, not `"tests"`. `["src", "tests"]` looks right and contributes
+nothing at all; archview warns about it (`empty_source_root`) but the fix is the
+spelling, not the warning.
+
+With `source_roots = ["src", "."]`, `tests/test_live.py` becomes module
+`tests.test_live` in component `tests`, exactly as if it lived under `src/`. It is
+now something a rule can name - the reporter's case that motivated this feature:
+a core package must never import a plugin, except one test that legitimately wires
+the real vendor.
+
+```toml
+[archview]
+package = "core"
+source_roots = ["src", "."]
+
+[archview.allowed]
+core  = []
+tests = ["core"]
+
+[[archview.forbidden]]                # no test may import a plugin
+from = "tests"
+to = "openai"
+
+[[archview.exceptions]]               # except this one, which wires the real vendor
+importer = "tests.test_live"
+imported = "openai"
+reason   = "integration test against the real vendor SDK"
+```
+
+A bare `.py` file sitting directly under a configured root does not become a
+component - only a package does, since grimp graphs packages and a loose module has
+nothing to name. `--hide-tests` still removes `tests` and its conventional
+siblings from the viewer and from `graph`, for the production-only picture; it does
+not affect what `check` enforces.
+
+Adding a root this way can turn modules that were previously invisible into
+components. If `[archview.allowed]` already exists, those new components fail as
+`undeclared` until you name them - run `archview init --force` to regenerate the
+table with them included, then edit it down. See ADR 0015.
 
 ## Workspace mode
 

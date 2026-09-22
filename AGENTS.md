@@ -7,23 +7,23 @@ AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1–M10 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
+**M1–M11 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
 Python, the TypeScript compiler API for TypeScript, ADR 0010), the model (views,
 cycles, layers, metrics, agent queries), the checker (`rules/`, with layers, zones,
-baseline and rules that name a package outside the project, ADR 0011, and notices for
-what it is not checking — a type-only import, a partly-covered externals table, an
-unfed source root, ADR 0014), workspace mode (`workspace.py`, several packages
-checked and drawn as one architecture, with a public surface per package, ADRs 0012
-and 0013), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`, `init`,
-`metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits its own
-`archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions
+baseline and rules that name a package outside the project, ADR 0011, notices for
+what it is not checking, ADR 0014, and rules that reach test code plus exceptions
+scoped to type-only imports, ADR 0015), workspace mode (`workspace.py`, several
+packages checked and drawn as one architecture, with a public surface per package,
+ADRs 0012 and 0013), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`,
+`init`, `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits its
+own `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions
 (`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
 Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
-2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M10
+2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M11
 3. `docs/superpowers/specs/` — the binding design specs a milestone is built from (ADRs 0011, 0012 both open by naming the one they record)
-4. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode, 0013 a package's public surface, 0014 say what is not checked
+4. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode, 0013 a package's public surface, 0014 say what is not checked, 0015 test code under the rules and type-only exceptions
 5. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
 6. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
 7. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks, workspace mode
