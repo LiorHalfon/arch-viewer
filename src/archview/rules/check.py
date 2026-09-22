@@ -16,7 +16,14 @@ from archview.model.graph import Import, Model
 from archview.model.metrics import Metrics, metrics
 from archview.model.patterns import matches_name
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, ALL_COMPONENTS, Config, ConfigError, Forbidden
+from archview.rules.config import (
+    ALL,
+    ALL_COMPONENTS,
+    EXCEPTION_KINDS,
+    Config,
+    ConfigError,
+    Forbidden,
+)
 
 ProblemKind = Literal[
     "not_allowed",
@@ -155,7 +162,7 @@ def _exemption(imp: Import, exemptions, sep: str) -> int | None:
         if (
             matches_name(e.importer, imp.importer, sep)
             and matches_name(e.imported, imp.imported, sep)
-            and (e.kind is None or (e.kind == "type_only" and imp.type_checking))
+            and (e.kind is None or EXCEPTION_KINDS[e.kind](imp))
         ):
             return index
     return None

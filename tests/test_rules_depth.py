@@ -71,6 +71,24 @@ def test_an_exception_without_a_kind_still_exempts_anything():
     assert check(m, config).problems == ()
 
 
+def test_a_new_exception_kind_is_driven_by_one_shared_predicate(monkeypatch):
+    """EXCEPTION_KINDS maps a kind name to the predicate that decides it, rather
+    than `_exemption` hardcoding a second, separate condition for `"type_only"`.
+    That is what makes adding a kind to the one mapping enough: a kind added here,
+    at the single source of truth, must be honoured by `_exemption` without any
+    change of its own - the failure mode this guards against is a kind that parses
+    and validates but the checker silently never exempts anything with it."""
+    from archview.rules import config as config_module
+
+    monkeypatch.setitem(config_module.EXCEPTION_KINDS, "always", lambda imp: True)
+    m = model(("web.screens", "web.api"))
+    config = Config(
+        allowed={"screens": [], "api": []},
+        exceptions=(Exemption("web.screens", "web.api", "demo", kind="always"),),
+    )
+    assert check(m, config).problems == ()
+
+
 def test_layers_forbid_importing_upwards_and_between_peers():
     config = parse_config({"layers": [["api", "cli"], "services", "domain"]})
     m = model(

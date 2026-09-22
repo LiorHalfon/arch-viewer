@@ -10,9 +10,12 @@ from __future__ import annotations
 import difflib
 import sys
 import tomllib
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from archview.model.graph import Import
 
 RULES_FILE = "archview.toml"
 ALL = "all"
@@ -42,7 +45,13 @@ class MetricRules:
     ignore: tuple[str, ...] = ()
 
 
-EXCEPTION_KINDS = ("type_only",)
+EXCEPTION_KINDS: Mapping[str, Callable[[Import], bool]] = {"type_only": lambda i: i.type_checking}
+"""One predicate per kind: the whole point is that this is the *only* place one is
+written. `_exemption` (check.py) looks a kind up here rather than re-testing it with
+a second, hand-written condition of its own - so a kind that parses (`_kind` below
+accepts any key of this mapping) is, by construction, a kind the checker can also
+act on. A kind added as a bare name with no predicate here - the shape a tuple used
+to allow - would parse and validate while exempting nothing, silently."""
 
 
 @dataclass(frozen=True, slots=True)
