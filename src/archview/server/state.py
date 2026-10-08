@@ -4,7 +4,6 @@ with their views cached per (package, root).
 
 from __future__ import annotations
 
-import os
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -16,7 +15,17 @@ from archview.model.graph import Model
 from archview.model.names import last
 from archview.model.serialize import view_to_dict
 from archview.model.view import View, build_view, tangled_packages
-from archview.project import Project, baseline_path, open_project, project_report
+from archview.project import (
+    Project,
+    baseline_path,
+    nested_scopes,
+    open_project,
+    package_dir,
+    project_report,
+    rules_files,
+    scope_baseline_path,
+    walk_files,
+)
 from archview.render.check import report_to_dict
 from archview.render.dot import to_dot
 from archview.render.mermaid import to_mermaid
@@ -36,11 +45,7 @@ SOURCE_SUFFIXES = {
 
 def source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
     """Files to watch below `root`, skipping node_modules and hidden directories."""
-    found: list[Path] = []
-    for directory, subdirs, files in os.walk(root):
-        subdirs[:] = [d for d in subdirs if d != "node_modules" and not d.startswith(".")]
-        found.extend(Path(directory) / f for f in files if f.endswith(suffixes))
-    return sorted(found)
+    return walk_files(root, lambda name: name.endswith(suffixes))
 
 
 class NotFound(Exception):
@@ -96,7 +101,18 @@ def _project_signature(project: Project) -> list[tuple[str, float]]:
     root = project.repo if language == "typescript" else project.source_root / project.package
     files = source_files(root, SOURCE_SUFFIXES.get(language, (".py",)))
     extra = [p for p in (project.config_path, baseline_path(project)) if p and p.is_file()]
-    return [(str(p), p.stat().st_mtime_ns) for p in (*files, *extra) if p.exists()]
+    return [(str(p), p.stat().st_mtime_ns) for p in (*files, *extra, *_nested_files(project))]
+
+
+def _nested_files(project: Project) -> list[Path]:
+    """The nested rules files and their baselines. A broken nested file stops
+    `nested_scopes`, so then the rules files alone are watched, and fixing one reloads."""
+    found = rules_files(package_dir(project))
+    try:
+        scopes, _ = nested_scopes(project)
+    except ConfigError:
+        return found
+    return [*found, *(b for b in map(scope_baseline_path, scopes) if b.is_file())]
 
 
 def _is_workspace_root(repo: Path, package: str | None, config_path: Path | None) -> bool:
@@ -245,7 +261,7 @@ class ViewerState:
             "generation": self.generation,
             "watching": self.watching,
             "error": self.error,
-            "failing": sum(1 for p in report.problems if p.fails) if report else 0,
+            "failing": report.failing if report else 0,
             "warnings": [asdict(w) for w in project.model.warnings],
             "workspace": False,
         }
@@ -254,8 +270,8 @@ class ViewerState:
         ws = self.workspace
         analyses = [self._packages[p.name] for p in ws.packages]
         between = self._workspace_report.between if self._workspace_report else None
-        failing = sum(1 for p in between.problems if p.fails) if between else 0
-        failing += sum(sum(1 for p in a.report.problems if p.fails) for a in analyses if a.report)
+        failing = between.failing if between else 0
+        failing += sum(a.report.failing for a in analyses if a.report)
         return {
             "project": ws.name,
             "repo": ws.root.name,

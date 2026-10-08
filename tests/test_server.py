@@ -462,3 +462,50 @@ def test_watch_watches_every_package_directory(workspace_repo):
     assert state.generation > first
     view = state.view(root="plugin", package="plugin")
     assert "plugin.extra" in [n["id"] for n in view["nodes"]]
+
+
+@pytest.fixture
+def nested_repo(tmp_path):
+    """A writable copy of the nested-rules fixture (`shop.services` has one failure)."""
+    shutil.copytree(FIXTURES / "nested", tmp_path, dirs_exist_ok=True)
+    return tmp_path
+
+
+def test_a_nested_scope_counts_in_failing(nested_repo):
+    summary = client_for(nested_repo).get("/api/project").json()
+
+    assert summary["failing"] == 1
+
+
+def test_a_nested_scope_marks_its_broken_edge_when_you_drill_in(nested_repo):
+    view = client_for(nested_repo).get("/api/view", params={"root": "shop.services"}).json()
+
+    broken = [(e["source"], e["target"]) for e in view["edges"] if e["violation"]]
+    assert broken == [("shop.services.print", "shop.services.users")]
+
+
+def test_check_carries_the_scopes(nested_repo):
+    report = client_for(nested_repo).get("/api/check").json()
+
+    assert report["scopes"][0]["project"] == "shop.services"
+
+
+def test_watch_notices_a_nested_rules_file_appearing(nested_repo):
+    state = ViewerState(nested_repo)
+    before = state._signature()
+
+    (nested_repo / "shop" / "api" / "archview.toml").write_text("[archview]\n")
+
+    assert state._signature() != before
+
+
+def test_watch_notices_a_broken_nested_rules_file_being_fixed(nested_repo):
+    rules = nested_repo / "shop" / "services" / "archview.toml"
+    good = rules.read_text()
+    rules.write_text("[archview\n")
+    state = ViewerState(nested_repo)
+    before = state._signature()
+
+    rules.write_text(good)
+
+    assert state._signature() != before

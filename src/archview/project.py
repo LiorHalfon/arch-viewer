@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -170,7 +171,7 @@ def nested_scopes(project: Project) -> tuple[tuple[Scope, ...], tuple[Notice, ..
     packages = {node.id for node in project.model.nodes if node.kind == "package"}
     scopes: list[Scope] = []
     notices: list[Notice] = []
-    for path in _rules_files(base):
+    for path in rules_files(base):
         if path.parent == base:
             notices.extend(_not_in_use(project, path))
             continue
@@ -188,14 +189,19 @@ def _scope(project: Project, path: Path, scope: str) -> Scope:
     return Scope(scope, path, shown, load_nested_config(path, project.config, shown, scope))
 
 
-def _rules_files(base: Path) -> list[Path]:
-    """Every rules file below `base`, skipping node_modules and hidden directories (the
-    rule `source_files` in `server/state.py` uses)."""
+def walk_files(root: Path, keep: Callable[[str], bool]) -> list[Path]:
+    """Files below `root` whose name `keep` accepts, sorted, skipping node_modules and
+    hidden directories."""
     found: list[Path] = []
-    for directory, subdirs, files in os.walk(base):
+    for directory, subdirs, files in os.walk(root):
         subdirs[:] = [d for d in subdirs if d != "node_modules" and not d.startswith(".")]
-        found.extend(Path(directory) / name for name in files if name == RULES_FILE)
+        found.extend(Path(directory) / name for name in files if keep(name))
     return sorted(found)
+
+
+def rules_files(base: Path) -> list[Path]:
+    """Every rules file below `base`."""
+    return walk_files(base, lambda name: name == RULES_FILE)
 
 
 def _not_in_use(project: Project, path: Path) -> list[Notice]:

@@ -9,13 +9,15 @@ ImportKey = tuple[str, str, int]
 
 
 def failing_imports(report: Report) -> frozenset[ImportKey]:
-    """Every import behind a failing rule problem (cycles and zones are drawn elsewhere)."""
-    return frozenset(
+    """Every import behind a failing rule problem, in the nested scopes too (cycles and
+    zones are drawn elsewhere)."""
+    own = frozenset(
         (i.importer, i.imported, i.line)
         for p in report.problems
         if p.fails and p.kind in ("not_allowed", "forbidden", "undeclared")
         for i in p.imports
     )
+    return own.union(*(failing_imports(scope) for _, scope in report.scopes))
 
 
 def violating_edges(view: View, failing: frozenset[ImportKey]) -> set[tuple[str, str]]:

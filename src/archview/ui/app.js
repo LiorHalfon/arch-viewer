@@ -664,9 +664,12 @@ async function openRules() {
     toast(error.message);
     return;
   }
-  const all = [...report.problems.filter((p) => p.fails), ...report.problems.filter((p) => !p.fails)];
-  const failing = all.filter((p) => p.fails).length;
-  const card = (p, i) => {
+  const scopes = report.scopes || [];
+  const order = (r) => [...r.problems.filter((p) => p.fails), ...r.problems.filter((p) => !p.fails)];
+  const shown = [];  // every problem shown, in order: data-p indexes into it across all sections
+  const failing = [report, ...scopes].reduce((n, r) => n + r.problems.filter((p) => p.fails).length, 0);
+  const card = (p) => {
+    const i = shown.push(p) - 1;
     const what = p.kind === "cycle" ? cycleText(p.components) : p.components.join(" → ");
     const known = p.baselined ? ` · ${p.baselined} in the baseline` : "";
     const status = p.fails ? "" : p.baselined ? " (known)" : " (reported only)";
@@ -677,16 +680,22 @@ async function openRules() {
       ${p.imports.length ? `<ul class="imports" data-p="${i}">${importItems(p.imports.slice(0, 20), true)}</ul>` : ""}
     </div>`;
   };
-  const unused = report.unused_allowances.length
-    ? `<h3>Allowed but unused</h3><ul class="links">${report.unused_allowances.map((u) => `<li>${esc(u.from)} → ${esc(u.to)}</li>`).join("")}</ul>` : "";
-  const warnings = report.warnings.length
-    ? `<h3>Warnings</h3><ul class="links">${report.warnings.map((w) => `<li>${esc(w.message)}</li>`).join("")}</ul>` : "";
+  const section = (r, empty) => {
+    const problems = order(r);
+    const unused = r.unused_allowances.length
+      ? `<h3>Allowed but unused</h3><ul class="links">${r.unused_allowances.map((u) => `<li>${esc(u.from)} → ${esc(u.to)}</li>`).join("")}</ul>` : "";
+    const warnings = r.warnings.length
+      ? `<h3>Warnings</h3><ul class="links">${r.warnings.map((w) => `<li>${esc(w.message)}</li>`).join("")}</ul>` : "";
+    return (problems.length ? problems.map(card).join("") : empty) + unused + warnings;
+  };
+  const scopeSection = (s) => `<h3>${esc(s.project)}</h3><div class="sub">${esc(s.rules)} · ${plural(s.components.length, "component")}</div>`
+    + section(s, '<p class="hint">No problems.</p>');
   const body = openPanel(
     `<h2>${failing ? plural(failing, "failing problem") : "Rules pass"}</h2><div class="sub">${esc(state.project.rules)} · ${plural(report.components.length, "component")}</div>`,
-    (all.length ? all.map(card).join("") : '<p class="hint">No problems.</p>') + unused + warnings,
+    section(report, scopes.length ? "" : '<p class="hint">No problems.</p>') + scopes.map(scopeSection).join(""),
   );
   body.querySelectorAll(".imports[data-p]").forEach((ul) => {
-    const imports = all[Number(ul.dataset.p)].imports;
+    const imports = shown[Number(ul.dataset.p)].imports;
     ul.querySelectorAll("li").forEach((li) => {
       const imp = imports[Number(li.dataset.n)];
       li.onclick = () => openSource(imp.importer, imp.line);
