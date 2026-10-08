@@ -6,13 +6,16 @@ import pytest
 
 from archview.rules.config import (
     ALL,
+    ROOT_ONLY_KEYS,
     Config,
     ConfigError,
     Exemption,
     Forbidden,
     find_config,
     load_config,
+    load_nested_config,
     parse_config,
+    parse_nested_config,
 )
 
 
@@ -316,3 +319,76 @@ def test_no_public_key_means_none(tmp_path):
 def test_an_empty_public_list_is_not_none(tmp_path):
     """`public = []` publishes nothing; an absent key publishes everything."""
     assert written(tmp_path, '[archview]\npackage = "core"\npublic = []\n').public == ()
+
+
+NESTED_ROOT = Config(type_checking_imports="ignore", exclude=("**/gen/**",))
+NESTED_FILE = "shop/services/archview.toml"
+ROOT_ONLY_VALUES = {
+    "package": "shop",
+    "language": "python",
+    "tsconfig": "tsconfig.json",
+    "source_roots": ["src"],
+    "exclude": ["x"],
+    "type_checking_imports": "ignore",
+    "externals": {},
+    "externals_undeclared": "allow",
+    "public": [],
+    "workspace": {},
+}
+
+
+def test_a_nested_file_takes_the_rule_keys_and_inherits_the_model_keys():
+    c = parse_nested_config(
+        {"allowed": {"print": ["pricing"]}, "fail_on_cycles": False},
+        NESTED_ROOT,
+        NESTED_FILE,
+        "shop.services",
+    )
+    assert c.allowed == {"print": ("pricing",)}
+    assert (c.type_checking_imports, c.exclude, c.fail_on_cycles) == (
+        "ignore",
+        ("**/gen/**",),
+        False,
+    )
+    assert c.path == NESTED_FILE
+
+
+def test_every_root_only_key_has_a_test_value():
+    assert set(ROOT_ONLY_VALUES) == ROOT_ONLY_KEYS
+
+
+@pytest.mark.parametrize("key", sorted(ROOT_ONLY_KEYS))
+def test_a_nested_file_rejects_every_root_only_key(key):
+    message = (
+        rf"^{NESTED_FILE.replace('.', r'\.')}: \[archview\] {key} belongs in the root rules file"
+    )
+    with pytest.raises(ConfigError, match=message):
+        parse_nested_config({key: ROOT_ONLY_VALUES[key]}, NESTED_ROOT, NESTED_FILE, "shop.services")
+
+
+def test_a_nested_typo_still_gets_a_suggestion():
+    with pytest.raises(
+        ConfigError, match=r"^shop/services/archview\.toml: .*did you mean 'allowed'"
+    ):
+        parse_nested_config({"alowed": {}}, NESTED_ROOT, NESTED_FILE, "shop.services")
+
+
+def test_load_nested_config_reads_a_file_holding_only_allowed(tmp_path):
+    path = tmp_path / "archview.toml"
+    path.write_text('[archview.allowed]\nprint = ["pricing"]\n')
+    c = load_nested_config(path, NESTED_ROOT, NESTED_FILE, "shop.services")
+    assert c.allowed == {"print": ("pricing",)}
+
+
+def test_load_nested_config_names_the_file_by_its_shown_path(tmp_path):
+    path = tmp_path / "archview.toml"
+    path.write_text("[archview\n")
+    with pytest.raises(ConfigError, match=r"^shop/services/archview\.toml: not valid TOML"):
+        load_nested_config(path, NESTED_ROOT, NESTED_FILE, "shop.services")
+
+
+def test_load_nested_config_names_a_missing_table_by_its_shown_path(tmp_path):
+    path = tmp_path / "archview.toml"
+    path.write_text("[other]\n")
+    with pytest.raises(ConfigError, match=r"^shop/services/archview\.toml: no \[archview\] table"):
+        load_nested_config(path, NESTED_ROOT, NESTED_FILE, "shop.services")

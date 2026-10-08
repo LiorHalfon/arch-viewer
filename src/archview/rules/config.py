@@ -11,7 +11,7 @@ import difflib
 import sys
 import tomllib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +167,22 @@ WORKSPACE_KEYS = {
     "exceptions",
     "baseline",
 }
+NESTED_KEYS = frozenset(
+    {
+        "allowed",
+        "forbidden",
+        "layers",
+        "independent",
+        "exceptions",
+        "components",
+        "ignored",
+        "fail_on_violations",
+        "fail_on_cycles",
+        "metrics",
+        "baseline",
+    }
+)
+ROOT_ONLY_KEYS = frozenset(TOP_KEYS) - NESTED_KEYS
 
 
 def find_config(repo: Path) -> Path | None:
@@ -191,13 +207,37 @@ def load_config(path: Path) -> Config:
     return parse_config(table, where=where, path=path.name)
 
 
-def _read_toml(path: Path) -> dict[str, Any]:
+def load_nested_config(path: Path, root: Config, shown: str, scope: str) -> Config:
+    """Read `[archview]` from a nested rules file, naming it by `shown` in errors."""
+    table = _read_toml(path, shown).get("archview")
+    if not isinstance(table, dict):
+        raise ConfigError(f"{shown}: no [archview] table")
+    return parse_nested_config(table, root, shown, scope)
+
+
+def parse_nested_config(
+    table: dict[str, Any], root: Config, shown: str, scope: str, where: str = "archview"
+) -> Config:
+    """Rule keys from `table`; `type_checking_imports` and `exclude` from `root`."""
+    for key in sorted(ROOT_ONLY_KEYS & table.keys()):
+        raise ConfigError(
+            f"{shown}: [{where}] {key} belongs in the root rules file; "
+            f"a nested file holds rules between the children of {scope}"
+        )
+    try:
+        config = parse_config(table, where, shown)
+    except ConfigError as error:
+        raise ConfigError(f"{shown}: {error}") from error
+    return replace(config, type_checking_imports=root.type_checking_imports, exclude=root.exclude)
+
+
+def _read_toml(path: Path, shown: str | None = None) -> dict[str, Any]:
     try:
         return tomllib.loads(path.read_text())
     except OSError as error:
-        raise ConfigError(f"cannot read {path}: {error.strerror}") from error
+        raise ConfigError(f"cannot read {shown or path}: {error.strerror}") from error
     except tomllib.TOMLDecodeError as error:
-        raise ConfigError(f"{path.name}: not valid TOML: {error}") from error
+        raise ConfigError(f"{shown or path.name}: not valid TOML: {error}") from error
 
 
 def parse_config(table: dict[str, Any], where: str = "archview", path: str | None = None) -> Config:
