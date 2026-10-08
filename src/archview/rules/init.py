@@ -62,6 +62,9 @@ def infer_rules(model: Model, config: Config | None = None, externals: bool = Fa
     if roots:
         lines.append(f"source_roots = {_array(roots)}")
     lines.append(f"exclude = {_array(config.exclude)}")
+    if config.type_checking_imports != Config().type_checking_imports:
+        # The edges above were inferred with this setting; `check` must read them with it.
+        lines.append(f"type_checking_imports = {json.dumps(config.type_checking_imports)}")
     if config.ignored:
         lines.append(f"ignored = {_array(config.ignored)}")
     lines.append("fail_on_violations = true")

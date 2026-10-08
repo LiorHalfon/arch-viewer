@@ -107,6 +107,28 @@ def test_init_can_exclude_files_and_keeps_the_exclusion(repo, capsys):
     assert run(capsys, "check", str(repo))[0] == 0
 
 
+def test_init_force_keeps_type_checking_imports_so_its_rules_pass(tmp_path, capsys):
+    """`init` infers the rules with the old setting, so it must write it too: without
+    it `check` falls back to "include" and fails on the import `init` skipped (#13)."""
+    for path, text in {
+        "shop/__init__.py": "",
+        "shop/a/__init__.py": "",
+        "shop/a/uses.py": (
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from shop.b.core import B\n"
+        ),
+        "shop/b/__init__.py": "",
+        "shop/b/core.py": "class B: ...\n",
+        "archview.toml": '[archview]\npackage = "shop"\ntype_checking_imports = "ignore"\n',
+    }.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+
+    assert run(capsys, "init", str(tmp_path), "--force")[0] == 0
+
+    assert 'type_checking_imports = "ignore"' in (tmp_path / "archview.toml").read_text()
+    assert run(capsys, "check", str(tmp_path))[0] == 0
+
+
 def test_a_broken_rules_file_is_a_usage_error_not_a_failed_check(repo, capsys):
     (repo / "archview.toml").write_text("[archview]\nalowed = {}\n")
 
