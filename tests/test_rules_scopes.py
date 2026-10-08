@@ -62,6 +62,17 @@ def test_a_forbidden_target_that_is_a_child_is_not_a_dead_rule():
     assert not [w for w in r.warnings if "not a child" in w.message]
 
 
+def test_a_scope_without_allowed_points_at_init_root():
+    r = check_scope(M, "app.svc", Config())
+    assert [w for w in r.warnings if w.kind == "no_rules"] == [
+        Notice(
+            "no_rules",
+            "no [archview.allowed] table: only cycles are checked; "
+            "run `archview init --root app.svc` to write one",
+        )
+    ]
+
+
 def test_a_report_fails_when_a_scope_fails():
     inner = check_scope(M, "app.svc", Config(allowed={"print": (), "pricing": (), "users": ()}))
     outer = Report("app", ("svc",), (), (), scopes=(("app/svc/archview.toml", inner),))
