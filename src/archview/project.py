@@ -1,11 +1,13 @@
 """Open a repo: find its rules, its package and build the filtered model.
 
 Shared by every face of the tool (the CLI commands and the server), so they all see
-the same model for the same repo.
+the same model for the same repo. `project_report` also checks each nested rules file
+found below the package directory (M12).
 """
 
 from __future__ import annotations
 
+import os
 import posixpath
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -15,9 +17,18 @@ from archview.extract.discover import find_packages
 from archview.extract.python import build_model
 from archview.model.filter import without_files
 from archview.model.graph import Model
+from archview.model.names import stripped_source_root
 from archview.rules.baseline import BASELINE_FILE, apply_baseline, load_baseline
 from archview.rules.check import Notice, Report, check
-from archview.rules.config import Config, ConfigError, find_config, load_config
+from archview.rules.config import (
+    RULES_FILE,
+    Config,
+    ConfigError,
+    find_config,
+    load_config,
+    load_nested_config,
+)
+from archview.rules.scopes import check_scope
 
 
 class ProjectError(Exception):
@@ -36,6 +47,16 @@ class Project:
     config: Config
     config_path: Path | None
     model: Model
+
+
+@dataclass(frozen=True, slots=True)
+class Scope:
+    """A package whose own rules file holds the rules between its children."""
+
+    id: str
+    rules: Path
+    shown: str  # how reports name `rules`: relative to the repo, POSIX separators
+    config: Config
 
 
 def open_project(
@@ -116,20 +137,116 @@ def _choose(packages: dict[str, Path], repo: Path, asked: str | None) -> str:
     return next(iter(packages))
 
 
+def package_dir(project: Project) -> Path:
+    """The directory the model's root id stands for; nested rules files live below it."""
+    if project.model.language != "typescript":
+        return project.source_root / project.package
+    roots = project.config.source_roots
+    return project.repo / (roots[0] if roots else stripped_source_root(project.model) or "")
+
+
+def scope_dir(project: Project, scope: str) -> Path:
+    """The directory of the package `scope`; the inverse of `_scope_id`."""
+    sep = project.model.separator
+    below = scope.split(sep)[len(project.model.project.split(sep)) :]
+    return package_dir(project).joinpath(*below)
+
+
+def _scope_id(project: Project, below: Path) -> str:
+    """The package id of a directory, given relative to the package directory."""
+    return project.model.separator.join((project.model.project, *below.parts))
+
+
+def nested_scopes(project: Project) -> tuple[tuple[Scope, ...], tuple[Notice, ...]]:
+    """The `archview.toml` files below the package directory: the scopes they hold,
+    sorted by id, and a notice for each file that is not checked."""
+    base = package_dir(project)
+    packages = {node.id for node in project.model.nodes if node.kind == "package"}
+    scopes: list[Scope] = []
+    notices: list[Notice] = []
+    for path in _rules_files(base):
+        if path.parent == base:
+            notices.extend(_not_in_use(project, path))
+            continue
+        scope = _scope_id(project, path.parent.relative_to(base))
+        if scope in packages:
+            scopes.append(_scope(project, path, scope))
+        else:
+            why = f"{scope} is not a package archview analyses (excluded, or not a package)"
+            notices.append(_unchecked(project, path, why))
+    return tuple(sorted(scopes, key=lambda s: s.id)), tuple(notices)
+
+
+def _scope(project: Project, path: Path, scope: str) -> Scope:
+    shown = _shown(project, path)
+    return Scope(scope, path, shown, load_nested_config(path, project.config, shown, scope))
+
+
+def _rules_files(base: Path) -> list[Path]:
+    """Every rules file below `base`, skipping node_modules and hidden directories (the
+    rule `source_files` in `server/state.py` uses)."""
+    found: list[Path] = []
+    for directory, subdirs, files in os.walk(base):
+        subdirs[:] = [d for d in subdirs if d != "node_modules" and not d.startswith(".")]
+        found.extend(Path(directory) / name for name in files if name == RULES_FILE)
+    return sorted(found)
+
+
+def _not_in_use(project: Project, path: Path) -> list[Notice]:
+    """A rules file in the package directory would hold the root's rules, which come
+    from the rules file in use; say so unless it is that file."""
+    rules = project.config_path or project.repo / RULES_FILE
+    if path.resolve() == rules.resolve():
+        return []
+    why = f"the rules for {project.model.project} are read from {_shown(project, rules)}"
+    return [_unchecked(project, path, why)]
+
+
+def _unchecked(project: Project, path: Path, why: str) -> Notice:
+    return Notice("unchecked_rules_file", f"{_shown(project, path)} is not checked: {why}")
+
+
+def _shown(project: Project, path: Path) -> str:
+    """`path` relative to the repo with POSIX separators, or in full outside the repo."""
+    path = path.resolve()
+    if path.is_relative_to(project.repo):
+        return path.relative_to(project.repo).as_posix()
+    return str(path)
+
+
 def baseline_path(project: Project) -> Path:
     """Next to the rules file unless `baseline` names another place (relative to it)."""
     base = project.config_path.parent if project.config_path else project.repo
     return base / (project.config.baseline or BASELINE_FILE)
 
 
+def scope_baseline_path(scope: Scope) -> Path:
+    """The same rule as `baseline_path`, with the nested rules file in place of the root's."""
+    return scope.rules.parent / (scope.config.baseline or BASELINE_FILE)
+
+
 def project_report(project: Project, in_workspace: bool = False) -> Report:
-    """`archview check` for this project, with its baseline applied when there is one."""
+    """`archview check` for this project and each nested scope, each with its own
+    baseline applied when there is one."""
+    scopes, notices = nested_scopes(project)
     report = check(project.model, project.config, in_workspace)
-    report = replace(report, warnings=report.warnings + tuple(_empty_source_root_warnings(project)))
-    path = baseline_path(project)
+    warnings = (*report.warnings, *_empty_source_root_warnings(project), *notices)
+    report = replace(report, warnings=warnings)
+    report = _baselined(report, baseline_path(project), project.config.baseline)
+    checked = tuple((scope.shown, _scope_report(project, scope, in_workspace)) for scope in scopes)
+    return replace(report, scopes=checked)
+
+
+def _scope_report(project: Project, scope: Scope, in_workspace: bool) -> Report:
+    report = check_scope(project.model, scope.id, scope.config, in_workspace)
+    return _baselined(report, scope_baseline_path(scope), scope.config.baseline)
+
+
+def _baselined(report: Report, path: Path, configured: str | None) -> Report:
+    """`report` with the baseline at `path` applied; a configured baseline must exist."""
     if path.is_file():
-        report = apply_baseline(report, load_baseline(path), path.name)
-    elif project.config.baseline:
+        return apply_baseline(report, load_baseline(path), path.name)
+    if configured:
         raise ConfigError(f"baseline {path} does not exist; `archview check --update-baseline`")
     return report
 
