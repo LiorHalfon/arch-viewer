@@ -18,7 +18,13 @@ from archview.extract.python import build_model
 from archview.model.filter import without_files
 from archview.model.graph import Model
 from archview.model.names import stripped_source_root
-from archview.rules.baseline import BASELINE_FILE, apply_baseline, load_baseline
+from archview.rules.baseline import (
+    BASELINE_FILE,
+    Baseline,
+    apply_baseline,
+    baseline_of,
+    load_baseline,
+)
 from archview.rules.check import Notice, Report, check
 from archview.rules.config import (
     RULES_FILE,
@@ -235,6 +241,17 @@ def project_report(project: Project, in_workspace: bool = False) -> Report:
     report = _baselined(report, baseline_path(project), project.config.baseline)
     checked = tuple((scope.shown, _scope_report(project, scope, in_workspace)) for scope in scopes)
     return replace(report, scopes=checked)
+
+
+def fresh_baselines(project: Project) -> list[tuple[Path, Baseline]]:
+    """What `--update-baseline` writes: the root baseline, then one per nested scope,
+    each from its own unbaselined check."""
+    fresh = [(baseline_path(project), baseline_of(check(project.model, project.config)))]
+    scopes, _ = nested_scopes(project)
+    for scope in scopes:
+        report = check_scope(project.model, scope.id, scope.config)
+        fresh.append((scope_baseline_path(scope), baseline_of(report)))
+    return fresh
 
 
 def _scope_report(project: Project, scope: Scope, in_workspace: bool) -> Report:

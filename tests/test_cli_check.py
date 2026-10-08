@@ -286,3 +286,19 @@ def test_an_invalid_nested_rules_file_exits_2(tmp_path, capsys):
 
     assert code == 2
     assert "shop/services/archview.toml: not valid TOML" in err
+
+
+def test_update_baseline_writes_one_baseline_per_scope(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+
+    code, out, _ = run(capsys, "check", str(copy), "--update-baseline")
+
+    assert code == 0
+    lines = out.splitlines()
+    assert len(lines) == 2
+    assert lines[1].endswith("shop/services/archview-baseline.json (1 known problems)")
+    assert (copy / "shop/services/archview-baseline.json").is_file()
+
+    code, out, _ = run(capsys, "check", str(copy))
+    assert code == 0
+    assert "known:" in out

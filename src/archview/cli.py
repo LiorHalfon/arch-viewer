@@ -38,7 +38,7 @@ from archview.project import (
     Project,
     ProjectError,
     SeveralPackages,
-    baseline_path,
+    fresh_baselines,
     open_project,
     project_report,
 )
@@ -222,10 +222,8 @@ def _check(args: argparse.Namespace) -> int:
         return _check_workspace(args, ws)
     project = _rules_project(args)
     if args.update_baseline:
-        path = baseline_path(project)
-        baseline = baseline_of(check(project.model, project.config))
-        path.write_text(baseline.to_json())
-        sys.stdout.write(f"wrote {path} ({len(baseline.entries)} known problems)\n")
+        written = [_write_baseline(path, b) for path, b in fresh_baselines(project)]
+        sys.stdout.write("\n".join(written) + "\n")
         return 0
     report = project_report(project)
     if args.format == "json":
@@ -251,11 +249,10 @@ def _update_workspace_baseline(ws: Workspace) -> int:
     `--update-baseline` would write it, plus the workspace baseline when
     `[archview.workspace].baseline` names one."""
     written = [
-        _write_baseline(
-            baseline_path(p.project), baseline_of(check(p.project.model, p.project.config))
-        )
+        _write_baseline(path, baseline)
         for p in ws.packages
         if p.has_rules
+        for path, baseline in fresh_baselines(p.project)
     ]
     rules = ws.config.workspace
     if rules.baseline:

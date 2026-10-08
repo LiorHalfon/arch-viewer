@@ -294,3 +294,14 @@ def test_a_nested_scope_inside_a_member_fails_the_workspace(tmp_path, capsys):
     code, out = run(capsys, "check", str(root))
     assert code == 1
     assert "  core.engine (src/core/engine/archview.toml)  1 problem" in out
+
+
+def test_update_baseline_writes_a_baseline_per_member_scope(tmp_path, capsys):
+    root = workspace_dir(tmp_path)
+    add_engine_scope(root)
+
+    code, out = run(capsys, "check", str(root), "--update-baseline")
+
+    assert code == 0
+    assert "core/src/core/engine/archview-baseline.json (1 known problems)" in out
+    assert (root / "core/src/core/engine/archview-baseline.json").is_file()
