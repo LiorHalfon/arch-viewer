@@ -363,3 +363,13 @@ def test_a_scope_baseline_that_is_missing_is_a_config_error(tmp_path):
 
     with pytest.raises(ConfigError, match=r"baseline .*services/missing\.json does not exist"):
         project_report(open_project(copy))
+
+
+@pytest.mark.parametrize("text", ["{not json", '{"entries": []}'])
+def test_a_broken_scope_baseline_is_named_by_its_path_in_the_repo(tmp_path, text):
+    """Every scope's baseline has the same file name, so the error names the path."""
+    copy = _nested(tmp_path)
+    (copy / "shop" / "services" / BASELINE_FILE).write_text(text)
+
+    with pytest.raises(ConfigError, match=r"shop/services/archview-baseline\.json"):
+        project_report(open_project(copy))

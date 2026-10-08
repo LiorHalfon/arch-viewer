@@ -262,13 +262,17 @@ def fresh_baselines(project: Project) -> list[tuple[Path, Baseline]]:
 
 def _scope_report(project: Project, scope: Scope, in_workspace: bool) -> Report:
     report = check_scope(project.model, scope.id, scope.config, in_workspace)
-    return _baselined(report, scope_baseline_path(scope), scope.config.baseline)
+    path = scope_baseline_path(scope)
+    return _baselined(report, path, scope.config.baseline, shown_path(project, path))
 
 
-def _baselined(report: Report, path: Path, configured: str | None) -> Report:
-    """`report` with the baseline at `path` applied; a configured baseline must exist."""
+def _baselined(
+    report: Report, path: Path, configured: str | None, shown: str | None = None
+) -> Report:
+    """`report` with the baseline at `path` applied; a configured baseline must exist.
+    Errors name it `shown`: every scope's baseline has the same file name."""
     if path.is_file():
-        return apply_baseline(report, load_baseline(path), path.name)
+        return apply_baseline(report, load_baseline(path, shown), path.name)
     if configured:
         raise ConfigError(f"baseline {path} does not exist; `archview check --update-baseline`")
     return report
