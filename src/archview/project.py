@@ -184,7 +184,7 @@ def nested_scopes(project: Project) -> tuple[tuple[Scope, ...], tuple[Notice, ..
 
 
 def _scope(project: Project, path: Path, scope: str) -> Scope:
-    shown = _shown(project, path)
+    shown = shown_path(project, path)
     return Scope(scope, path, shown, load_nested_config(path, project.config, shown, scope))
 
 
@@ -204,15 +204,15 @@ def _not_in_use(project: Project, path: Path) -> list[Notice]:
     rules = project.config_path or project.repo / RULES_FILE
     if path.resolve() == rules.resolve():
         return []
-    why = f"the rules for {project.model.project} are read from {_shown(project, rules)}"
+    why = f"the rules for {project.model.project} are read from {shown_path(project, rules)}"
     return [_unchecked(project, path, why)]
 
 
 def _unchecked(project: Project, path: Path, why: str) -> Notice:
-    return Notice("unchecked_rules_file", f"{_shown(project, path)} is not checked: {why}")
+    return Notice("unchecked_rules_file", f"{shown_path(project, path)} is not checked: {why}")
 
 
-def _shown(project: Project, path: Path) -> str:
+def shown_path(project: Project, path: Path) -> str:
     """`path` relative to the repo with POSIX separators, or in full outside the repo."""
     path = path.resolve()
     if path.is_relative_to(project.repo):
