@@ -344,6 +344,73 @@ rather than silently doing nothing.
 what may depend on what is the architectural decision a human is making, not one to
 infer from imports. See ADR 0012.
 
+## Rules inside a sub-package
+
+The rules file names components, and a component is a direct child of the project
+package. In a package like `src/webapp/`, that makes `services` one component, and
+the dozen packages inside it cannot be told apart. Put an `archview.toml` in the
+directory of the package whose children you want to constrain:
+
+```toml
+# src/webapp/services/archview.toml
+[archview]
+fail_on_violations = true
+fail_on_cycles = true
+
+[archview.allowed]
+authors = ["print"]
+delivery = []
+fulfillment = ["print", "story_generation", "templates"]
+imaging = []
+payment = []
+pricing = []
+print = ["payment", "pricing", "storage", "templates", "users"]
+"src.webapp.services" = ["stories", "users"]
+storage = []
+stories = ["imaging", "print", "templates"]
+story_generation = ["print", "storage", "stories", "templates", "users"]
+templates = []
+users = ["storage"]
+```
+
+`archview init --root src.webapp.services` writes this file from the imports as they
+are today. The root file is unchanged and still sees `services` as part of `webapp`.
+On `tiny-tale-backend` this replaced the 27 component patterns issue #14 needed, and
+the false `webapp` cycle went with them.
+
+How it works:
+
+- `check` runs each nested file on the part of the model inside its package, and
+  prints it as a section of its own with its own count of problems. The exit code is 1
+  if the root or any scope fails.
+- Names in `allowed`, `forbidden`, `layers`, `independent` and `ignored` are the short
+  child names (`print`). Module patterns in `components` and `exceptions` use full
+  module names (`src.webapp.services.print.*`), as the root file does.
+- A scope's own `__init__.py`, when it imports or is imported, is a component named
+  after the full scope id, `"src.webapp.services"` above. This is the way a project's
+  root module is a component named after the project. Leave it out of `allowed` and
+  `check` reports it as `undeclared`.
+- A nested file holds rule keys only. `package`, `language`, `tsconfig`,
+  `source_roots`, `exclude`, `type_checking_imports`, `externals`,
+  `externals_undeclared`, `public` and `workspace` belong to the root, and a nested file
+  that sets one is a `ConfigError` that names the file and the key. The scope uses the
+  root's `exclude` and `type_checking_imports`.
+- A scope sees only imports between its own modules. Imports that leave the scope are
+  checked by the rules above it, so a `forbidden` entry that names something outside the
+  scope gets an `unknown_component` notice.
+- A nested file may hold a `baseline`, resolved against that file, or sit next to an
+  `archview-baseline.json`. `check --update-baseline` writes one per scope.
+- A nested file may contain further nested files. In a workspace, a member's scopes are
+  reported inside that member's section.
+- A nested file in a package archview does not analyse (excluded, or not a package)
+  gets an `unchecked_rules_file` notice instead of being ignored.
+- `serve` draws a scope's failing imports in red when you drill into it and lists its
+  problems in the check panel. `--watch` reloads when a nested file changes.
+
+Not covered: limiting which modules outside a scope its components may import,
+`archview metrics` per scope (the numbers are in `check --format json`), and
+`[tool.archview]` in a nested `pyproject.toml`.
+
 ## Legacy code: baseline
 
 ```bash

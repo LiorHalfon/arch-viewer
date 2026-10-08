@@ -1,6 +1,6 @@
 # M12 design: rules for sub-packages
 
-Date: 2026-10-08. Status: approved in brainstorming, pending spec review.
+Date: 2026-10-08. Status: implemented in M12 (ADR 0016).
 
 GitHub issue #14. Rules can only be written between components, and a component is a
 direct child of the project package unless `[archview.components]` says otherwise. That
