@@ -205,8 +205,9 @@ existing nested file's `components` and `ignored` are kept, as the root's are to
 Existing cycles switch `fail_on_cycles` off with the same comment the root gets.
 
 Usage errors (exit 2): `X` is a module, `X` is the project itself, or `--root` is given
-with `--externals`, `--config` or `--exclude`, which are root-only. An existing nested file
-without `--force` is refused with the root's message. `--stdout` prints instead of writing.
+with `--externals`, `--config`, `--exclude`, `--tsconfig` or `--language`, which are
+root-only. An existing nested file without `--force` is refused with the root's message.
+`--stdout` prints instead of writing.
 
 ## 7. `serve`
 

@@ -261,20 +261,46 @@ def test_graph_at_a_workspace_root_marks_a_cross_package_violation(tmp_path, cap
         assert '"plugin" -> "core" [label="1" color="#d9480f" style="dashed"' in out
 
 
+def add_ab_scope(scope: Path, package: str) -> None:
+    """A package `package` at `scope` whose rules say its children `a` and `b` may not
+    import each other, and one violation: `a.x` imports `b.y`."""
+    (scope / "a").mkdir(parents=True)
+    (scope / "b").mkdir()
+    (scope / "__init__.py").write_text("")
+    (scope / "a/__init__.py").write_text("")
+    (scope / "a/x.py").write_text(f"from {package}.b import y\n")
+    (scope / "b/__init__.py").write_text("")
+    (scope / "b/y.py").write_text("")
+    (scope / "archview.toml").write_text("[archview.allowed]\na = []\nb = []\n")
+
+
 def add_engine_scope(root: Path) -> None:
     """Give workspace member `core` a nested scope, `core.engine`, whose rules `a` and
     `b` may not import each other, and one violation: `a.x` imports `b.y`."""
-    engine = root / "core/src/core/engine"
-    (engine / "a").mkdir(parents=True)
-    (engine / "b").mkdir()
-    (engine / "__init__.py").write_text("")
-    (engine / "a/__init__.py").write_text("")
-    (engine / "a/x.py").write_text("from core.engine.b import y\n")
-    (engine / "b/__init__.py").write_text("")
-    (engine / "b/y.py").write_text("")
-    (engine / "archview.toml").write_text("[archview.allowed]\na = []\nb = []\n")
+    add_ab_scope(root / "core/src/core/engine", "core.engine")
     rules = root / "core/archview.toml"
     rules.write_text(rules.read_text() + "engine = []\n")
+
+
+def test_a_nested_rules_file_in_a_member_without_rules_is_named(tmp_path, capsys):
+    """`plugin` has no rules file, so nothing checks inside it; its nested file must
+    say so rather than pass unread."""
+    root = workspace_dir(tmp_path)
+    add_ab_scope(root / "plugin/src/plugin/eng", "plugin.eng")
+    message = (
+        "plugin/src/plugin/eng/archview.toml is not checked: plugin has no rules file of its own"
+    )
+
+    code, out = run(capsys, "check", str(root))
+
+    assert code == 0
+    assert f"  warning: {message}\n" in out
+
+    code, out = run(capsys, "check", str(root), "--format", "json")
+
+    assert code == 0
+    warnings = json.loads(out)["between"]["warnings"]
+    assert {"kind": "unchecked_rules_file", "message": message} in warnings
 
 
 def test_a_nested_scope_inside_a_member_fails_the_workspace(tmp_path, capsys):
@@ -305,3 +331,43 @@ def test_update_baseline_writes_a_baseline_per_member_scope(tmp_path, capsys):
     assert code == 0
     assert "core/src/core/engine/archview-baseline.json (1 known problems)" in out
     assert (root / "core/src/core/engine/archview-baseline.json").is_file()
+
+
+def test_update_baseline_writes_nothing_when_a_later_member_is_broken(tmp_path, capsys):
+    """Every baseline is worked out before any is written, so a broken nested file in
+    `plugin` cannot leave `core`'s baseline written without its `wrote` line."""
+    root = workspace_dir(tmp_path)
+    (root / "plugin/archview.toml").write_text(
+        '[archview]\npackage = "plugin"\nsource_roots = ["src"]\n'
+    )
+    add_ab_scope(root / "plugin/src/plugin/eng", "plugin.eng")
+    (root / "plugin/src/plugin/eng/archview.toml").write_text("[archview.allowed\n")
+
+    code, out = run(capsys, "check", str(root), "--update-baseline")
+
+    assert code == 2
+    assert out == ""
+    assert not (root / "core/archview-baseline.json").exists()
+
+
+def test_update_baseline_writes_member_and_workspace_baselines_then_the_check_passes(
+    tmp_path, capsys
+):
+    """A member's configured baseline need not exist yet: the workspace baseline is
+    worked out from the rules between packages alone."""
+    root = workspace_dir(tmp_path)
+    (root / "archview.toml").write_text(
+        '[archview.workspace]\npackages = ["core", "plugin"]\nbaseline = "ws-baseline.json"\n'
+        "[archview.workspace.allowed]\ncore = []\nplugin = []\n"
+    )
+    rules = root / "core/archview.toml"
+    rules.write_text(
+        rules.read_text().replace("[archview]\n", '[archview]\nbaseline = "known.json"\n')
+    )
+
+    code, out = run(capsys, "check", str(root), "--update-baseline")
+
+    assert code == 0
+    assert (root / "core/known.json").is_file()
+    assert out.splitlines()[-1].endswith("ws-baseline.json (1 known problems)")
+    assert run(capsys, "check", str(root))[0] == 0

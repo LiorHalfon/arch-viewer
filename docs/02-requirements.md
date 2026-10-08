@@ -136,7 +136,7 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-22, after M11)
+## 12. Implementation status (2026-10-09, after M12)
 
 | Area | Built | Not yet |
 |---|---|---|

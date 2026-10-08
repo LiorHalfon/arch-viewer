@@ -304,6 +304,45 @@ def test_update_baseline_writes_one_baseline_per_scope(tmp_path, capsys):
     assert "known:" in out
 
 
+def add_print_scope(copy: Path) -> None:
+    """A second depth: `shop.services.print` gets rules for its own children, and one
+    violation, `render.pdf` importing `layout.page`."""
+    printing = copy / "shop/services/print"
+    for child in ("layout", "render"):
+        (printing / child).mkdir()
+        (printing / child / "__init__.py").write_text("")
+    (printing / "layout/page.py").write_text("")
+    (printing / "render/pdf.py").write_text("from shop.services.print.layout import page\n")
+    (printing / "archview.toml").write_text(
+        "[archview.allowed]\nflow = []\nlayout = []\nrender = []\n"
+    )
+
+
+def test_nested_files_at_two_depths_are_checked_apart(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    add_print_scope(copy)
+
+    code, out, _ = run(capsys, "check", str(copy))
+
+    assert code == 1
+    outer = out.index("shop.services (shop/services/archview.toml)  1 problem\n")
+    inner = out.index("shop.services.print (shop/services/print/archview.toml)  1 problem\n")
+    assert outer < inner
+    assert "VIOLATION print -> users" in out[outer:inner]
+    assert "render -> layout" not in out[outer:inner]
+    assert "  VIOLATION render -> layout (1 import)" in out[inner:]
+    assert "print -> users" not in out[inner:]
+    assert out.endswith("2 problems in 3 components and 2 nested scopes. exit 1\n")
+
+    code, out, _ = run(capsys, "check", str(copy), "--update-baseline")
+
+    assert code == 0
+    assert len(out.splitlines()) == 3
+    for where in (copy, copy / "shop/services", copy / "shop/services/print"):
+        assert (where / "archview-baseline.json").is_file()
+    assert run(capsys, "check", str(copy))[0] == 0
+
+
 def test_init_root_writes_a_nested_rules_file_the_check_then_passes(tmp_path, capsys):
     copy = nested_copy(tmp_path)
     rules = copy / "shop/services/archview.toml"
@@ -360,6 +399,8 @@ def test_init_root_stdout_prints_the_rules_and_leaves_the_file_alone(tmp_path, c
         (("--root", "services", "--externals"), "--externals"),
         (("--root", "services", "--config", "x.toml"), "--config"),
         (("--root", "services", "--exclude", "x"), "--exclude"),
+        (("--root", "services", "--tsconfig", "tsconfig.json"), "--tsconfig"),
+        (("--root", "services", "--language", "python"), "--language"),
     ],
 )
 def test_init_root_usage_errors_exit_2(tmp_path, capsys, args, message):

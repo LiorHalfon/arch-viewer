@@ -378,6 +378,11 @@ are today. The root file is unchanged and still sees `services` as part of `weba
 On `tiny-tale-backend` this replaced the 27 component patterns issue #14 needed, and
 the false `webapp` cycle went with them.
 
+`init --root` refuses `--config`, `--exclude`, `--externals`, `--language` and
+`--tsconfig` with exit 2. Each one sets the root's rules or shapes the model, and a
+nested file has no key to record it, so `check` would read a different model from the
+one `init` inferred.
+
 How it works:
 
 - `check` runs each nested file on the part of the model inside its package, and
@@ -401,9 +406,13 @@ How it works:
 - A nested file may hold a `baseline`, resolved against that file, or sit next to an
   `archview-baseline.json`. `check --update-baseline` writes one per scope.
 - A nested file may contain further nested files. In a workspace, a member's scopes are
-  reported inside that member's section.
+  reported inside that member's section. Run `init --root` against the member's
+  directory, for example `archview init packages/core --root core.engine`, not the
+  workspace root.
 - A nested file in a package archview does not analyse (excluded, or not a package)
-  gets an `unchecked_rules_file` notice instead of being ignored.
+  gets an `unchecked_rules_file` notice instead of being ignored. So does a nested file
+  in a workspace member that has no rules file of its own, because nothing checks inside
+  that member. That notice is in the `between packages` section.
 - `serve` draws a scope's failing imports in red when you drill into it and lists its
   problems in the check panel. `--watch` reloads when a nested file changes.
 

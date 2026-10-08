@@ -32,8 +32,10 @@ holds the rules between that package's children. The root file is unchanged.
   child names.
 - **Discovery.** After the project opens, archview walks the package directory for
   `archview.toml` files. A file whose directory is a package in the model names a
-  scope. Any other file gets an `unchecked_rules_file` notice, so no rules file is
-  silently ignored.
+  scope. Any other file gets an `unchecked_rules_file` notice. Nothing checks inside a
+  workspace member that has no rules file of its own, so each nested file below it gets
+  the same notice in the `between packages` section. Whenever `check` runs, its output
+  names every nested file it does not read.
 - **Checking.** `scoped_model` cuts the model to the modules inside the scope, keeps
   the imports with both ends inside, drops outside names and sets `project` to the
   scope id. The existing `check()` then runs on it with the nested `Config`, so
@@ -47,7 +49,10 @@ holds the rules between that package's children. The root file is unchanged.
 - **Baselines.** Each scope has its own baseline, resolved against its rules file.
   `check --update-baseline` writes one per scope.
 - **`init --root X`.** Writes the nested file, inferred from the scoped model and the
-  root's inherited keys, so the edges it writes are the edges `check` reads.
+  root's inherited keys, so the edges it writes are the edges `check` reads. It refuses
+  `--config`, `--exclude`, `--externals`, `--language` and `--tsconfig` with exit 2.
+  Each one sets the root's rules or shapes the model, and a nested file has no key to
+  record it, so `check` would read a different model from the one `init` inferred.
 - **`serve`.** `failing_imports` includes the scopes' failing imports, the check panel
   lists each scope, and `--watch` follows every nested file.
 

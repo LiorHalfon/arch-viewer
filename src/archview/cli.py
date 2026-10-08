@@ -56,7 +56,7 @@ from archview.render.query import (
     why_to_text,
 )
 from archview.render.workspace import workspace_to_dict, workspace_to_text
-from archview.rules.baseline import Baseline, baseline_of
+from archview.rules.baseline import Baseline
 from archview.rules.check import Report, check
 from archview.rules.config import (
     RULES_FILE,
@@ -71,6 +71,7 @@ from archview.rules.init import infer_rules, infer_scope_rules
 from archview.rules.overlay import failing_imports, outside_targets, violating_edges
 from archview.workspace import (
     Workspace,
+    between_baseline,
     check_workspace,
     open_workspace,
     workspace_cycles,
@@ -255,20 +256,15 @@ def _check_workspace(args: argparse.Namespace, ws: Workspace) -> int:
 
 
 def _update_workspace_baseline(ws: Workspace) -> int:
-    """Each configured package's own baseline, exactly as a single project's
-    `--update-baseline` would write it, plus the workspace baseline when
-    `[archview.workspace].baseline` names one."""
-    written = [
-        _write_baseline(path, baseline)
-        for p in ws.packages
-        if p.has_rules
-        for path, baseline in fresh_baselines(p.project)
-    ]
+    """Each configured package's own baselines, exactly as a single project's
+    `--update-baseline` would write them, plus the workspace baseline when
+    `[archview.workspace].baseline` names one. All are worked out before any is
+    written, so a broken rules file in one package leaves every baseline as it was."""
+    fresh = [pair for p in ws.packages if p.has_rules for pair in fresh_baselines(p.project)]
     rules = ws.config.workspace
     if rules.baseline:
-        cleared = replace(ws, config=replace(ws.config, workspace=replace(rules, baseline=None)))
-        between = check_workspace(cleared).between
-        written.append(_write_baseline(ws.root / rules.baseline, baseline_of(between)))
+        fresh.append((ws.root / rules.baseline, between_baseline(ws)))
+    written = [_write_baseline(path, baseline) for path, baseline in fresh]
     sys.stdout.write(
         "\n".join(written) + "\n" if written else "no baseline configured; nothing written\n"
     )
@@ -425,8 +421,9 @@ def _init(args: argparse.Namespace) -> int:
 
 def _init_scope(args: argparse.Namespace) -> int:
     """`init --root`: the nested rules file of one package, inferred with the root rules'
-    settings, so the edges it writes are the edges `check` reads (#13)."""
-    for name in ("externals", "config", "exclude"):
+    settings, so the edges it writes are the edges `check` reads (#13). A flag that
+    shapes that model or the root rules is refused: nothing would write it down."""
+    for name in ("externals", "config", "exclude", "tsconfig", "language"):
         if getattr(args, name):
             raise UsageError(f"--{name} is for the root rules file; leave it out with --root")
     project = _open(args, [args.root])
