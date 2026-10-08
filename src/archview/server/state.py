@@ -101,7 +101,9 @@ def _project_signature(project: Project) -> list[tuple[str, float]]:
     root = project.repo if language == "typescript" else project.source_root / project.package
     files = source_files(root, SOURCE_SUFFIXES.get(language, (".py",)))
     extra = [p for p in (project.config_path, baseline_path(project)) if p and p.is_file()]
-    return [(str(p), p.stat().st_mtime_ns) for p in (*files, *extra, *_nested_files(project))]
+    every = (*files, *extra, *_nested_files(project))
+    # `exists` follows symlinks, so a dangling one (an editor lock file) is skipped.
+    return [(str(p), p.stat().st_mtime_ns) for p in every if p.exists()]
 
 
 def _nested_files(project: Project) -> list[Path]:

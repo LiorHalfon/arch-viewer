@@ -499,6 +499,18 @@ def test_watch_notices_a_nested_rules_file_appearing(nested_repo):
     assert state._signature() != before
 
 
+def test_watch_skips_a_dangling_symlink(nested_repo):
+    """An editor lock file (Emacs's `.#routes.py`) is a symlink to nowhere; stat-ing it
+    killed `serve --watch` at startup."""
+    lock = nested_repo / "shop" / "api" / ".#routes.py"
+    lock.symlink_to("someone@host.1234:1700000000")
+    state = ViewerState(nested_repo)
+
+    signature = state._signature()
+
+    assert str(lock) not in [path for path, _ in signature]
+
+
 def test_watch_notices_a_broken_nested_rules_file_being_fixed(nested_repo):
     rules = nested_repo / "shop" / "services" / "archview.toml"
     good = rules.read_text()
