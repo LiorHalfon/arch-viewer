@@ -13,6 +13,7 @@ from collections.abc import Iterable
 
 from archview.model.cycles import describe_cycle, find_cycles
 from archview.model.graph import Model
+from archview.model.names import stripped_source_root
 from archview.rules.check import (
     checked_imports,
     component_edges,
@@ -58,7 +59,7 @@ def infer_rules(model: Model, config: Config | None = None, externals: bool = Fa
         lines.append(f"language = {json.dumps(model.language)}")
     if config.tsconfig:
         lines.append(f"tsconfig = {json.dumps(config.tsconfig)}")
-    roots = config.source_roots or _inferred_source_roots(model)
+    roots = config.source_roots or ((root,) if (root := stripped_source_root(model)) else ())
     if roots:
         lines.append(f"source_roots = {_array(roots)}")
     lines.append(f"exclude = {_array(config.exclude)}")
@@ -83,26 +84,6 @@ def infer_rules(model: Model, config: Config | None = None, externals: bool = Fa
         for name, patterns in sorted(config.components.items()):
             lines.append(f"{_key(name)} = {_array(patterns)}")
     return "\n".join(lines) + "\n"
-
-
-def _inferred_source_roots(model: Model) -> tuple[str, ...]:
-    """The directory the TypeScript extractor stripped from the ids, read back off the model.
-
-    Ids are the file path below the source root, prefixed by the project, so what the
-    extractor stripped is whatever each `file` has that its id does not. Pinning it keeps
-    the component keys stable: without it, one new file at the repo root would re-root
-    every id and every key in this file would go stale at once.
-    """
-    if model.language != "typescript":
-        return ()
-    sep, prefix = model.separator, model.project + model.separator
-    roots = set()
-    for node in model.nodes:
-        if node.kind != "module" or not node.file or not node.id.startswith(prefix):
-            continue
-        below = node.id[len(prefix) :]
-        roots.add(node.file[: -len(below)].strip(sep) if node.file.endswith(below) else "")
-    return (roots.pop(),) if len(roots) == 1 and "" not in roots else ()
 
 
 def _cycle_setting(cycles: tuple[tuple[str, ...], ...]) -> list[str]:

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 
 from archview.model.graph import Model
+from archview.model.names import within
 from archview.model.patterns import matches_name, matches_path
 
 
@@ -65,3 +66,28 @@ def without_names(model: Model, patterns: Iterable[str]) -> Model:
 def without_tests(model: Model) -> Model:
     """Hide test packages and modules by their conventional names (V10)."""
     return without_names(model, TEST_NAMES.get(model.language, ()))
+
+
+def scoped_model(model: Model, scope: str) -> Model:
+    """Cut the model down to the package `scope`, which becomes the root of the result.
+
+    Externals, imports that cross the scope boundary and extraction warnings are dropped:
+    a nested rules file speaks only about the children of its own package.
+    """
+    sep = model.separator
+    nodes = tuple(
+        replace(n, parent=None) if n.id == scope else n
+        for n in model.nodes
+        if n.kind != "external" and within(n.id, scope, sep)
+    )
+    return replace(
+        model,
+        project=scope,
+        nodes=nodes,
+        imports=tuple(
+            i
+            for i in model.imports
+            if within(i.importer, scope, sep) and within(i.imported, scope, sep)
+        ),
+        warnings=(),
+    )
