@@ -392,3 +392,24 @@ def test_load_nested_config_names_a_missing_table_by_its_shown_path(tmp_path):
     path.write_text("[other]\n")
     with pytest.raises(ConfigError, match=r"^shop/services/archview\.toml: no \[archview\] table"):
         load_nested_config(path, NESTED_ROOT, NESTED_FILE, "shop.services")
+
+
+QUEUE_FORBIDDEN = {"forbidden": [{"from": "a", "to": "queue"}]}
+
+
+def test_a_nested_file_under_a_typescript_root_does_not_check_python_stdlib():
+    root = Config(language="typescript")
+    c = parse_nested_config(QUEUE_FORBIDDEN, root, NESTED_FILE, "shop.services")
+    assert c.language == "typescript"
+    assert c.forbidden == (Forbidden("a", "queue"),)
+
+
+def test_a_nested_file_under_a_tsconfig_root_does_not_check_python_stdlib():
+    root = Config(tsconfig="tsconfig.json")
+    c = parse_nested_config(QUEUE_FORBIDDEN, root, NESTED_FILE, "shop.services")
+    assert c.tsconfig == "tsconfig.json"
+
+
+def test_the_same_nested_table_under_a_python_root_hits_the_stdlib_error():
+    with pytest.raises(ConfigError, match=r"^shop/services/archview\.toml: .*stdlib module"):
+        parse_nested_config(QUEUE_FORBIDDEN, Config(), NESTED_FILE, "shop.services")

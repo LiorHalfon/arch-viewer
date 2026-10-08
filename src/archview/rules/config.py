@@ -218,14 +218,17 @@ def load_nested_config(path: Path, root: Config, shown: str, scope: str) -> Conf
 def parse_nested_config(
     table: dict[str, Any], root: Config, shown: str, scope: str, where: str = "archview"
 ) -> Config:
-    """Rule keys from `table`; `type_checking_imports` and `exclude` from `root`."""
+    """Rule keys from `table`; the model keys (including language) from `root`."""
     for key in sorted(ROOT_ONLY_KEYS & table.keys()):
         raise ConfigError(
             f"{shown}: [{where}] {key} belongs in the root rules file; "
             f"a nested file holds rules between the children of {scope}"
         )
+    # The root's language and tsconfig decide whether stdlib names are checked.
+    inherited = {"language": root.language, "tsconfig": root.tsconfig}
+    merged = table | {k: v for k, v in inherited.items() if v is not None}
     try:
-        config = parse_config(table, where, shown)
+        config = parse_config(merged, where, shown)
     except ConfigError as error:
         raise ConfigError(f"{shown}: {error}") from error
     return replace(config, type_checking_imports=root.type_checking_imports, exclude=root.exclude)
