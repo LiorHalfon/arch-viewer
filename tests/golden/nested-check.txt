@@ -1,0 +1,6 @@
+warning: shop/services/assets/archview.toml is not checked: shop.services.assets is not a package archview analyses (excluded, or not a package)
+shop.services (shop/services/archview.toml)  1 problem
+  VIOLATION print -> users (1 import) not allowed by [archview.allowed.print]
+    shop/services/print/flow.py:2  from shop.services.users import repo  [shop.services.users.repo]
+    hint: print may import only: pricing. Move the code that needs users, go through an allowed component, or ask a human to change the rule.
+1 problem in 3 components and 1 nested scope. exit 1

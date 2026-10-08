@@ -35,6 +35,7 @@ def report_to_dict(report: Report) -> dict[str, Any]:
         "warnings": [asdict(w) for w in report.warnings],
         "metrics": {name: asdict(m) for name, m in sorted(report.metrics.items())},
         "unused_allowances": [{"from": s, "to": t} for s, t in report.unused],
+        "scopes": [{"rules": shown, **report_to_dict(scope)} for shown, scope in report.scopes],
     }
 
 
@@ -95,22 +96,49 @@ def _problem_lines(problem: Problem, report: Report, paint) -> list[str]:
     return lines
 
 
-def report_to_text(report: Report, color: bool = False) -> str:
+def _painter(color: bool):
     def paint(code: str, text: str) -> str:
         return f"{code}{text}{RESET}" if color else text
 
+    return paint
+
+
+def report_to_text(report: Report, color: bool = False) -> str:
+    paint = _painter(color)
+    lines = _own_lines(report, paint)
+    for shown, scope in report.scopes:
+        lines += _scope_section(shown, scope, color)
+    lines.append(_total(report, paint))
+    return "\n".join(lines) + "\n"
+
+
+def _own_lines(report: Report, paint) -> list[str]:
+    """This report's problems and warnings, without any total or nested scope."""
     lines: list[str] = []
     for problem in report.problems:
         lines += _problem_lines(problem, report, paint)
     for warning in report.warnings:
         lines.append(paint(YELLOW, f"warning: {warning.message}"))
-    failing = sum(1 for p in report.problems if p.fails)
+    return lines
+
+
+def _scope_section(shown: str, scope: Report, color: bool) -> list[str]:
+    """A nested scope: a header, then its own lines indented under it."""
+    status = "ok" if not scope.failing else _plural(scope.failing, "problem")
+    header = f"{scope.project} ({shown})  {status}"
+    lines = [_painter(color and bool(scope.failing))(RED, header)]
+    body = report_to_text(scope, color).rstrip("\n").split("\n")[:-1]
+    return lines + [f"  {line}" for line in body]
+
+
+def _total(report: Report, paint) -> str:
     components = _plural(len(report.components), "component")
+    if report.scopes:
+        components += f" and {_plural(len(report.scopes), 'nested scope')}"
     known = sum(1 for p in report.problems if p.baselined)
+    known += sum(1 for _, scope in report.scopes for p in scope.problems if p.baselined)
     if known:
         components += f", {known} known in the baseline"
-    if failing:
-        lines.append(paint(RED, f"{_plural(failing, 'problem')} in {components}. exit 1"))
-    else:
-        lines.append(f"ok: {report.project}, {components}, no failing problems")
-    return "\n".join(lines) + "\n"
+    if report.failing:
+        return paint(RED, f"{_plural(report.failing, 'problem')} in {components}. exit 1")
+    return f"ok: {report.project}, {components}, no failing problems"

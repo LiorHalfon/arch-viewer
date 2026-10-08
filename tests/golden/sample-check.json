@@ -94,5 +94,6 @@
       "zone": "pain"
     }
   },
-  "unused_allowances": []
+  "unused_allowances": [],
+  "scopes": []
 }

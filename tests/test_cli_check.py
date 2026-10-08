@@ -227,3 +227,62 @@ def test_an_outside_violation_in_json(repo, capsys):
     assert problem["rule"] == "archview.externals.api"
     assert problem["components"] == ["api", "grimp"]
     assert problem["imports"][0]["line"] == 8
+
+
+def nested_copy(tmp_path: Path) -> Path:
+    copy = tmp_path / "nested"
+    shutil.copytree(FIXTURES / "nested", copy)
+    return copy
+
+
+def test_check_reports_each_nested_scope_in_its_own_section(tmp_path, capsys):
+    code, out, _ = run(capsys, "check", str(nested_copy(tmp_path)))
+
+    assert code == 1
+    assert (
+        "warning: shop/services/assets/archview.toml is not checked: shop.services.assets "
+        "is not a package archview analyses (excluded, or not a package)"
+    ) in out
+    assert (
+        "shop.services (shop/services/archview.toml)  1 problem\n"
+        "  VIOLATION print -> users (1 import) not allowed by [archview.allowed.print]"
+    ) in out
+    assert out.endswith("1 problem in 3 components and 1 nested scope. exit 1\n")
+    golden("nested-check.txt", out)
+
+
+def test_nested_scopes_appear_in_the_json(tmp_path, capsys):
+    code, out, _ = run(capsys, "check", str(nested_copy(tmp_path)), "--format", "json")
+
+    assert code == 1
+    report = json.loads(out)
+    assert report["ok"] is False
+    [scope] = report["scopes"]
+    assert scope["rules"] == "shop/services/archview.toml"
+    assert scope["project"] == "shop.services"
+    assert scope["scopes"] == []
+    golden("nested-check.json", out)
+
+
+def test_a_passing_nested_scope_says_ok(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    rules = copy / "shop/services/archview.toml"
+    rules.write_text(
+        rules.read_text().replace('print = ["pricing"]', 'print = ["pricing", "users"]')
+    )
+
+    code, out, _ = run(capsys, "check", str(copy))
+
+    assert code == 0
+    assert "shop.services (shop/services/archview.toml)  ok\n" in out
+    assert out.endswith("ok: shop, 3 components and 1 nested scope, no failing problems\n")
+
+
+def test_an_invalid_nested_rules_file_exits_2(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    (copy / "shop/services/archview.toml").write_text("[archview.allowed\n")
+
+    code, _, err = run(capsys, "check", str(copy))
+
+    assert code == 2
+    assert "shop/services/archview.toml: not valid TOML" in err

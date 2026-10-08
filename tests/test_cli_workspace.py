@@ -259,3 +259,38 @@ def test_graph_at_a_workspace_root_marks_a_cross_package_violation(tmp_path, cap
         assert "n_plugin -. 1 ✗ .-> n_core" in out
     else:
         assert '"plugin" -> "core" [label="1" color="#d9480f" style="dashed"' in out
+
+
+def add_engine_scope(root: Path) -> None:
+    """Give workspace member `core` a nested scope, `core.engine`, whose rules `a` and
+    `b` may not import each other, and one violation: `a.x` imports `b.y`."""
+    engine = root / "core/src/core/engine"
+    (engine / "a").mkdir(parents=True)
+    (engine / "b").mkdir()
+    (engine / "__init__.py").write_text("")
+    (engine / "a/__init__.py").write_text("")
+    (engine / "a/x.py").write_text("from core.engine.b import y\n")
+    (engine / "b/__init__.py").write_text("")
+    (engine / "b/y.py").write_text("")
+    (engine / "archview.toml").write_text("[archview.allowed]\na = []\nb = []\n")
+    rules = root / "core/archview.toml"
+    rules.write_text(rules.read_text() + "engine = []\n")
+
+
+def test_a_nested_scope_inside_a_member_fails_the_workspace(tmp_path, capsys):
+    root = workspace_dir(tmp_path)
+    add_engine_scope(root)
+
+    code, out = run(capsys, "check", str(root), "--format", "json")
+
+    assert code == 1
+    data = json.loads(out)
+    assert data["ok"] is False
+    core = data["packages"][0]
+    [scope] = core["scopes"]
+    assert scope["project"] == "core.engine"
+    assert sum(p["fails"] for p in scope["problems"]) == 1
+
+    code, out = run(capsys, "check", str(root))
+    assert code == 1
+    assert "  core.engine (src/core/engine/archview.toml)  1 problem" in out

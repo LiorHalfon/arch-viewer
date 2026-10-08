@@ -39,7 +39,7 @@ def _paint(code: str, text: str, color: bool) -> str:
 
 
 def _section(name: str, report: Report, width: int, color: bool) -> list[str]:
-    failing = _failing(report)
+    failing = report.failing
     status = "ok" if not failing else _plural(failing, "problem")
     header = f"{name.ljust(width)}  {status}"
     lines = [_paint(RED, header, color) if failing else header]
@@ -56,7 +56,7 @@ def _body(report: Report, color: bool) -> list[str]:
 def _total(report: WorkspaceReport, sections: list[tuple[str, Report]], color: bool) -> str:
     if not report.failed:
         return f"ok: {report.name}, {_summary(report)}, no failing problems"
-    failing = sum(_failing(section) for _, section in sections)
+    failing = sum(section.failing for _, section in sections)
     return _paint(RED, f"{_plural(failing, 'problem')}. exit 1", color)
 
 
@@ -70,10 +70,6 @@ def _summary(report: WorkspaceReport) -> str:
     checked = len(report.packages)
     summary = _plural(total, "package")
     return summary if checked == total else f"{summary} ({checked} checked inside)"
-
-
-def _failing(report: Report) -> int:
-    return sum(1 for p in report.problems if p.fails)
 
 
 def _plural(count: int, noun: str) -> str:

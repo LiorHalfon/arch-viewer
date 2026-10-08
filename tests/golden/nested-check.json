@@ -1,0 +1,112 @@
+{
+  "project": "shop",
+  "ok": false,
+  "components": [
+    "api",
+    "models",
+    "services"
+  ],
+  "problems": [],
+  "warnings": [
+    {
+      "kind": "unchecked_rules_file",
+      "message": "shop/services/assets/archview.toml is not checked: shop.services.assets is not a package archview analyses (excluded, or not a package)"
+    }
+  ],
+  "metrics": {
+    "api": {
+      "ca": 0,
+      "ce": 1,
+      "instability": 1.0,
+      "abstractness": 0.0,
+      "distance": 0.0,
+      "zone": "main_sequence"
+    },
+    "models": {
+      "ca": 2,
+      "ce": 0,
+      "instability": 0.0,
+      "abstractness": 0.0,
+      "distance": 1.0,
+      "zone": "pain"
+    },
+    "services": {
+      "ca": 1,
+      "ce": 1,
+      "instability": 0.5,
+      "abstractness": 0.0,
+      "distance": 0.5,
+      "zone": "pain"
+    }
+  },
+  "unused_allowances": [],
+  "scopes": [
+    {
+      "rules": "shop/services/archview.toml",
+      "project": "shop.services",
+      "ok": false,
+      "components": [
+        "pricing",
+        "print",
+        "users"
+      ],
+      "problems": [
+        {
+          "kind": "not_allowed",
+          "rule": "archview.allowed.print",
+          "from": "print",
+          "to": "users",
+          "components": [
+            "print",
+            "users"
+          ],
+          "count": 1,
+          "fails": true,
+          "baselined": 0,
+          "hint": "print may import only: pricing. Move the code that needs users, go through an allowed component, or ask a human to change the rule.",
+          "imports": [
+            {
+              "importer": "shop.services.print.flow",
+              "imported": "shop.services.users.repo",
+              "file": "shop/services/print/flow.py",
+              "line": 2,
+              "text": "from shop.services.users import repo",
+              "type_checking": false,
+              "lazy": false,
+              "resolved": null
+            }
+          ]
+        }
+      ],
+      "warnings": [],
+      "metrics": {
+        "pricing": {
+          "ca": 1,
+          "ce": 0,
+          "instability": 0.0,
+          "abstractness": 0.0,
+          "distance": 1.0,
+          "zone": "pain"
+        },
+        "print": {
+          "ca": 0,
+          "ce": 2,
+          "instability": 1.0,
+          "abstractness": 0.0,
+          "distance": 0.0,
+          "zone": "main_sequence"
+        },
+        "users": {
+          "ca": 1,
+          "ce": 0,
+          "instability": 0.0,
+          "abstractness": 0.0,
+          "distance": 1.0,
+          "zone": "pain"
+        }
+      },
+      "unused_allowances": [],
+      "scopes": []
+    }
+  ]
+}
