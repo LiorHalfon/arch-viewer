@@ -61,3 +61,98 @@ export function parseLayout(json) {
 }
 
 export const layoutView = (viz, dot) => parseLayout(viz.renderJSON(dot));
+
+// ---------- routing again after boxes move ----------
+
+// Graphviz routes every line around the boxes in about 230 ms at 100 boxes and 300
+// lines, and 4.9 s at 300 boxes (Node, viz 3.30.0). Past this many boxes a drop
+// draws the moved box's lines straight instead.
+export const REROUTE_LIMIT = 100;
+
+const at = (layout, positions, id) => positions[id] || layout.nodes[id];
+// In a DOT quoted string only the double quote is escaped; a backslash stays as it is.
+const quote = (id) => `"${String(id).replace(/"/g, '\\"')}"`;
+
+export function pinnedDot(layout, positions, edges) {
+  const lines = ['digraph "pinned" {', '  splines=true; overlap=true; inputscale=72; esep="+4";', '  node [shape=box fixedsize=true label=""];'];
+  for (const [id, box] of Object.entries(layout.nodes)) {
+    const p = at(layout, positions, id);
+    lines.push(`  ${quote(id)} [pos="${p.x},${layout.h - p.y}!" width=${box.w / 72} height=${box.h / 72}];`);
+  }
+  for (const e of edges) lines.push(`  ${quote(e.source)} -> ${quote(e.target)};`);
+  lines.push("}");
+  return lines.join("\n");
+}
+
+const shiftPoint = (dx, dy) => (p) => (p ? [p[0] + dx, p[1] + dy] : p);
+
+// neato keeps the pinned boxes in place relative to each other but moves the whole
+// drawing so its corner is at the origin; put it back by one box's offset.
+export function rerouteLayout(viz, layout, positions, edges) {
+  const result = viz.render(pinnedDot(layout, positions, edges), { engine: "neato", format: "json" });
+  if (result.status !== "success") throw new Error(result.errors.map((e) => e.message).join("; "));
+  const out = parseLayout(JSON.parse(result.output));
+  const [first] = Object.keys(layout.nodes);
+  if (!first) return out;
+  const want = at(layout, positions, first);
+  const shift = shiftPoint(want.x - out.nodes[first].x, want.y - out.nodes[first].y);
+  for (const n of Object.values(out.nodes)) [n.x, n.y] = shift([n.x, n.y]);
+  for (const r of Object.values(out.routes)) {
+    r.points = r.points.map(shift);
+    r.tip = shift(r.tip);
+    r.label = shift(r.label);
+  }
+  return out;
+}
+
+export const reroute = (viz, layout, positions, edges) => rerouteLayout(viz, layout, positions, edges).routes;
+
+// From border to border, as one cubic with its handles on its ends; the tip stops 1 pt
+// short of the target and the arrow is 10 pt long.
+export function straightRoute(a, boxA, b, boxB) {
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const [ux, uy] = len ? [(b.x - a.x) / len, (b.y - a.y) / len] : [1, 0];
+  const exit = (box) => Math.min(box.w / 2 / Math.max(Math.abs(ux), 1e-9), box.h / 2 / Math.max(Math.abs(uy), 1e-9)) + 1;
+  const start = [a.x + ux * exit(boxA), a.y + uy * exit(boxA)];
+  const tip = [b.x - ux * exit(boxB), b.y - uy * exit(boxB)];
+  const base = [tip[0] - ux * 10, tip[1] - uy * 10];
+  const label = [(start[0] + tip[0]) / 2 + uy * 9, (start[1] + tip[1]) / 2 - ux * 9];
+  return { points: [start, start, base, base], tip, label };
+}
+
+export function routesAfterMove(viz, layout, positions, edges, previous, moved) {
+  if (Object.keys(layout.nodes).length <= REROUTE_LIMIT) return reroute(viz, layout, positions, edges);
+  const routes = { ...previous };
+  for (const e of edges) {
+    if (!moved.has(e.source) && !moved.has(e.target)) continue;
+    const [a, b] = [at(layout, positions, e.source), at(layout, positions, e.target)];
+    routes[edgeKey(e.source, e.target)] = straightRoute(a, layout.nodes[e.source], b, layout.nodes[e.target]);
+  }
+  return routes;
+}
+
+export function clusterFrames(layout, positions) {
+  return layout.clusters.map((c) => {
+    if (!c.members.length) return c;
+    const boxes = c.members.map((id) => ({ ...layout.nodes[id], ...at(layout, positions, id) }));
+    const inside = membersBox(c.members, Object.fromEntries(c.members.map((id, i) => [id, boxes[i]])));
+    const x = inside.left - c.pad.l, y = inside.top - c.pad.t;
+    return { ...c, x, y, w: inside.right + c.pad.r - x, h: inside.bottom + c.pad.b - y };
+  });
+}
+
+// The drawing's extent: every box, line and frame, plus a margin.
+export function bounds(layout, positions, routes, clusters, margin = 24) {
+  const xs = [], ys = [];
+  const add = (x, y) => { xs.push(x); ys.push(y); };
+  for (const [id, box] of Object.entries(layout.nodes)) {
+    const p = at(layout, positions, id);
+    add(p.x - box.w / 2, p.y - box.h / 2);
+    add(p.x + box.w / 2, p.y + box.h / 2);
+  }
+  for (const r of Object.values(routes)) for (const p of [...r.points, r.tip, r.label]) if (p) add(p[0], p[1]);
+  for (const c of clusters) { add(c.x, c.y); add(c.x + c.w, c.y + c.h); }
+  if (!xs.length) return { x: 0, y: 0, w: layout.w, h: layout.h };
+  const [x0, y0] = [Math.min(...xs) - margin, Math.min(...ys) - margin];
+  return { x: x0, y: y0, w: Math.max(...xs) + margin - x0, h: Math.max(...ys) + margin - y0 };
+}
