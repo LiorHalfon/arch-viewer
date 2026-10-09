@@ -77,6 +77,13 @@ test("every scheme fill keeps its label readable in both themes", () => {
   }
 });
 
+test("the halo behind a red cycle name keeps it readable in both themes", () => {
+  const { light, dark } = cssTokens();
+  for (const red of [light["--danger"], dark["--danger"]]) {
+    assert.ok(contrast(inkFor(red), red) >= 4.5, `${red}: halo contrast ${contrast(inkFor(red), red).toFixed(2)}`);
+  }
+});
+
 test("the light palette matches app.css", () => {
   const { light } = cssTokens();
   for (const [token, value] of Object.entries(LIGHT)) assert.equal(value, light[token], token);

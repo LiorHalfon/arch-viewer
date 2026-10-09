@@ -67,6 +67,12 @@ export function enableDrag(svg, { toSvgPoint, onMove, onDrop, onCancel = () => {
   });
   svg.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.pointer) return;
+    if (!(e.buttons & 1)) {
+      // The button came up where the svg could not see it (before pointer capture).
+      if (drag.moving) onCancel(drag.id);
+      end();
+      return;
+    }
     if (!drag.moving) {
       if (!isDrag(drag.start, { x: e.clientX, y: e.clientY })) return;
       drag.moving = true;

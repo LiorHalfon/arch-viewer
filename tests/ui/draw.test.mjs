@@ -102,6 +102,20 @@ test("a weighted export keeps the line widths", async () => {
   assert.ok(group(svg, 'data-target="core.api"').includes('stroke-width="2.11"'));
 });
 
+test("a red cycle name on a scheme fill gets a halo to be read against", async () => {
+  const { view, layout } = await sample();
+  view.nodes[0].in_cycle = true;  // app: an entry point, so a blue fill under Role
+  const name = (svg) => {
+    const g = group(svg, 'data-id="app"');
+    return g.slice(g.indexOf('<text class="name"'), g.indexOf(">", g.indexOf('<text class="name"')));
+  };
+  assert.ok(name(drawSvg(view, layout, { scheme: "role" })).includes("stroke:#ffffff"), "screen: white halo behind light-theme red");
+  assert.ok(name(drawSvg(view, layout, { scheme: "role", palette: { "--danger": "#ff6b6b" } })).includes("stroke:#1d232b"), "screen: dark halo behind dark-theme red");
+  const exported = name(drawSvg(view, layout, { scheme: "role", mode: "export" }));
+  assert.ok(exported.includes('stroke="#ffffff"') && exported.includes('paint-order="stroke"'));
+  assert.ok(!name(drawSvg(view, layout, { scheme: "none" })).includes("stroke"), "no halo on today's pale fills");
+});
+
 test("boxes carry no title, since the hover card replaces it", async () => {
   const { view, layout } = await sample();
   assert.ok(!group(drawSvg(view, layout), 'data-id="app"').includes("<title>"));

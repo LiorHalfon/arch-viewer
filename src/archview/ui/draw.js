@@ -81,14 +81,17 @@ function shape(node, x0, y0, w, h, look) {
 
 // On screen: the scheme's fill and the label ink that reads on it, as inline styles
 // over the stylesheet; under "none" the stylesheet's own fills apply. A red name
-// (cycle) keeps its colour.
+// (cycle) keeps its colour and gets a halo it can be read against on any fill.
 function screenPaint(node, scheme, key, palette) {
   const token = scheme === "none" ? null : fillToken(node, scheme, key);
   if (!token) return { shape: "", name: "", sub: "" };
   const ink = inkFor(palette[token] || LIGHT[token]);
+  const halo = inkFor(palette["--danger"] || LIGHT["--danger"]);
   return {
     shape: ` style="fill:var(${token})"`,
-    name: node.in_cycle || node.tangled ? "" : ` style="fill:${ink}"`,
+    name: node.in_cycle || node.tangled
+      ? ` style="stroke:${halo};stroke-width:3px;stroke-linejoin:round;paint-order:stroke"`
+      : ` style="fill:${ink}"`,
     sub: ` style="fill:${ink};fill-opacity:.75"`,
   };
 }
@@ -103,9 +106,10 @@ function exportPaint(node, scheme, key) {
   const plain = scheme === "none" || external;
   const ink = plain ? P[external ? "--muted" : "--text"] : inkFor(fill);
   const red = node.in_cycle || node.tangled;
+  const halo = red && !plain ? ` stroke="${inkFor(P["--danger"])}" stroke-width="3" stroke-linejoin="round" paint-order="stroke"` : "";
   return {
     shape: ` fill="${fill}" stroke="${stroke}" stroke-width="${width}"${external ? ' stroke-dasharray="4 3"' : ""}`,
-    name: ` fill="${red ? P["--danger"] : ink}" font-size="14"${red ? ' font-weight="600"' : ""}`,
+    name: ` fill="${red ? P["--danger"] : ink}" font-size="14"${red ? ' font-weight="600"' : ""}${halo}`,
     sub: plain ? ` fill="${P["--muted"]}" font-size="14"` : ` fill="${ink}" fill-opacity=".75" font-size="14"`,
   };
 }
