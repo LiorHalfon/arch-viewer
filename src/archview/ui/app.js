@@ -1,7 +1,9 @@
-"use strict";
+// archview viewer: one root at a time, laid out by Graphviz (viz-js) and drawn by
+// draw.js, drill down by click. Every root keeps its own zoom and scroll position,
+// so Back returns to where you were.
 
-// archview viewer: one root at a time, drawn by Graphviz (viz-js), drill down by click.
-// Every root keeps its own zoom and scroll position, so Back returns to where you were.
+import { drawSvg } from "./draw.js";
+import { layoutView } from "./layout.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -11,6 +13,7 @@ const state = {
   package: null,        // the workspace member currently drilled into, or null at its top
   root: null,
   view: null,
+  layout: null,         // Graphviz's layout of the current view (layout.js)
   views: new Map(),     // "root=..&package=..&externals=..&hide_tests=.." -> view payload
   places: new Map(),    // "package|root" -> {zoom, left, top}
   zoom: 1,
@@ -257,13 +260,12 @@ function draw(view) {
     graph.innerHTML = '<p class="hint">Nothing to show at this level.</p>';
     return;
   }
-  const svg = state.viz.renderSVGElement(view.dot);
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
-  const box = svg.viewBox.baseVal;
-  state.natural = { w: box.width, h: box.height };
-  graph.append(svg);
-  wire(svg, view);
+  state.layout = layoutView(state.viz, view.dot);
+  // Graphviz's own SVG pads the drawing by 4 points on every side.
+  const box = { x: -4, y: -4, w: state.layout.w + 8, h: state.layout.h + 8 };
+  graph.innerHTML = drawSvg(view, state.layout, { box });
+  state.natural = { w: box.w, h: box.h };
+  wire(graph.querySelector("svg"), view);
 }
 
 function nodeById(id) {
@@ -272,9 +274,8 @@ function nodeById(id) {
 
 function wire(svg, view) {
   svg.querySelectorAll("g.node").forEach((g) => {
-    const id = g.querySelector("title").textContent;
+    const id = g.dataset.id;
     const node = nodeById(id);
-    g.dataset.id = id;
     g.querySelector("title").textContent = tooltip(node);
     g.onclick = (e) => {
       if (e.shiftKey || e.altKey || node.kind === "external") return openNode(node);
@@ -285,15 +286,7 @@ function wire(svg, view) {
     g.onmouseleave = () => { if (!state.sticky) unfocus(); };
   });
   svg.querySelectorAll("g.edge").forEach((g) => {
-    const [source, target] = g.querySelector("title").textContent.split("->");
-    g.dataset.source = source;
-    g.dataset.target = target;
-    const path = g.querySelector("path");
-    if (path) {
-      const hit = path.cloneNode();
-      hit.setAttribute("class", "hit");
-      g.insertBefore(hit, path);
-    }
+    const { source, target } = g.dataset;
     const edge = view.edges.find((e) => e.source === source && e.target === target);
     const flags = [edge.violation && "breaks a rule", edge.in_cycle && "in a cycle", edge.abstract && "to an abstraction", edge.type_checking && "type checking only"].filter(Boolean);
     g.querySelector("title").textContent = `${short(source)} → ${short(target)}: ${plural(edge.count, "import")}${flags.length ? ` (${flags.join(", ")})` : ""}`;

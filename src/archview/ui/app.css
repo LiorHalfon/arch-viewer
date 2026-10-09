@@ -111,42 +111,43 @@ main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minm
 .graph svg { display: block; margin: 0 auto; }
 .hint { color: var(--muted); }
 
-/* the diagram, restyled from Graphviz's output */
-.graph svg > g > polygon { fill: transparent; stroke: none; }
+/* the diagram, drawn by draw.js from Graphviz's layout */
+.graph .cluster rect { fill: none; stroke: var(--pkg-stroke); }
 .graph .node { cursor: pointer; }
-.graph .node polygon, .graph .node path { transition: stroke-width .1s; }
-.graph .node.package polygon, .graph .node.package path, .graph .node.package polyline { fill: var(--pkg-fill); stroke: var(--pkg-stroke); }
-.graph .node.module polygon, .graph .node.module path { fill: var(--mod-fill); stroke: var(--mod-stroke); }
-.graph .node text { fill: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-.graph .node text + text { fill: var(--muted); }
-.graph .node.cycle text:first-of-type, .graph .node.tangled text:first-of-type { fill: var(--danger); font-weight: 600; }
-.graph .node.cycle polygon, .graph .node.cycle path { stroke: var(--danger); }
-.graph .node:hover polygon, .graph .node:hover path, .graph .node.selected polygon, .graph .node.selected path { stroke-width: 2.5; stroke: var(--accent); }
+.graph .node .ring { fill: none; stroke: none; }
+.graph .node .shape { stroke-width: 1; transition: stroke-width .1s; }
+.graph .node.package .shape { fill: var(--pkg-fill); stroke: var(--pkg-stroke); }
+.graph .node.module .shape { fill: var(--mod-fill); stroke: var(--mod-stroke); stroke-width: 2; }
+.graph .node text { fill: var(--text); font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.graph .node text.sub { fill: var(--muted); }
+.graph .node.cycle text.name, .graph .node.tangled text.name { fill: var(--danger); font-weight: 600; }
+.graph .node.cycle .shape { stroke: var(--danger); }
+.graph .node:hover .shape, .graph .node.selected .shape { stroke-width: 2.5; stroke: var(--accent); }
 .graph .edge { cursor: pointer; }
-.graph .edge path { stroke: var(--edge); }
-.graph .edge polygon { fill: var(--edge); stroke: var(--edge); }
-.graph .edge text { fill: var(--muted); font-size: 10px; }
-.graph .edge.cycle path { stroke: var(--danger); }
-.graph .edge.cycle polygon { fill: var(--danger); stroke: var(--danger); }
-.graph .edge.cycle text { fill: var(--danger); }
-.graph .edge path.hit, .graph .edge.cycle path.hit, .graph .edge:hover path.hit { stroke: transparent; stroke-width: 14; fill: none; }
-.graph .edge:hover path:not(.hit), .graph .edge.selected path:not(.hit) { stroke: var(--accent); stroke-width: 2.5; }
-.graph .edge:hover polygon, .graph .edge.selected polygon { fill: var(--accent); stroke: var(--accent); }
+.graph .edge .line { fill: none; stroke: var(--edge); stroke-width: 1; }
+.graph .edge .arrow { fill: var(--edge); stroke: var(--edge); stroke-width: 1; }
+.graph .edge .count { fill: var(--muted); font: 10px Helvetica, Arial, sans-serif; }
+.graph .edge.cycle .line { stroke: var(--danger); stroke-width: 2; }
+.graph .edge.cycle .arrow { fill: var(--danger); stroke: var(--danger); }
+.graph .edge.cycle .count { fill: var(--danger); }
+.graph .edge .hit { stroke: transparent; stroke-width: 14; fill: none; }
+.graph .edge:hover .line, .graph .edge.selected .line { stroke: var(--accent); stroke-width: 2.5; }
+.graph .edge:hover .arrow, .graph .edge.selected .arrow { fill: var(--accent); stroke: var(--accent); }
 .graph svg.focusing .edge:not(.related) { opacity: .12; }
 .graph svg.focusing .node:not(.related) { opacity: .45; }
-.graph svg.focusing .edge.related text { fill: var(--text); font-weight: 600; }
+.graph svg.focusing .edge.related .count { fill: var(--text); font-weight: 600; }
 
-.graph .node.abstract polygon, .graph .node.abstract path { fill: var(--abs-fill); stroke: var(--abs-stroke); }
-.graph .node.external polygon, .graph .node.external path { fill: transparent; stroke: var(--mod-stroke); stroke-dasharray: 4 3; }
+.graph .node.abstract .shape { fill: var(--abs-fill); stroke: var(--abs-stroke); }
+.graph .node.external .shape { fill: transparent; stroke: var(--mod-stroke); stroke-width: 1; stroke-dasharray: 4 3; }
 .graph .node.external text { fill: var(--muted); }
-body.zones .graph .node.package.zone-pain polygon, body.zones .graph .node.package.zone-pain path { fill: var(--pain); }
-body.zones .graph .node.package.zone-useless polygon, body.zones .graph .node.package.zone-useless path { fill: var(--useless); }
-.graph .edge.typing path:not(.hit) { stroke-dasharray: 2 3; }
-.graph .edge.abstract polygon { fill: var(--surface); }
-.graph .edge.violation path:not(.hit) { stroke: var(--violation); stroke-dasharray: 6 4; stroke-width: 2; }
-.graph .edge.violation polygon { fill: var(--violation); stroke: var(--violation); }
-.graph .edge.violation text { fill: var(--violation); font-weight: 600; }
-.graph svg.focusing .node.related.focus-root polygon, .graph svg.focusing .node.related.focus-root path { stroke: var(--accent); stroke-width: 2.5; }
+body.zones .graph .node.package.zone-pain .shape { fill: var(--pain); }
+body.zones .graph .node.package.zone-useless .shape { fill: var(--useless); }
+.graph .edge.typing .line { stroke-dasharray: 2 3; }
+.graph .edge.abstract .arrow { fill: var(--surface); }
+.graph .edge.violation .line { stroke: var(--violation); stroke-dasharray: 6 4; stroke-width: 2; }
+.graph .edge.violation .arrow { fill: var(--violation); stroke: var(--violation); }
+.graph .edge.violation .count { fill: var(--violation); font-weight: 600; }
+.graph svg.focusing .node.related.focus-root .shape { stroke: var(--accent); stroke-width: 2.5; }
 
 /* legend */
 .stage-wrap { position: relative; min-height: 0; }

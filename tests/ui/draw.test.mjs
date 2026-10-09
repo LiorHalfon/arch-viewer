@@ -18,7 +18,8 @@ test("one node group per box, with its id and classes", async () => {
   assert.equal(count(svg, 'class="node '), 3);
   assert.ok(svg.includes('data-id="core.api"'));
   assert.ok(svg.includes('class="node module abstract"'));
-  assert.ok(svg.includes('class="node package tangled"'));
+  assert.ok(svg.includes('class="node package tangled zone-pain"'));
+  assert.ok(svg.includes('class="node package" data-id="app"'));
 });
 
 test("one edge group per edge, hit path under the line", async () => {

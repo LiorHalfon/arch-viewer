@@ -40,9 +40,13 @@ def test_serves_the_page_and_its_vendored_scripts(client):
     page = client.get("/")
 
     assert page.status_code == 200
-    assert '<script src="/ui/app.js"></script>' in page.text
+    assert '<script type="module" src="/ui/app.js"></script>' in page.text
     assert client.get("/ui/vendor/viz-global.js").status_code == 200
     assert client.get("/ui/vendor/highlight.min.js").status_code == 200
+    for module in ("layout.js", "draw.js"):
+        served = client.get(f"/ui/{module}")
+        assert served.status_code == 200
+        assert "javascript" in served.headers["content-type"]
 
 
 def test_summarises_the_project(client, repo):

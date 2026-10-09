@@ -54,7 +54,8 @@ function shape(node, x0, y0, w, h) {
 function drawNode(node, box, at) {
   const { w, h } = box;
   const x0 = at.x - w / 2, y0 = at.y - h / 2;
-  const cls = classes("node", node.kind, node.in_cycle && "cycle", node.tangled && "tangled", node.abstract && "abstract");
+  const zone = (node.zone === "pain" || node.zone === "useless") && `zone-${node.zone}`;
+  const cls = classes("node", node.kind, node.in_cycle && "cycle", node.tangled && "tangled", node.abstract && "abstract", zone);
   const [name, sub] = labelLines(node);
   const text = (c, y, value) => `<text class="${c}" x="${n(at.x)}" y="${n(y)}" text-anchor="middle">${esc(value)}</text>`;
   const words = sub ? text("name", at.y - 3.5, name) + text("sub", at.y + 13.3, sub) : text("name", at.y + 4.9, name);
