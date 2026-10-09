@@ -25,6 +25,7 @@ from archview.rules.config import (
     Exemption,
     Forbidden,
 )
+from archview.rules.qualified import Names, admitted, names_of, narrowing, owner
 
 ProblemKind = Literal[
     "not_allowed",
@@ -199,6 +200,7 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     components = component_map(config, model)
     present = present_components(model, components)
     _reject_outside_sources(model, config)
+    names = names_of(config, model, components, present)
     edges = component_edges(model, components, config)
     table = config.table
     measured = component_metrics(
@@ -206,18 +208,18 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     )
 
     problems = [
-        *_rule_problems(edges, present, config, table),
+        *_rule_problems(edges, present, config, table, names),
         *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(model, config, components, present, edges, table, in_workspace)
+    warnings = _warnings(model, config, components, present, edges, table, in_workspace, names)
     return Report(
         model.project,
         present,
         tuple(problems),
         tuple(warnings),
         measured,
-        _unused(edges.internal, present, config),
+        _unused(edges.internal, present, config, names),
     )
 
 
@@ -241,8 +243,14 @@ def component_metrics(
     return result
 
 
-def _unused(edges: dict[Pair, list[Import]], present: tuple[str, ...], config: Config):
-    """Allowed dependencies no import uses - candidates for tightening the rules (V7)."""
+def _unused(
+    edges: dict[Pair, list[Import]],
+    present: tuple[str, ...],
+    config: Config,
+    names: Names | None = None,
+):
+    """Allowed dependencies no import uses - candidates for tightening the rules (V7).
+    A qualified grant is used when an import lands inside the part it names."""
     if config.allowed is None:
         return ()
     return tuple(
@@ -250,8 +258,15 @@ def _unused(edges: dict[Pair, list[Import]], present: tuple[str, ...], config: C
         for source, targets in sorted(config.allowed.items())
         if targets != ALL and source in present
         for target in sorted(targets)
-        if (source, target) not in edges
+        if not _uses(edges, source, target, names)
     )
+
+
+def _uses(edges: dict[Pair, list[Import]], source: str, target: str, names: Names | None) -> bool:
+    if names is None or not names.qualified(target):
+        return (source, target) in edges
+    imports = edges.get((source, owner(target)), [])
+    return any(admitted(names.relative(i.imported), (target,)) for i in imports)
 
 
 def _zone_problems(measured: dict[str, Metrics], config: Config, table: str) -> list[Problem]:
@@ -284,9 +299,15 @@ def _zone_hint(component: str, m: Metrics) -> str:
 
 
 def _rule_problems(
-    edges: Edges, present: tuple[str, ...], config: Config, table: str
+    edges: Edges,
+    present: tuple[str, ...],
+    config: Config,
+    table: str,
+    names: Names | None = None,
 ) -> list[Problem]:
-    forbidden = _forbidden_pairs(config, present)
+    plain = [f for f in config.all_forbidden() if not _qualified_rule(f, names)]
+    parts = [f for f in config.all_forbidden() if _qualified_rule(f, names)]
+    forbidden = _forbidden_pairs(plain, present)
     allowed = config.allowed
     fails = config.fail_on_violations
     problems: list[Problem] = []
@@ -301,35 +322,115 @@ def _rule_problems(
         if (source, target) in forbidden:
             origin = forbidden[(source, target)].origin
             problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
-        elif allowed is not None and source in allowed and not _may(allowed, source, target):
-            problems.append(_not_allowed(source, target, imports, allowed, table, fails))
-    problems += _outside_problems(edges.outside, forbidden, config, table)
+            continue
+        found, rest = _part_forbidden(source, target, imports, parts, names, config)
+        problems += found
+        if rest and allowed is not None and source in allowed:
+            problems += _allowed_problems(source, target, rest, config, names)
+    problems += _outside_problems(edges.outside, forbidden, parts, config, names)
     problems += _undeclared_externals_problems(edges.outside, config, table)
     return sorted(problems, key=lambda p: (p.components, p.kind))
 
 
-def _forbidden_pairs(config: Config, present: tuple[str, ...]) -> dict[Pair, Forbidden]:
+def _qualified_rule(f: Forbidden, names: Names | None) -> bool:
+    return names is not None and (names.qualified(f.source) or names.qualified(f.target))
+
+
+def _forbidden_pairs(rules: list[Forbidden], present: tuple[str, ...]) -> dict[Pair, Forbidden]:
     """`forbidden` rules keyed by pair, with `from = "*"` expanded to every component."""
     pairs: dict[Pair, Forbidden] = {}
-    for f in config.all_forbidden():
+    for f in rules:
         sources = present if f.source == ALL_COMPONENTS else (f.source,)
         for source in sources:
             pairs.setdefault((source, f.target), f)
     return pairs
 
 
+def _part_forbidden(
+    source: str,
+    target: str,
+    imports: list[Import],
+    rules: list[Forbidden],
+    names: Names | None,
+    config: Config,
+) -> tuple[list[Problem], list[Import]]:
+    """The problems from `forbidden` rules that name a part (`from` or `to` qualified),
+    and the imports none of them caught. Each import goes to the first rule it breaks."""
+    problems = []
+    rest = imports
+    for f in rules if names else ():
+        hit = [i for i in rest if _breaks(f, source, target, i, names)]
+        if hit:
+            shown_source = f.source if names.qualified(f.source) else source
+            shown_target = f.target if names.qualified(f.target) else target
+            rule = f"{config.table}.{f.origin}"
+            problems.append(
+                _forbidden(shown_source, shown_target, hit, rule, config.fail_on_violations)
+            )
+            rest = [i for i in rest if i not in hit]
+    return problems, rest
+
+
+def _breaks(f: Forbidden, source: str, target: str, imp: Import, names: Names) -> bool:
+    if f.source == ALL_COMPONENTS:
+        from_ok = True
+    elif names.qualified(f.source):
+        from_ok = admitted(names.relative(imp.importer), (f.source,))
+    else:
+        from_ok = f.source == source
+    if names.qualified(f.target):
+        return from_ok and admitted(names.relative(imp.imported), (f.target,))
+    return from_ok and f.target == target
+
+
+def _allowed_problems(
+    source: str, target: str, imports: list[Import], config: Config, names: Names | None
+) -> list[Problem]:
+    """`imports` from `source` into `target` against `[allowed]`. A grant that names
+    parts of `target` admits only imports that land in those parts."""
+    allowed = config.allowed or {}
+    table = config.table
+    fails = config.fail_on_violations
+    parts = narrowing(allowed[source], target, names.known) if names else ()
+    if not names or not parts:
+        if _may(allowed, source, target):
+            return []
+        return [_not_allowed(source, target, imports, allowed, table, fails)]
+    outside: dict[str, list[Import]] = defaultdict(list)
+    for imp in imports:
+        if not admitted(names.relative(imp.imported), parts):
+            outside[names.reached(imp.imported, target)].append(imp)
+    return [
+        not_allowed_part(source, reached, imps, parts, table, fails)
+        for reached, imps in sorted(outside.items())
+    ]
+
+
 def _outside_problems(
-    outside: dict[Pair, list[Import]], forbidden: dict[Pair, Forbidden], config: Config, table: str
+    outside: dict[Pair, list[Import]],
+    forbidden: dict[Pair, Forbidden],
+    parts: list[Forbidden],
+    config: Config,
+    names: Names | None,
 ) -> list[Problem]:
     externals = config.externals
+    table = config.table
     fails = config.fail_on_violations
     problems = []
     for (source, target), imports in outside.items():
         if (source, target) in forbidden:
             origin = forbidden[(source, target)].origin
             problems.append(_forbidden(source, target, imports, f"{table}.{origin}", fails))
-        elif externals is not None and source in externals and not _may(externals, source, target):
-            problems.append(_outside(source, target, imports, externals, table, fails))
+            continue
+        found, rest = _part_forbidden(source, target, imports, parts, names, config)
+        problems += found
+        if (
+            rest
+            and externals is not None
+            and source in externals
+            and not _may(externals, source, target)
+        ):
+            problems.append(_outside(source, target, rest, externals, table, fails))
     return problems
 
 
@@ -452,6 +553,29 @@ def _not_allowed(
         count=len(imports),
         imports=tuple(imports),
         hint=hint,
+        fails=fails,
+    )
+
+
+def not_allowed_part(
+    source: str,
+    target: str,
+    imports: list[Import],
+    parts: tuple[str, ...],
+    table: str,
+    fails: bool,
+) -> Problem:
+    """An import into a part of a component or package that `source`'s grant leaves out."""
+    return Problem(
+        kind="not_allowed",
+        rule=f"{table}.allowed.{source}",
+        components=(source, target),
+        count=len(imports),
+        imports=tuple(imports),
+        hint=(
+            f"{source} may import only: {', '.join(parts)}. Move the code that needs {target}, "
+            "go through an allowed component, or ask a human to change the rule."
+        ),
         fails=fails,
     )
 
@@ -594,6 +718,7 @@ def _warnings(
     edges: Edges,
     table: str,
     in_workspace: bool = False,
+    names: Names | None = None,
 ) -> list[Notice]:
     external = {n.id for n in model.nodes if n.kind == "external"}
     known_components = set(present)
@@ -601,6 +726,7 @@ def _warnings(
     # both sides are components: an outside name or "*" there is a rule that can never
     # fire, so it must not be treated as known the way `forbidden` legitimately is.
     known = known_components | external | {ALL_COMPONENTS}
+    placed = names.qualified if names else lambda _: False
     warnings = []
     if config.allowed is None:
         warnings.append(
@@ -612,7 +738,7 @@ def _warnings(
         )
     for component, targets in sorted((config.allowed or {}).items()):
         for name in [component] + ([] if targets == ALL else list(targets)):
-            if name not in known_components:
+            if name not in known_components and not placed(name):
                 warnings.append(
                     Notice(
                         "unknown_component",
@@ -644,7 +770,7 @@ def _warnings(
         # from `layers`/`independent` name components on both sides, so both still warn.
         checked = (f.source,) if f.origin == "forbidden" else (f.source, f.target)
         for name in checked:
-            if name not in known:
+            if name not in known and not placed(name):
                 warnings.append(
                     Notice(
                         "unknown_component",
