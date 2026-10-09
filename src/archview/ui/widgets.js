@@ -1,5 +1,6 @@
 // The viewer's DOM widgets that sit on top of the diagram.
 
+import { chartSvg } from "./chart.js";
 import { legendRows } from "./colour.js";
 
 export const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
@@ -104,6 +105,49 @@ export function legendHtml(view, scheme, { picked = null, explain = false } = {}
   const body = scheme === "none" ? PLAIN_BOXES : classRows(view, scheme, picked);
   const about = explain && EXPLAIN[scheme] ? `<button type="button" class="about">${EXPLAIN[scheme]}</button>` : "";
   return `<div class="lh">Colour by</div><div class="seg" role="group" aria-label="Colour by">${buttons}</div>${body}${about}${LINES}`;
+}
+
+// ---------- metrics panel ----------
+
+function metricsText(view, threshold) {
+  const count = (zone) => view.nodes.filter((n) => n.zone === zone).length;
+  return `<p>Each dot is a box in this view: ${plural(count("pain"), "box", "boxes")} in the zone of pain, ${count("useless")} in the zone of uselessness, ${count("main_sequence")} near the main sequence. These are Robert C. Martin's package metrics; <code>archview metrics</code> prints the same numbers.</p>
+    <section><h3>Instability, I (across)</h3>
+      <p>How much a box leans on others compared with how much others lean on it. I = Ce ÷ (Ca + Ce): Ce counts the modules outside the box that it imports, Ca the modules outside it that import it. Both are counted over the whole project, not just this view.</p>
+      <ul><li><b>0</b>: other code imports it and it imports nothing. A change to it can break everything that depends on it.</li>
+      <li><b>1</b>: it imports other code and nothing imports it. Nothing breaks when it changes.</li></ul></section>
+    <section><h3>Abstractness, A (up)</h3>
+      <p>The share of a box's modules that are abstract. A Python module counts when it defines a class that subclasses <code>Protocol</code> or <code>ABC</code>, uses <code>metaclass=ABCMeta</code>, or has an <code>@abstractmethod</code>. A TypeScript file counts when it has an <code>abstract class</code> or exports only types. One such class is enough.</p></section>
+    <section><h3>Zones</h3>
+      <p>Code that much else depends on should be abstract, so a change lands behind an interface. Code nothing depends on can be concrete. Healthy boxes sit near the dashed line, the main sequence. D = |A + I − 1| is the distance from it, and a box more than ${threshold} away is in a zone:</p>
+      <ul><li><b>Zone of pain</b>, bottom left. Stable and concrete: much imports it and it offers no interface, so every change spreads. Fine for code that rarely changes, such as config or data models.</li>
+      <li><b>Zone of uselessness</b>, top right. Abstract and unstable: interfaces that little or nothing uses.</li></ul></section>
+    <p class="more">The longer version, with examples, is <code>docs/metrics.md</code> in the archview repository.</p>`;
+}
+
+export function renderMetricsPanel(body, view, threshold, { onHoverBox, onClickBox }) {
+  const { svg, dots } = chartSvg(view, threshold);
+  body.innerHTML = `<div class="explain">${svg}
+    <div class="zk"><span><i class="sw-zone pain"></i>zone of pain</span><span><i class="sw-zone"></i>main sequence, within ${threshold}</span><span><i class="sw-zone useless"></i>zone of uselessness</span></div>
+    ${metricsText(view, threshold)}</div>`;
+  const chart = body.querySelector("svg");
+  const groups = [...body.querySelectorAll(".dot")];
+  const mark = (id) => {
+    const on = id ? dots.find((d) => d.ids.includes(id)) : null;
+    chart.classList.toggle("focus", !!on);
+    for (const g of groups) {
+      const lit = dots[Number(g.dataset.i)] === on;
+      g.classList.toggle("on", lit);
+      if (lit) g.parentNode.append(g);  // draw it and its label on top
+    }
+  };
+  for (const g of groups) {
+    const d = dots[Number(g.dataset.i)];
+    g.onmouseenter = () => { mark(d.ids[0]); onHoverBox(d.ids[0]); };
+    g.onmouseleave = () => { mark(null); onHoverBox(null); };
+    g.onclick = () => d.ids.forEach(onClickBox);
+  }
+  return { mark };
 }
 
 export function renderLegend(el, view, scheme, { picked = null, onScheme, onPick, onExplain } = {}) {

@@ -12,6 +12,7 @@ from typing import Any
 
 from archview.model.filter import without_tests
 from archview.model.graph import Model
+from archview.model.metrics import DEFAULT_THRESHOLD
 from archview.model.names import last
 from archview.model.serialize import view_to_dict
 from archview.model.view import View, build_view, tangled_packages
@@ -361,6 +362,7 @@ class ViewerState:
         data["project"] = analysis.project.package
         data["separator"] = analysis.project.model.separator
         data["language"] = analysis.project.model.language
+        data["threshold"] = analysis.project.config.metrics.threshold
         return data
 
     def _top_payload(self, view: View) -> dict[str, Any]:
@@ -381,6 +383,7 @@ class ViewerState:
         data["project"] = self.workspace.name
         data["separator"] = "."
         data["language"] = None
+        data["threshold"] = DEFAULT_THRESHOLD
         return data
 
     def export(

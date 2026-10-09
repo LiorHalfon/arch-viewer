@@ -207,6 +207,19 @@ def rules_with_one_violation(repo):
     )
 
 
+def test_the_view_carries_the_zone_threshold(repo, capsys):
+    from archview.cli import main
+
+    assert client_for(repo).get("/api/view").json()["threshold"] == 0.3
+
+    main(["init", str(repo)])
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.metrics]\nthreshold = 0.4\n")
+
+    assert client_for(repo).get("/api/view").json()["threshold"] == 0.4
+    assert client_for(WORKSPACE).get("/api/view").json()["threshold"] == 0.3
+
+
 def test_marks_edges_and_imports_that_break_the_rules(repo, capsys):
     rules_with_one_violation(repo)
     client = TestClient(create_app(ViewerState(repo)))

@@ -5,7 +5,7 @@
 import { classOf, LIGHT, schemeFromOptions } from "./colour.js";
 import { drawSvg } from "./draw.js";
 import { layoutView } from "./layout.js";
-import { hideCard, renderLegend, showCard, ZONE_NAMES } from "./widgets.js";
+import { hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -21,6 +21,7 @@ const state = {
   zoom: 1,
   natural: { w: 0, h: 0 },
   sticky: null,         // {ids, label} while a focus is pinned
+  metricsPanel: null,   // the metrics panel's handle while it is open
   trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
@@ -160,10 +161,13 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   crumbs(root);
   stats(view);
   rulesButton();
-  if (!keepPanel) closePanel();
+  // The metrics panel stays open across navigation and redraws for the new view.
+  const metricsOpen = !!state.metricsPanel;
+  if (!keepPanel && !metricsOpen) closePanel();
   draw(view);
   notes();
   legend();
+  if (metricsOpen) openMetricsPanel();
   drawTree();
   const place = state.places.get(key);
   setZoom(place ? place.zoom : fitZoom(), false);
@@ -309,10 +313,12 @@ function wire(svg, view) {
     g.onmouseenter = () => {
       if (!state.sticky) focusOn(new Set([id]));
       showCard($("stage").parentElement, node, state.view, g.getBoundingClientRect());
+      state.metricsPanel?.mark(id);
     };
     g.onmouseleave = () => {
       if (!state.sticky) unfocus();
       hideCard();
+      state.metricsPanel?.mark(null);
     };
   });
   svg.querySelectorAll("g.edge").forEach((g) => {
@@ -406,7 +412,33 @@ function legend() {
     picked: state.sticky?.pick ?? null,
     onScheme: setScheme,
     onPick: pickClass,
+    onExplain: openMetricsPanel,
   });
+}
+
+// ---------- the metrics panel ----------
+
+function openMetricsPanel() {
+  $("view-menu").open = false;
+  const body = openPanel(`<h2>What instability, abstractness and zones mean</h2><div class="sub">${esc(state.root)}</div>`, "");
+  state.metricsPanel = renderMetricsPanel(body, state.view, state.view.threshold ?? 0.3, {
+    onHoverBox: (id) => {
+      if (state.sticky) return;
+      if (id) focusOn(new Set([id]));
+      else unfocus();
+    },
+    onClickBox: flash,
+  });
+}
+
+// Two pulses of a ring around the box (a steady ring with reduced motion).
+function flash(id) {
+  const g = document.querySelector(`#graph g.node[data-id="${CSS.escape(id)}"]`);
+  if (!g) return;
+  g.classList.remove("flash");
+  void g.getBoundingClientRect();  // restart the animation
+  g.classList.add("flash");
+  g.addEventListener("animationend", () => g.classList.remove("flash"), { once: true });
 }
 
 function reach(start, forward) {
@@ -524,6 +556,7 @@ function setZoom(zoom, keepCentre = true) {
 
 function openPanel(titleHtml, bodyHtml, code = false) {
   if (!code && state.source) { state.source = null; drawTree(); }
+  state.metricsPanel = null;  // any panel replaces the metrics panel; openMetricsPanel sets it again
   $("main").classList.add("with-panel");
   $("panel").hidden = false;
   $("panel-title").innerHTML = titleHtml;
@@ -535,6 +568,7 @@ function openPanel(titleHtml, bodyHtml, code = false) {
 }
 
 function closePanel() {
+  state.metricsPanel = null;
   $("main").classList.remove("with-panel");
   $("panel").hidden = true;
   if (state.source) { state.source = null; drawTree(); }
@@ -594,7 +628,8 @@ function openNode(node) {
       <dt>Instability I</dt><dd>${num(node.instability)}</dd>
       <dt>Abstractness A</dt><dd>${num(node.abstractness)}</dd>
       <dt>Distance D</dt><dd>${num(node.distance)}</dd>
-      <dt>Zone</dt><dd>${zone}</dd>`;
+      <dt>Zone</dt><dd>${zone}</dd>
+      <dt></dt><dd><button class="link" data-explain>What do these mean?</button></dd>`;
   const body = openPanel(
     `<h2>${esc(node.name)} ${node.abstract ? '<span class="badge abs">abstract</span>' : ""}${node.in_cycle ? ' <span class="badge">cycle</span>' : ""}</h2><div class="sub">${esc(node.id)}</div>`,
     `<div class="actions">
@@ -626,6 +661,8 @@ function openNode(node) {
     reached: () => pin(reach(node.id, false), `what reaches ${node.name}`, true, node.id),
   };
   body.querySelectorAll("[data-act]").forEach((b) => { b.onclick = actions[b.dataset.act]; });
+  const explain = body.querySelector("[data-explain]");
+  if (explain) explain.onclick = openMetricsPanel;
   body.querySelectorAll(".links li").forEach((li) => {
     li.onclick = () => openEdge(view.edges.find((e) => e.source === li.dataset.s && e.target === li.dataset.t));
   });
@@ -793,9 +830,10 @@ function openMetricsTable() {
         <td>${num(n.instability)}</td><td>${num(n.abstractness)}</td><td>${num(n.distance)}</td>
         <td><span class="zone zone-${n.zone}">${ZONE_NAMES[n.zone]}</span></td></tr>`).join("");
     const body = openPanel(
-      `<h2>Metrics</h2><div class="sub">${esc(state.root)} · I = instability, A = abstractness, D = |A + I − 1|</div>`,
+      `<h2>Metrics</h2><div class="sub">${esc(state.root)} · I = instability, A = abstractness, D = |A + I − 1| · <button class="link" data-explain>What do these mean?</button></div>`,
       `<table class="metrics"><thead><tr>${columns.map(([k, label]) => `<th data-k="${k}">${label}${k === sortKey ? (descending ? " ▾" : " ▴") : ""}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`,
     );
+    $("panel-title").querySelector("[data-explain]").onclick = openMetricsPanel;
     body.querySelectorAll("th").forEach((th) => {
       th.onclick = () => { descending = th.dataset.k === sortKey ? !descending : true; sortKey = th.dataset.k; render(); };
     });
