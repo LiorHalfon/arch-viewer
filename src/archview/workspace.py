@@ -40,6 +40,7 @@ from archview.rules.check import (
     checked_imports,
     component_edges,
     component_map,
+    not_allowed_part,
 )
 from archview.rules.config import (
     ALL,
@@ -51,6 +52,7 @@ from archview.rules.config import (
     find_config,
     load_config,
 )
+from archview.rules.qualified import admitted, is_qualified, narrowing, owner, widened
 
 
 @dataclass(frozen=True, slots=True)
@@ -413,11 +415,6 @@ def _unplaced_warnings(cross: CrossEdges, ws: Workspace) -> tuple[Notice, ...]:
     )
 
 
-def _package(name: str) -> str:
-    """`core.ports` -> `core`; `core` -> `core`."""
-    return name.split(".", 1)[0]
-
-
 def _package_level(config: Config, rules: WorkspaceRules) -> Config:
     """The workspace `allowed` table as the package-level check sees it.
 
@@ -427,11 +424,7 @@ def _package_level(config: Config, rules: WorkspaceRules) -> Config:
     """
     if not rules.allowed:
         return config
-    widened = {
-        source: targets if targets == ALL else tuple(sorted({_package(t) for t in targets}))
-        for source, targets in rules.allowed.items()
-    }
-    return replace(config, allowed=widened)
+    return replace(config, allowed=widened(rules.allowed))
 
 
 def _published(ws: Workspace, package: str) -> tuple[str, ...] | None:
@@ -449,11 +442,11 @@ def _reject_unpublished_grants(ws: Workspace, rules: WorkspaceRules) -> None:
     """
     for source, targets in sorted((rules.allowed or {}).items()):
         for target in () if targets == ALL else targets:
-            if "." not in target:
+            if not is_qualified(target):
                 continue
-            published = _published(ws, _package(target))
+            published = _published(ws, owner(target))
             if published is not None and target.split(".", 1)[1] not in published:
-                package = _package(target)
+                package = owner(target)
                 may = ", ".join(f"{package}.{n}" for n in published) or "nothing"
                 raise ConfigError(
                     f"[{ws.config.table}.workspace.allowed.{source}] names {target!r}, "
@@ -471,20 +464,22 @@ def _component_problems(
     allowed = rules.allowed or {}
     problems = []
     for (source, target), imports in by_component.items():
-        package = _package(target)
+        package = owner(target)
         published = _published(ws, package)
         component = target.split(".", 1)[1] if "." in target else None
         if published is not None and (component is None or component not in published):
-            owner = next(p for p in ws.packages if p.name == package)
+            holder = next(p for p in ws.packages if p.name == package)
             problems.append(
-                _private(source, target, imports, published, owner.project.config.table, config)
+                _private(source, target, imports, published, holder.project.config.table, config)
             )
             continue
-        grants = allowed.get(source)
-        qualified = () if grants in (None, ALL) else tuple(t for t in grants if "." in t)
-        constrains = qualified and _package(target) in {_package(t) for t in qualified}
-        if constrains and target not in qualified:
-            problems.append(_not_allowed_component(source, target, imports, qualified, config))
+        parts = narrowing(allowed.get(source), package)
+        if parts and not admitted(target, parts):
+            problems.append(
+                not_allowed_part(
+                    source, target, imports, parts, config.table, config.fail_on_violations
+                )
+            )
     return problems
 
 
@@ -496,7 +491,7 @@ def _private(
     owner_table: str,
     config: Config,
 ) -> Problem:
-    package = _package(target)
+    package = owner(target)
     may = ", ".join(f"{package}.{name}" for name in published) or "nothing"
     return Problem(
         kind="private",
@@ -507,24 +502,6 @@ def _private(
         hint=(
             f"{target} is not part of {package}'s public surface. {package} publishes: "
             f"{may}. Import one of those, or ask {package}'s owner to publish it."
-        ),
-        fails=config.fail_on_violations,
-    )
-
-
-def _not_allowed_component(
-    source: str, target: str, imports: list[Import], qualified: tuple[str, ...], config: Config
-) -> Problem:
-    may = ", ".join(qualified)
-    return Problem(
-        kind="not_allowed",
-        rule=f"{config.table}.allowed.{source}",
-        components=(source, target),
-        count=len(imports),
-        imports=tuple(imports),
-        hint=(
-            f"{source} may import only: {may}. Move the code that needs {target}, go "
-            "through an allowed component, or ask a human to change the rule."
         ),
         fails=config.fail_on_violations,
     )
@@ -585,7 +562,7 @@ def workspace_view(ws: Workspace, threshold: float = DEFAULT_THRESHOLD) -> View:
             source=s,
             target=t,
             count=len(imports),
-            in_cycle=component[s] == component.get(_package(t), s),
+            in_cycle=component[s] == component.get(owner(t), s),
             imports=tuple(imports),
             type_checking=all(i.type_checking for i in imports),
         )
