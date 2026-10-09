@@ -1,6 +1,6 @@
 # M13 design: the viewer draws its own diagram
 
-Date: 2026-10-09. Status: draft, for review.
+Date: 2026-10-09. Status: implemented in M13 (ADR 0017).
 
 Four changes to `archview serve`, picked from a page of live mockups built on
 tiny-tale-backend's real views (ideas 1, 2, 4 and 6 of seven):

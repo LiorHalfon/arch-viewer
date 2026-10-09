@@ -4,7 +4,9 @@ Date: 2026-09-16 (M3)
 
 ## Status
 
-Accepted.
+Accepted. Amended by ADR 0017 (M13): the UI draws its own SVG from Graphviz's JSON
+layout instead of restyling Graphviz's SVG, and dragging no longer waits for ELK and
+React Flow.
 
 ## Context
 

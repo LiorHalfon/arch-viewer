@@ -65,14 +65,18 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | V5 | Leaf → code: click a module → its source opens in a panel (read-only, syntax-highlighted, import lines highlighted). | MVP | 27:16–27:20 |
 | V6 | Cycles are unmissable: red names for subtrees containing a cycle, red edges/indicators for cyclic dependencies, and a list of cycles in `a → b → c → a` form for the current view. | MVP | AV legend |
 | V7 | Violations overlay: edges that break the rules file are styled distinctly (e.g. red dashed) and listed; optionally show allowed-but-unused rules. | V2 | 27:31; AV V2 "guidance vs actual diff" |
-| V8 | Abstract modules/packages are visually distinct (AV: green), and edges to abstractions use the UML closed-triangle arrowhead. | V2 | AV legend |
+| V8 | Abstract modules/packages are visually distinct: an italic name under every colour scheme, and the green fill (AV) under None. Edges to abstractions use the UML closed-triangle arrowhead. | V2 | AV legend; M13 |
 | V9 | Reanalyze: a button (and/or file watching) rescans and redraws the current view without losing navigation state. | V2 | AV `Reanalyze` |
 | V10 | Filters and focus: hide tests/externals, focus a node and its neighbours, "what reaches X" (impact), collapse/expand packages in place. | V2 | dependency-cruiser `--focus/--reaches`; Nx graph |
-| V11 | Metrics panel per node (A10), with zone colouring. | V2 | DC |
+| V11 | Metrics panel per node (A10), with zone colouring (one of V16's schemes), and a panel that explains I, A, D and the zones with the view's boxes plotted by instability and abstractness. | V2 | DC; M13 |
 | V12 | Export the current view as SVG/PNG (for PRs and docs) and as Mermaid/DOT (for markdown). | V2 | AV V2 "export and CI" |
 | V13 | Launch with one command from the project root (`archview .` / `uv run archview`), opens in the browser, works offline, no accounts, no telemetry. | MVP | LH (Claude Code workflow) |
 | V14 | Handles a view of a few hundred boxes interactively; larger views are automatically collapsed to packages. | MVP | — |
 | V15 | File drawer: a hideable panel on the left lists the packages (folders) and modules (files) under the current root, with a `..` row to go up. Clicking a folder makes it the root, clicking a file opens its source; folders expand in place. Follows Hide tests. | V2 | LH |
+| V16 | Colour by: boxes are coloured by role in the view (entry point, in between, foundation, on its own; the default), instability, zone, or none. The legend chooses the scheme, counts the boxes in each class, and a click on a class picks out its boxes. | V2 (M13) | LH; lm17918/archview; ADR 0017 |
+| V17 | Drag boxes: a dropped box stays where it was put and Graphviz routes the lines again around it (straight lines past 100 boxes). Moved boxes are remembered per view in the browser, never in the repo, and Reset layout puts the Graphviz layout back. | V2 (M13) | LH; ADR 0017 |
+| V18 | A line's width grows with its import count; while a box is focused, what it imports is blue and what imports it violet (cycle and rule-break lines keep their colours); a hover card shows a box's import counts, metrics and zone. | V2 (M13) | ADR 0017 |
+| V19 | Quick find: `/` searches every package and module of the project (every member's at a workspace's top level), following Hide tests, and opens the level that draws the match and flashes it. | V2 (M13) | ADR 0017 |
 
 ## 6. Functional requirements — checker
 
@@ -136,12 +140,12 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-10-09, after M12)
+## 12. Implementation status (2026-10-09, after M13)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
-| Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012) | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
+| Viewer | V1–V9, V11–V13, V15–V19. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012). The UI draws its own SVG from Graphviz's layout (ADR 0017) | V10 collapse/expand in place (now possible on ADR 0017's drawing); V14 auto-collapse of very large views |
 | Checker | C1–C4, C6–C17. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
