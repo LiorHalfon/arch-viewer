@@ -133,7 +133,10 @@ main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minm
 
 /* the diagram, drawn by draw.js from Graphviz's layout */
 .graph .cluster rect { fill: none; stroke: var(--pkg-stroke); }
-.graph .node { cursor: pointer; }
+.graph .node { cursor: pointer; touch-action: none; }
+.graph svg { user-select: none; }
+.graph svg.dragging, .graph svg.dragging .node { cursor: grabbing; }
+.graph .edge.preview .line { stroke-dasharray: 5 4; }
 .graph .node .ring { fill: none; stroke: none; }
 .graph .node .shape { stroke-width: 1; transition: stroke-width .1s; }
 .graph .node.package .shape { fill: var(--pkg-fill); stroke: var(--pkg-stroke); }

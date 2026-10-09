@@ -3,8 +3,9 @@
 // so Back returns to where you were.
 
 import { classOf, LIGHT, schemeFromOptions } from "./colour.js";
-import { drawSvg } from "./draw.js";
-import { layoutView } from "./layout.js";
+import { enableDrag, layoutKey, loadMoved, saveMoved } from "./drag.js";
+import { drawSvg, edgeGeometry } from "./draw.js";
+import { bounds, clusterFrames, layoutView, routesAfterMove, straightRoute } from "./layout.js";
 import { hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
 
 const $ = (id) => document.getElementById(id);
@@ -16,6 +17,8 @@ const state = {
   root: null,
   view: null,
   layout: null,         // Graphviz's layout of the current view (layout.js)
+  moved: new Map(),     // boxes moved by hand in the current view: id -> {x, y}
+  routes: {},           // the current view's edge routes (Graphviz's, or routed again after a drop)
   views: new Map(),     // "root=..&package=..&externals=..&hide_tests=.." -> view payload
   places: new Map(),    // "package|root" -> {zoom, left, top}
   zoom: 1,
@@ -164,7 +167,9 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   // The metrics panel stays open across navigation and redraws for the new view.
   const metricsOpen = !!state.metricsPanel;
   if (!keepPanel && !metricsOpen) closePanel();
+  layOut(view);
   draw(view);
+  resetButton();
   notes();
   legend();
   if (metricsOpen) openMetricsPanel();
@@ -272,16 +277,112 @@ function draw(view) {
   const graph = $("graph");
   graph.innerHTML = "";
   hideCard();
-  if (!view.nodes.length) {
+  if (!state.layout) {
     graph.innerHTML = '<p class="hint">Nothing to show at this level.</p>';
     return;
   }
-  state.layout = layoutView(state.viz, view.dot);
-  // Graphviz's own SVG pads the drawing by 4 points on every side.
-  const box = { x: -4, y: -4, w: state.layout.w + 8, h: state.layout.h + 8 };
-  graph.innerHTML = drawSvg(view, state.layout, { box, weighted: true, scheme: state.options.colour, palette: state.palette });
+  const at = positions();
+  const clusters = clusterFrames(state.layout, at);
+  const box = drawingBox(at, clusters);
+  graph.innerHTML = drawSvg(view, state.layout, {
+    positions: at, routes: state.routes, clusters, box, weighted: true, scheme: state.options.colour, palette: state.palette,
+  });
   state.natural = { w: box.w, h: box.h };
-  wire(graph.querySelector("svg"), view);
+  const svg = graph.querySelector("svg");
+  wire(svg, view);
+  enableDrag(svg, { toSvgPoint: (e) => svgPoint(svg, e), onMove: previewMove, onDrop: dropBox, onCancel: redraw });
+}
+
+// ---------- layout and dragging ----------
+
+const storage = (() => {
+  try { return window.localStorage; } catch { return null; }
+})();
+
+const viewKey = () => layoutKey({
+  repo: state.project.repo, project: state.view.project, package: state.package,
+  root: state.root, externals: state.options.externals, hideTests: state.options.tests,
+});
+
+// Lay the view out with Graphviz, then put back the boxes moved in it before.
+function layOut(view) {
+  state.layout = view.nodes.length ? layoutView(state.viz, view.dot) : null;
+  state.moved = state.layout ? loadMoved(storage, viewKey(), new Set(Object.keys(state.layout.nodes))) : new Map();
+  state.routes = state.layout ? state.layout.routes : {};
+  if (state.moved.size) state.routes = routesFor(new Set(state.moved.keys()), state.layout.routes);
+}
+
+const positions = () => Object.fromEntries(state.moved);
+const centre = (id) => state.moved.get(id) || state.layout.nodes[id];
+
+function routesFor(moved, previous) {
+  const started = performance.now();
+  const edges = state.view.edges.map(({ source, target }) => ({ source, target }));
+  const routes = routesAfterMove(state.viz, state.layout, positions(), edges, previous, moved);
+  console.debug("archview: rerouted in", Math.round(performance.now() - started), "ms");
+  return routes;
+}
+
+// Graphviz's own SVG pads the drawing by 4 points; a box dragged past that grows it.
+function drawingBox(at, clusters) {
+  const pad = { x: -4, y: -4, w: state.layout.w + 8, h: state.layout.h + 8 };
+  if (!state.moved.size) return pad;
+  const b = bounds(state.layout, at, state.routes, clusters, 4);
+  const x = Math.min(pad.x, b.x), y = Math.min(pad.y, b.y);
+  return { x, y, w: Math.max(pad.x + pad.w, b.x + b.w) - x, h: Math.max(pad.y + pad.h, b.y + b.h) - y };
+}
+
+function svgPoint(svg, e) {
+  const p = svg.createSVGPoint();
+  p.x = e.clientX;
+  p.y = e.clientY;
+  return p.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// While a box moves, its own lines follow as straight dashes; the rest stay.
+function previewMove(id, by) {
+  hideCard();
+  const svg = $("graph").querySelector("svg");
+  svg.querySelector(`g.node[data-id="${CSS.escape(id)}"]`).setAttribute("transform", `translate(${by.x} ${by.y})`);
+  const from = centre(id);
+  const at = (other) => (other === id ? { x: from.x + by.x, y: from.y + by.y } : centre(other));
+  svg.querySelectorAll("g.edge").forEach((g) => {
+    const { source, target } = g.dataset;
+    if (source !== id && target !== id) return;
+    const line = g.querySelector(".line");
+    const route = straightRoute(at(source), state.layout.nodes[source], at(target), state.layout.nodes[target]);
+    const geo = edgeGeometry(route, Number.parseFloat(line.getAttribute("stroke-width")) || 1);
+    line.setAttribute("d", geo.d);
+    g.querySelector(".hit").setAttribute("d", geo.d);
+    g.querySelector(".arrow")?.setAttribute("points", geo.arrow);
+    const count = g.querySelector(".count");
+    if (count && geo.label) {
+      count.setAttribute("x", geo.label[0]);
+      count.setAttribute("y", geo.label[1]);
+    }
+    g.classList.add("preview");
+  });
+}
+
+function dropBox(id, by) {
+  const from = centre(id);
+  state.moved.set(id, { x: from.x + by.x, y: from.y + by.y });
+  saveMoved(storage, viewKey(), state.moved);
+  state.routes = routesFor(new Set([id]), state.routes);
+  redraw();
+  resetButton();
+}
+
+function resetLayout() {
+  state.moved = new Map();
+  saveMoved(storage, viewKey(), state.moved);
+  state.routes = state.layout ? state.layout.routes : {};
+  redraw();
+  resetButton();
+}
+
+function resetButton() {
+  $("reset-layout").disabled = !state.moved.size;
 }
 
 // Draw the current view again in place: same zoom, scroll and pinned focus.
@@ -311,8 +412,9 @@ function wire(svg, view) {
     };
     g.oncontextmenu = (e) => { e.preventDefault(); openNode(node); };
     g.onmouseenter = () => {
+      if (svg.classList.contains("dragging")) return;
       if (!state.sticky) focusOn(new Set([id]));
-      showCard($("stage").parentElement, node, state.view, g.getBoundingClientRect());
+      showCard($("stage").parentElement, node, state.view, g.getBoundingClientRect(), { drag: true });
       state.metricsPanel?.mark(id);
     };
     g.onmouseleave = () => {
@@ -961,6 +1063,7 @@ function bind() {
   $("zoom-in").onclick = () => setZoom(state.zoom * 1.25);
   $("zoom-out").onclick = () => setZoom(state.zoom / 1.25);
   $("zoom-fit").onclick = () => setZoom(fitZoom());
+  $("reset-layout").onclick = resetLayout;
   $("reanalyze").onclick = reanalyze;
   $("rules").onclick = openRules;
   $("metrics-table").onclick = openMetricsTable;
