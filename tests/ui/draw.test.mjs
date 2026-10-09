@@ -77,6 +77,31 @@ test("a weighted drawing writes each line's width", async () => {
   assert.ok(!drawSvg(view, layout).includes("stroke-width"));
 });
 
+test("an export stands alone: light colours written in, no stylesheet needed", async () => {
+  const { view, layout } = await sample();
+  for (const scheme of ["role", "instability", "zone", "none"]) {
+    const svg = drawSvg(view, layout, { mode: "export", scheme, weighted: true });
+    assert.ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), scheme);
+    assert.ok(!svg.includes("var("), `${scheme} export still uses a CSS variable`);
+    assert.match(svg, /<svg [^>]*width="[\d.]+" height="[\d.]+"/);
+    assert.ok(svg.includes('fill="#ffffff"'), "white background");
+    assert.ok(!svg.includes('class="hit"'), "no hit paths");
+  }
+});
+
+test("an export carries the scheme's legend, except under None", async () => {
+  const { view, layout } = await sample();
+  assert.ok(drawSvg(view, layout, { mode: "export", scheme: "role" }).includes(">entry point</text>"));
+  assert.ok(!drawSvg(view, layout, { mode: "export", scheme: "role" }).includes(">on its own</text>"), "a class with no boxes is left out");
+  assert.ok(!drawSvg(view, layout, { mode: "export", scheme: "none" }).includes('class="legend"'));
+});
+
+test("a weighted export keeps the line widths", async () => {
+  const { view, layout } = await sample();
+  const svg = drawSvg(view, layout, { mode: "export", weighted: true });
+  assert.ok(group(svg, 'data-target="core.api"').includes('stroke-width="2.11"'));
+});
+
 test("boxes carry no title, since the hover card replaces it", async () => {
   const { view, layout } = await sample();
   assert.ok(!group(drawSvg(view, layout), 'data-id="app"').includes("<title>"));

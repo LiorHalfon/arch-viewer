@@ -1004,11 +1004,22 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// The view as drawn: moved boxes, routes and colour scheme, in light colours, with a
+// legend for the scheme.
+function exportSvg() {
+  const at = positions();
+  const clusters = clusterFrames(state.layout, at);
+  return drawSvg(state.view, state.layout, {
+    positions: at, routes: state.routes, clusters, box: drawingBox(at, clusters), weighted: true, scheme: state.options.colour, mode: "export",
+  });
+}
+
 async function exportView(format) {
   $("export-menu").open = false;
   const base = state.root.replaceAll(sep(), "-");
   if (format === "svg" || format === "png") {
-    const svgText = state.viz.renderString(state.view.dot, { format: "svg" });
+    if (!state.layout) return toast("Nothing to export at this level");
+    const svgText = exportSvg();
     if (format === "svg") return download(`${base}.svg`, new Blob([svgText], { type: "image/svg+xml" }));
     const image = new Image();
     image.onload = () => {

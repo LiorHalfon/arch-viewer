@@ -86,6 +86,20 @@ export function pinnedDot(layout, positions, edges) {
 
 const shiftPoint = (dx, dy) => (p) => (p ? [p[0] + dx, p[1] + dy] : p);
 
+// Halfway along the spline, 9 pt to the left of travel: where a count goes when neato
+// routed the line (the pinned DOT has no edge labels, so it places none).
+function labelAt(points) {
+  const segments = (points.length - 1) / 3;
+  if (segments < 1) return null;
+  const s = segments / 2, i = Math.min(Math.floor(s), segments - 1), t = s - i;
+  const [p0, p1, p2, p3] = points.slice(i * 3, i * 3 + 4);
+  const u = 1 - t;
+  const at = (k) => u ** 3 * p0[k] + 3 * u * u * t * p1[k] + 3 * u * t * t * p2[k] + t ** 3 * p3[k];
+  const slope = (k) => 3 * (u * u * (p1[k] - p0[k]) + 2 * u * t * (p2[k] - p1[k]) + t * t * (p3[k] - p2[k]));
+  const len = Math.hypot(slope(0), slope(1)) || 1;
+  return [at(0) + (slope(1) / len) * 9, at(1) - (slope(0) / len) * 9];
+}
+
 // neato keeps the pinned boxes in place relative to each other but moves the whole
 // drawing so its corner is at the origin; put it back by one box's offset.
 export function rerouteLayout(viz, layout, positions, edges) {
@@ -100,7 +114,7 @@ export function rerouteLayout(viz, layout, positions, edges) {
   for (const r of Object.values(out.routes)) {
     r.points = r.points.map(shift);
     r.tip = shift(r.tip);
-    r.label = shift(r.label);
+    r.label = r.label ? shift(r.label) : labelAt(r.points);
   }
   return out;
 }

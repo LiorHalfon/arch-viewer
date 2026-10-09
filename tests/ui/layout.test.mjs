@@ -52,6 +52,19 @@ test("a pinned re-route keeps every box where it was put", async () => {
   for (const e of SAMPLE_EDGES) assert.ok(out.routes[edgeKey(e.source, e.target)].tip, `${e.source}>${e.target} has no arrow tip`);
 });
 
+test("re-routed lines keep a place for their count", async () => {
+  const viz = await loadViz();
+  const layout = layoutView(viz, SAMPLE_DOT);
+  const positions = positionsOf(layout);
+  positions.app = { x: positions.app.x + 60, y: positions.app.y + 10 };
+  for (const [key, route] of Object.entries(reroute(viz, layout, positions, SAMPLE_EDGES))) {
+    assert.ok(route.label, `${key} lost its label position`);
+    const [x, y] = route.label;
+    const xs = route.points.map((p) => p[0]), ys = route.points.map((p) => p[1]);
+    assert.ok(x > Math.min(...xs) - 20 && x < Math.max(...xs) + 20 && y > Math.min(...ys) - 20 && y < Math.max(...ys) + 20, `${key}: label far from its line`);
+  }
+});
+
 test("no edges re-route to nothing", async () => {
   const viz = await loadViz();
   const layout = layoutView(viz, SAMPLE_DOT);
