@@ -173,6 +173,49 @@ between the pair, exactly as before this key existed. Any other value is a
 `ConfigError`, so a typo cannot silently widen an exception. `kind` works the same
 way in `[[archview.workspace.exceptions]]` (below).
 
+### Naming part of a component
+
+A component is the smallest thing `allowed` and `forbidden` name, so to the root file
+`core` is one box. A **qualified name**, `component.part`, names one module or
+sub-package inside it and everything below that:
+
+```toml
+[archview.allowed]
+core   = []
+plugin = ["core.ports", "core.types"]   # core's ports and types, nothing else of core
+
+[[archview.forbidden]]
+from = "app"
+to   = "core.desk"                      # fires only on imports into core/desk/
+
+[[archview.forbidden]]
+from = "core.desk"                      # a part works on the `from` side too
+to   = "openai"
+```
+
+- The part after the component is the module path below it, written with dots:
+  `core.ports` is `<package>.core.ports`, and in TypeScript `core.ports` is the
+  `core/ports/` directory (`core.ports.index.ts` names one file).
+- A grant that names parts of `core` admits only imports into those parts. An import
+  anywhere else in `core`, including `core`'s own `__init__`, is a `VIOLATION` whose
+  hint lists the parts that are allowed, and the report names the part it reached
+  (`plugin -> core.desk`). A plain `core` beside qualified ones adds nothing; a plain
+  `core` alone still allows all of `core`.
+- A qualified grant that no import reaches is listed under unused allowances, like
+  any other grant.
+- A qualified name that archview cannot place is a `ConfigError` (exit 2) naming the
+  file, the key and the name: a first segment that is not a component, a module that
+  does not exist, or one that `[archview.components]` assigns to another component.
+  In Python every dotted name in these places is read as qualified, since an outside
+  name is always the top-level package. In TypeScript a dotted name is qualified only
+  when it starts with a component, so an npm name like `chart.js` stays an outside name.
+- The same names work in a nested rules file, relative to its own package, and in
+  `layers` and `independent`.
+
+This is the same meaning a workspace gives `server = ["core.ports"]` (below); the two
+modes share one implementation. `[archview.externals]` keys still name whole
+components. See ADR 0018.
+
 ## Test code under the rules
 
 **Use `source_roots = ["src", "."]`, not `["src", "tests"]`.** A `source_roots`
@@ -297,7 +340,8 @@ Three things follow from that:
 - **No `public` key means the whole package is public**, so every workspace written
   before this keeps its meaning. `public = []` means it publishes nothing.
 - **A grant may narrow further** with a qualified name — `server = ["core.ports"]`
-  allows core's ports and nothing else of core.
+  allows core's ports and nothing else of core. A single package's rules file reads
+  qualified names the same way (*Naming part of a component*, above).
 - **A grant may not widen.** Naming a component its owner does not publish is an
   error at load time, not a silent no-op, because `public` would override it. Use
   `[[archview.workspace.exceptions]]`, which requires a written reason, for a
@@ -402,7 +446,9 @@ How it works:
   root's `exclude` and `type_checking_imports`.
 - A scope sees only imports between its own modules. Imports that leave the scope are
   checked by the rules above it, so a `forbidden` entry that names something outside the
-  scope gets an `unknown_component` notice.
+  scope gets an `unknown_component` notice. To say which parts of a scope another
+  package may reach, write it in the root file with qualified names:
+  `plugin = ["core.ports", "core.types"]`.
 - A nested file may hold a `baseline`, resolved against that file, or sit next to an
   `archview-baseline.json`. `check --update-baseline` writes one per scope.
 - A nested file may contain further nested files. In a workspace, a member's scopes are
@@ -416,8 +462,9 @@ How it works:
 - `serve` draws a scope's failing imports in red when you drill into it and lists its
   problems in the check panel. `--watch` reloads when a nested file changes.
 
-Not covered: limiting which modules outside a scope its components may import,
-`archview metrics` per scope (the numbers are in `check --format json`), and
+Not covered: limiting, in the nested file, which modules outside a scope its
+components may import (the root file can, with qualified names), `[archview.externals]`
+keys for a part of a component, `archview metrics` per scope (the numbers are in `check --format json`), and
 `[tool.archview]` in a nested `pyproject.toml`.
 
 ## Legacy code: baseline
