@@ -170,8 +170,6 @@ main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minm
 .graph .node.abstract .shape { fill: var(--abs-fill); stroke: var(--abs-stroke); }
 .graph .node.external .shape { fill: transparent; stroke: var(--mod-stroke); stroke-width: 1; stroke-dasharray: 4 3; }
 .graph .node.external text { fill: var(--muted); }
-body.zones .graph .node.package.zone-pain .shape { fill: var(--pain); }
-body.zones .graph .node.package.zone-useless .shape { fill: var(--useless); }
 .graph .edge.typing .line { stroke-dasharray: 2 3; }
 .graph .edge.abstract .arrow { fill: var(--surface); }
 .graph .edge.violation .line { stroke: var(--violation); stroke-dasharray: 6 4; }
@@ -183,22 +181,42 @@ body.zones .graph .node.package.zone-useless .shape { fill: var(--useless); }
 .stage-wrap { position: relative; min-height: 0; }
 .stage-wrap .stage { position: absolute; inset: 0; }
 .legend {
-  position: absolute; bottom: 12px; right: 16px;
+  position: absolute; bottom: 12px; right: 16px; width: 228px; max-height: calc(100% - 24px); overflow: auto;
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 10px; font-size: 11px; color: var(--muted); display: grid; gap: 3px;
+  padding: 8px 10px; font-size: 11.5px; color: var(--muted); display: grid; gap: 6px;
   box-shadow: 0 2px 8px rgb(0 0 0 / .08);
 }
-.legend[hidden], body:not(.zones) .legend .zones-only { display: none; }
-.legend div { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend[hidden] { display: none; }
+.legend .lh { font-weight: 600; color: var(--text); font-size: 12px; }
+.legend .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.legend .seg button { flex: 1; border: 0; border-right: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text); font-size: 11.5px; padding: 3px 0; cursor: pointer; }
+.legend .seg button:last-child { border-right: 0; }
+.legend .seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+.legend .items { display: grid; gap: 1px; }
+.legend button.item { display: grid; grid-template-columns: 16px 1fr auto; gap: 7px; align-items: center; text-align: left; border: 1px solid transparent; border-radius: 5px; padding: 3px 5px; background: none; color: var(--text); font-size: 11.5px; cursor: pointer; }
+.legend button.item:hover { border-color: var(--border); }
+.legend button.item[aria-pressed="true"] { border-color: var(--accent); background: var(--focus); }
+.legend button.item.zero { opacity: .45; cursor: default; }
+.legend .item .sw { width: 16px; height: 12px; border-radius: 3px; border-color: color-mix(in oklab, var(--text) 30%, transparent); }
+.legend .nm small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.25; }
+.legend .ct { font-variant-numeric: tabular-nums; color: var(--muted); }
+.legend .keys, .legend .lines { display: grid; gap: 3px; }
+.legend .keys div, .legend .lines div { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend .hint { font-size: 10.5px; }
+.legend .about { justify-self: start; border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.legend details summary { cursor: pointer; }
+.legend details[open] summary { margin-bottom: 4px; }
+.menu-group { display: grid; gap: 0; }
+.menu-label { padding: 4px 6px 2px; color: var(--muted); font-size: 11.5px; }
 .sw { width: 16px; height: 10px; border: 1px solid var(--pkg-stroke); background: var(--pkg-fill); display: inline-block; }
 .sw-mod { background: var(--mod-fill); border-color: var(--mod-stroke); border-radius: 3px; }
 .sw-abs { background: var(--abs-fill); border-color: var(--abs-stroke); }
 .sw-ext { background: transparent; border: 1px dashed var(--mod-stroke); border-radius: 3px; }
-.sw-pain { background: var(--pain); }
-.sw-useless { background: var(--useless); }
 .ln { width: 22px; height: 0; border-top: 1.5px solid var(--edge); display: inline-block; position: relative; }
 .ln::after { content: ""; position: absolute; right: -2px; top: -4.5px; border: 4px solid transparent; border-left: 6px solid var(--edge); }
 .ln-abs::after { border-left-color: var(--surface); filter: drop-shadow(0 0 .6px var(--edge)) drop-shadow(0 0 .6px var(--edge)); }
+.ln-thick { border-top-width: 4px; }
+.ln-thick::after { top: -5.5px; }
 .ln-typing { border-top-style: dotted; }
 .ln-cycle { border-top-color: var(--danger); }
 .ln-cycle::after { border-left-color: var(--danger); }

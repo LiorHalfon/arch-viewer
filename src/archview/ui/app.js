@@ -2,10 +2,10 @@
 // draw.js, drill down by click. Every root keeps its own zoom and scroll position,
 // so Back returns to where you were.
 
-import { LIGHT, schemeFromOptions } from "./colour.js";
+import { classOf, LIGHT, schemeFromOptions } from "./colour.js";
 import { drawSvg } from "./draw.js";
 import { layoutView } from "./layout.js";
-import { hideCard, showCard, ZONE_NAMES } from "./widgets.js";
+import { hideCard, renderLegend, showCard, ZONE_NAMES } from "./widgets.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -95,9 +95,8 @@ function saveOptions() {
 function applyOptions() {
   $("opt-tests").checked = state.options.tests;
   $("opt-externals").checked = state.options.externals;
-  $("opt-zones").checked = state.options.colour === "zone";
+  document.querySelectorAll('input[name="colour"]').forEach((r) => { r.checked = r.value === state.options.colour; });
   $("opt-legend").checked = state.options.legend;
-  document.body.classList.toggle("zones", state.options.colour === "zone");
   $("legend").hidden = !state.options.legend;
   $("tree").hidden = !state.options.tree;
   $("main").classList.toggle("with-tree", state.options.tree);
@@ -164,6 +163,7 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   if (!keepPanel) closePanel();
   draw(view);
   notes();
+  legend();
   drawTree();
   const place = state.places.get(key);
   setZoom(place ? place.zoom : fitZoom(), false);
@@ -367,16 +367,46 @@ function unfocus() {
   if (svg) svg.classList.remove("focusing");
 }
 
-function pin(ids, label, strict = true, root = null) {
-  state.sticky = { ids, label, strict, root };
+// `pick`: the legend class this focus picks out, so its row shows as pressed.
+function pin(ids, label, strict = true, root = null, pick = null) {
+  state.sticky = { ids, label, strict, root, pick };
   focusOn(ids, state.sticky);
   notes();
+  legend();
 }
 
 function clearFocus() {
   state.sticky = null;
   unfocus();
   notes();
+  legend();
+}
+
+// ---------- colour and legend ----------
+
+function setScheme(scheme) {
+  if (state.sticky?.pick) clearFocus();
+  state.options.colour = scheme;
+  saveOptions();
+  applyOptions();
+  redraw();
+  legend();
+}
+
+function pickClass(row) {
+  if (state.sticky?.pick === row.key) return clearFocus();
+  if (!row.count) return;
+  const ids = [...classOf(state.view, state.options.colour)].filter(([, key]) => key === row.key).map(([id]) => id);
+  pin(new Set(ids), row.focus, true, null, row.key);
+}
+
+function legend() {
+  if (!state.view) return;
+  renderLegend($("legend"), state.view, state.options.colour, {
+    picked: state.sticky?.pick ?? null,
+    onScheme: setScheme,
+    onPick: pickClass,
+  });
 }
 
 function reach(start, forward) {
@@ -908,12 +938,7 @@ function bind() {
   };
   option("opt-tests", "tests", true);
   option("opt-externals", "externals", true);
-  $("opt-zones").onchange = () => {
-    state.options.colour = $("opt-zones").checked ? "zone" : "role";
-    saveOptions();
-    applyOptions();
-    redraw();
-  };
+  document.querySelectorAll('input[name="colour"]').forEach((r) => { r.onchange = () => setScheme(r.value); });
   option("opt-legend", "legend", false);
   $("graph").onclick = (e) => {
     if (e.target.closest("g.node, g.edge")) return;

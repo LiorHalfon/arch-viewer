@@ -1,5 +1,7 @@
 // The viewer's DOM widgets that sit on top of the diagram.
 
+import { legendRows } from "./colour.js";
+
 export const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -61,4 +63,56 @@ export function showCard(host, node, view, anchor, { drag = false } = {}) {
 
 export function hideCard() {
   if (card) card.hidden = true;
+}
+
+// ---------- legend ----------
+
+const SCHEME_LABELS = { role: "Role", instability: "Instability", zone: "Zone", none: "None" };
+const EXPLAIN = { instability: "What is instability?", zone: "What are the zones?" };
+
+const LINES = `<details class="lines"><summary>Lines</summary>
+  <div><span class="ln"></span>imports (count)</div>
+  <div><span class="ln ln-thick"></span>thicker: more imports</div>
+  <div><span class="ln ln-abs"></span>to an abstraction</div>
+  <div><span class="ln ln-typing"></span>type checking only</div>
+  <div><span class="ln ln-cycle"></span>in a cycle</div>
+  <div><span class="ln ln-violation"></span>breaks a rule</div>
+</details>`;
+
+const PLAIN_BOXES = `<div class="keys">
+  <div><span class="sw sw-pkg"></span>package</div>
+  <div><span class="sw sw-mod"></span>module</div>
+  <div><span class="sw sw-abs"></span>abstract</div>
+  <div><span class="sw sw-ext"></span>third-party</div>
+</div>`;
+
+function classRows(view, scheme, picked) {
+  const rows = legendRows(view, scheme).map((r) => `<button type="button" class="item${r.count ? "" : " zero"}" data-key="${esc(r.key)}" aria-pressed="${r.key === picked}">`
+    + `<span class="sw" style="background:var(${r.token})"></span>`
+    + `<span class="nm">${esc(r.name)}${r.note ? `<small>${esc(r.note)}</small>` : ""}</span>`
+    + `<span class="ct">${r.count}</span></button>`).join("");
+  const extra = [
+    view.nodes.some((n) => n.kind === "external") && '<div><span class="sw sw-ext"></span>third-party</div>',
+    view.nodes.some((n) => n.abstract) && '<div><i>name</i>&nbsp;abstract</div>',
+  ].filter(Boolean).join("");
+  return `<div class="items">${rows}</div>${extra ? `<div class="keys">${extra}</div>` : ""}<div class="hint">Click a row to pick out that group.</div>`;
+}
+
+export function legendHtml(view, scheme, { picked = null, explain = false } = {}) {
+  const buttons = Object.entries(SCHEME_LABELS)
+    .map(([key, label]) => `<button type="button" data-scheme="${key}" aria-pressed="${key === scheme}">${label}</button>`).join("");
+  const body = scheme === "none" ? PLAIN_BOXES : classRows(view, scheme, picked);
+  const about = explain && EXPLAIN[scheme] ? `<button type="button" class="about">${EXPLAIN[scheme]}</button>` : "";
+  return `<div class="lh">Colour by</div><div class="seg" role="group" aria-label="Colour by">${buttons}</div>${body}${about}${LINES}`;
+}
+
+export function renderLegend(el, view, scheme, { picked = null, onScheme, onPick, onExplain } = {}) {
+  const open = el.querySelector("details.lines")?.open;
+  el.innerHTML = legendHtml(view, scheme, { picked, explain: !!onExplain });
+  if (open) el.querySelector("details.lines").open = true;
+  el.querySelectorAll("[data-scheme]").forEach((b) => { b.onclick = () => onScheme(b.dataset.scheme); });
+  const rows = legendRows(view, scheme);
+  el.querySelectorAll("[data-key]").forEach((b) => { b.onclick = () => onPick(rows.find((r) => r.key === b.dataset.key)); });
+  const about = el.querySelector(".about");
+  if (about) about.onclick = () => onExplain();
 }
