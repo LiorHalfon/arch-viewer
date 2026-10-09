@@ -9,6 +9,13 @@ const n = (v) => Number(v.toFixed(2));
 const pt = ([x, y]) => `${n(x)},${n(y)}`;
 const classes = (...names) => names.filter(Boolean).join(" ");
 
+// Width in pixels at zoom 1: 1 for one import, about 4.6 for 94, never above 6.
+// Cycle and rule-break lines stay at least 2 wide, as they always were.
+export function edgeWidth(count, { cycle = false, violation = false } = {}) {
+  const width = Math.min(6, 1 + Math.log2(Math.max(1, count)) / 1.8);
+  return cycle || violation ? Math.max(2, width) : width;
+}
+
 export function edgeGeometry(route, width) {
   const p = route.points;
   let d = p.length ? `M${pt(p[0])}` : "";
@@ -25,13 +32,15 @@ export function edgeGeometry(route, width) {
   return { d, arrow, label: route.label };
 }
 
-function drawEdge(edge, route) {
+function drawEdge(edge, route, weighted) {
   const cls = classes("edge", edge.in_cycle && "cycle", edge.violation && "violation", !edge.violation && edge.type_checking && "typing", edge.abstract && "abstract");
-  const g = edgeGeometry(route, 1);
+  const width = weighted ? edgeWidth(edge.count, { cycle: edge.in_cycle, violation: edge.violation }) : 1;
+  const g = edgeGeometry(route, width);
+  const stroke = weighted ? ` stroke-width="${width.toFixed(2)}"` : "";
   const label = g.label ? `<text class="count" x="${n(g.label[0])}" y="${n(g.label[1])}" dy=".35em" text-anchor="middle">${edge.count}</text>` : "";
   return `<g class="${cls}" data-source="${esc(edge.source)}" data-target="${esc(edge.target)}">`
     + `<title>${esc(edge.source)}->${esc(edge.target)}</title>`
-    + `<path class="hit" d="${g.d}"/><path class="line" d="${g.d}"/>`
+    + `<path class="hit" d="${g.d}"/><path class="line" d="${g.d}"${stroke}/>`
     + (g.arrow ? `<polygon class="arrow" points="${g.arrow}"/>` : "")
     + `${label}</g>`;
 }
@@ -59,7 +68,7 @@ function drawNode(node, box, at) {
   const [name, sub] = labelLines(node);
   const text = (c, y, value) => `<text class="${c}" x="${n(at.x)}" y="${n(y)}" text-anchor="middle">${esc(value)}</text>`;
   const words = sub ? text("name", at.y - 3.5, name) + text("sub", at.y + 13.3, sub) : text("name", at.y + 4.9, name);
-  return `<g class="${cls}" data-id="${esc(node.id)}"><title>${esc(node.id)}</title>`
+  return `<g class="${cls}" data-id="${esc(node.id)}">`
     + `<rect class="ring" x="${n(x0 - 4)}" y="${n(y0 - 4)}" width="${n(w + 8)}" height="${n(h + 8)}" rx="8"/>`
     + `${shape(node, x0, y0, w, h)}${words}</g>`;
 }
@@ -76,7 +85,7 @@ export function drawSvg(view, layout, opts = {}) {
   const parts = clusters.map(drawCluster);
   for (const e of view.edges) {
     const route = routes[edgeKey(e.source, e.target)];
-    if (route) parts.push(drawEdge(e, route));
+    if (route) parts.push(drawEdge(e, route, opts.weighted));
   }
   for (const node of view.nodes) {
     const size = layout.nodes[node.id];

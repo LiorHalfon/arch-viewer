@@ -21,6 +21,7 @@
   --violation: #d9480f;
   --pain: #fde2cf;
   --useless: #e9dcf7;
+  --in: #8b3fd1;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --line: 18px;
 }
@@ -47,6 +48,7 @@
     --violation: #ff8c42;
     --pain: #4a2c1a;
     --useless: #35264a;
+    --in: #b48cf2;
   }
 }
 
@@ -124,18 +126,28 @@ main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minm
 .graph .node.cycle .shape { stroke: var(--danger); }
 .graph .node:hover .shape, .graph .node.selected .shape { stroke-width: 2.5; stroke: var(--accent); }
 .graph .edge { cursor: pointer; }
-.graph .edge .line { fill: none; stroke: var(--edge); stroke-width: 1; }
+/* a line's width comes from draw.js (its import count), so no rule here sets it */
+.graph .edge .line { fill: none; stroke: var(--edge); }
 .graph .edge .arrow { fill: var(--edge); stroke: var(--edge); stroke-width: 1; }
-.graph .edge .count { fill: var(--muted); font: 10px Helvetica, Arial, sans-serif; }
-.graph .edge.cycle .line { stroke: var(--danger); stroke-width: 2; }
+.graph .edge .count { fill: var(--muted); font: 10px Helvetica, Arial, sans-serif; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.graph .edge.cycle .line { stroke: var(--danger); }
 .graph .edge.cycle .arrow { fill: var(--danger); stroke: var(--danger); }
 .graph .edge.cycle .count { fill: var(--danger); }
 .graph .edge .hit { stroke: transparent; stroke-width: 14; fill: none; }
-.graph .edge:hover .line, .graph .edge.selected .line { stroke: var(--accent); stroke-width: 2.5; }
+.graph .edge:hover .line, .graph .edge.selected .line { stroke: var(--accent); }
 .graph .edge:hover .arrow, .graph .edge.selected .arrow { fill: var(--accent); stroke: var(--accent); }
 .graph svg.focusing .edge:not(.related) { opacity: .12; }
 .graph svg.focusing .node:not(.related) { opacity: .45; }
 .graph svg.focusing .edge.related .count { fill: var(--text); font-weight: 600; }
+/* direction while one box is focused: what it imports blue, what imports it violet;
+   cycle and rule-break lines keep their own colours */
+.graph svg.focusing .edge.out:not(.cycle):not(.violation) .line { stroke: var(--accent); }
+.graph svg.focusing .edge.out:not(.cycle):not(.violation) .arrow { fill: var(--accent); stroke: var(--accent); }
+.graph svg.focusing .edge.in:not(.cycle):not(.violation) .line { stroke: var(--in); }
+.graph svg.focusing .edge.in:not(.cycle):not(.violation) .arrow { fill: var(--in); stroke: var(--in); }
+.graph svg.focusing .edge.abstract.out:not(.cycle):not(.violation) .arrow,
+.graph svg.focusing .edge.abstract.in:not(.cycle):not(.violation) .arrow { fill: var(--surface); }
+.graph svg.focusing .edge.out .count, .graph svg.focusing .edge.in .count { font-weight: 700; }
 
 .graph .node.abstract .shape { fill: var(--abs-fill); stroke: var(--abs-stroke); }
 .graph .node.external .shape { fill: transparent; stroke: var(--mod-stroke); stroke-width: 1; stroke-dasharray: 4 3; }
@@ -144,7 +156,7 @@ body.zones .graph .node.package.zone-pain .shape { fill: var(--pain); }
 body.zones .graph .node.package.zone-useless .shape { fill: var(--useless); }
 .graph .edge.typing .line { stroke-dasharray: 2 3; }
 .graph .edge.abstract .arrow { fill: var(--surface); }
-.graph .edge.violation .line { stroke: var(--violation); stroke-dasharray: 6 4; stroke-width: 2; }
+.graph .edge.violation .line { stroke: var(--violation); stroke-dasharray: 6 4; }
 .graph .edge.violation .arrow { fill: var(--violation); stroke: var(--violation); }
 .graph .edge.violation .count { fill: var(--violation); font-weight: 600; }
 .graph svg.focusing .node.related.focus-root .shape { stroke: var(--accent); stroke-width: 2.5; }
@@ -237,6 +249,28 @@ button.icon:hover { border-color: var(--accent); }
 .tree .row.abstract .sw { background: var(--abs-fill); border-color: var(--abs-stroke); }
 .tree .row.tangled .name { color: var(--danger); font-weight: 600; }
 .tree .row.up .name { color: var(--muted); }
+
+/* hover card */
+.hovercard {
+  position: absolute; z-index: 6; width: 250px; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; box-shadow: 0 6px 22px rgb(0 0 0 / .14);
+  font-size: 12.5px; display: grid; gap: 6px;
+}
+.hovercard[hidden] { display: none; }
+.hovercard .t { font-weight: 700; font-size: 13.5px; word-break: break-word; }
+.hovercard .k { color: var(--muted); }
+.hovercard .abs { font-weight: 400; font-style: italic; }
+.hovercard .row { display: flex; justify-content: space-between; gap: 8px; }
+.hovercard .out { color: var(--accent); font-weight: 600; }
+.hovercard .in { color: var(--in); font-weight: 600; }
+.hovercard .bars { display: grid; grid-template-columns: auto 1fr 34px; gap: 4px 8px; align-items: center; font-variant-numeric: tabular-nums; }
+.hovercard .bar { height: 6px; border-radius: 3px; background: var(--focus); overflow: hidden; }
+.hovercard .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.hovercard .zone { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11.5px; background: var(--focus); }
+.hovercard .zone-pain { background: var(--pain); }
+.hovercard .zone-useless { background: var(--useless); }
+.hovercard .tip { color: var(--muted); font-size: 11.5px; border-top: 1px solid var(--border); padding-top: 6px; }
 
 /* side panel */
 .panel {

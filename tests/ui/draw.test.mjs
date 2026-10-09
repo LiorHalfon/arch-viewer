@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { drawSvg } from "../../src/archview/ui/draw.js";
+import { drawSvg, edgeWidth } from "../../src/archview/ui/draw.js";
 import { layoutView } from "../../src/archview/ui/layout.js";
 import { loadViz, SAMPLE_DOT, sampleView } from "./support.mjs";
 
@@ -52,6 +52,34 @@ test("a view with no edges draws its boxes only", async () => {
   const svg = drawSvg({ ...view, edges: [] }, { ...layout, routes: {} });
   assert.equal(count(svg, 'class="edge'), 0);
   assert.equal(count(svg, 'class="node '), 3);
+});
+
+const near = (a, b, tol) => assert.ok(Math.abs(a - b) <= tol, `${a} is not within ${tol} of ${b}`);
+
+test("a line's width grows with its import count, up to 6", () => {
+  assert.equal(edgeWidth(1), 1);
+  near(edgeWidth(10), 2.85, 0.01);
+  near(edgeWidth(94), 4.64, 0.01);
+  assert.equal(edgeWidth(1e6), 6);
+});
+
+test("cycle and rule-break lines are at least 2 wide", () => {
+  assert.equal(edgeWidth(1, { cycle: true }), 2);
+  assert.equal(edgeWidth(1, { violation: true }), 2);
+  near(edgeWidth(94, { cycle: true }), 4.64, 0.01);
+});
+
+test("a weighted drawing writes each line's width", async () => {
+  const { view, layout } = await sample();
+  const svg = drawSvg(view, layout, { weighted: true });
+  assert.ok(group(svg, 'data-target="core.api"').includes('class="line" d="') && group(svg, 'data-target="core.api"').includes('stroke-width="2.11"'));
+  assert.ok(group(svg, 'data-source="app" data-target="core"').includes('stroke-width="1.00"'));
+  assert.ok(!drawSvg(view, layout).includes("stroke-width"));
+});
+
+test("boxes carry no title, since the hover card replaces it", async () => {
+  const { view, layout } = await sample();
+  assert.ok(!group(drawSvg(view, layout), 'data-id="app"').includes("<title>"));
 });
 
 test("ids with quotes and slashes are escaped", () => {

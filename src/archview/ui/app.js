@@ -4,6 +4,7 @@
 
 import { drawSvg } from "./draw.js";
 import { layoutView } from "./layout.js";
+import { hideCard, showCard, ZONE_NAMES } from "./widgets.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -44,7 +45,6 @@ const enterOrOpen = (id) => go(id, state.isWorkspace && !state.package ? id : st
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
 const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
-const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 const WARNING_LABELS = { dynamic_import: "dynamic import", unresolved_import: "unresolved import" };
 const GRAMMARS = { ts: "typescript", tsx: "typescript", mts: "typescript", cts: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript" };
 // The highlight.js grammar for one file; an unknown one would throw, so fall back.
@@ -256,6 +256,7 @@ function notes() {
 function draw(view) {
   const graph = $("graph");
   graph.innerHTML = "";
+  hideCard();
   if (!view.nodes.length) {
     graph.innerHTML = '<p class="hint">Nothing to show at this level.</p>';
     return;
@@ -263,7 +264,7 @@ function draw(view) {
   state.layout = layoutView(state.viz, view.dot);
   // Graphviz's own SVG pads the drawing by 4 points on every side.
   const box = { x: -4, y: -4, w: state.layout.w + 8, h: state.layout.h + 8 };
-  graph.innerHTML = drawSvg(view, state.layout, { box });
+  graph.innerHTML = drawSvg(view, state.layout, { box, weighted: true });
   state.natural = { w: box.w, h: box.h };
   wire(graph.querySelector("svg"), view);
 }
@@ -276,14 +277,20 @@ function wire(svg, view) {
   svg.querySelectorAll("g.node").forEach((g) => {
     const id = g.dataset.id;
     const node = nodeById(id);
-    g.querySelector("title").textContent = tooltip(node);
+    g.setAttribute("aria-label", tooltip(node));
     g.onclick = (e) => {
       if (e.shiftKey || e.altKey || node.kind === "external") return openNode(node);
       return node.has_children ? enterOrOpen(id) : openSource(id);
     };
     g.oncontextmenu = (e) => { e.preventDefault(); openNode(node); };
-    g.onmouseenter = () => { if (!state.sticky) focusOn(new Set([id])); };
-    g.onmouseleave = () => { if (!state.sticky) unfocus(); };
+    g.onmouseenter = () => {
+      if (!state.sticky) focusOn(new Set([id]));
+      showCard($("stage").parentElement, node, state.view, g.getBoundingClientRect());
+    };
+    g.onmouseleave = () => {
+      if (!state.sticky) unfocus();
+      hideCard();
+    };
   });
   svg.querySelectorAll("g.edge").forEach((g) => {
     const { source, target } = g.dataset;
@@ -314,12 +321,16 @@ function focusOn(ids, pinned = null) {
   if (!svg) return;
   svg.classList.add("focusing");
   const single = ids.size === 1 && !(pinned && pinned.strict);
+  // Direction colours follow one box: the hovered one, or the one a focus was pinned on.
+  const focus = !pinned && ids.size === 1 ? [...ids][0] : pinned?.root ?? null;
   const shown = new Set(ids);
   svg.querySelectorAll("g.edge").forEach((g) => {
     const related = single
       ? ids.has(g.dataset.source) || ids.has(g.dataset.target)
       : ids.has(g.dataset.source) && ids.has(g.dataset.target);
     g.classList.toggle("related", related);
+    g.classList.toggle("out", focus !== null && g.dataset.source === focus);
+    g.classList.toggle("in", focus !== null && g.dataset.target === focus);
     if (related && single) { shown.add(g.dataset.source); shown.add(g.dataset.target); }
   });
   svg.querySelectorAll("g.node").forEach((g) => {
