@@ -42,7 +42,9 @@ not taken.
   in light colours. DOT and Mermaid exports do not change.
 - Lines keep their count labels, since width only shows rough size.
 - In quick find, Enter shows the box. A module's source stays one click away.
-- No server or `/api` change. `render/dot.py` and its goldens do not change.
+- One server change: `/api/view` gains a `threshold` field, the zone threshold the
+  metrics chart shades by. `render/dot.py`, `archview graph --json` and their goldens
+  do not change.
 
 ## Approach
 
@@ -100,7 +102,8 @@ coordinates:
   same class names (`package`, `module`, `external`, `cycle`, `tangled`, `abstract`,
   `violation`, `typing`).
 - Colours are CSS variables, so the dark theme works as today. A label's colour is
-  whichever of `--text` and white has the higher contrast with its box's fill. A theme
+  whichever of dark ink `#1d232b` and white has the higher contrast with its box's fill.
+  (`--text` is light in the dark theme, so it cannot be one of the two.) A theme
   change redraws, since that choice is made in code.
 
 The edge `<title>` tooltips stay. A box's `<title>` becomes an `aria-label`, since the
@@ -175,7 +178,8 @@ Contents, top to bottom:
 - **A chart of the current view.** Instability across and abstractness up, both 0 to 1.
   The zone of pain (A + I < 1 − threshold) and the zone of uselessness (A + I > 1 +
   threshold) are shaded. The main sequence is a dashed diagonal. The threshold is the one
-  the model used (`[archview.metrics] threshold`, default 0.3). Each box is a dot; boxes
+  the model used (`[archview.metrics] threshold`, default 0.3), sent as the view
+  payload's `threshold`. Each box is a dot; boxes
   at the same point share one dot labelled "name +N". Labels sit beside their dot,
   nudged up or down past earlier labels with a leader line, and a label with no free
   spot shows on hover only. Third-party boxes and boxes with undefined I are left out.
@@ -387,7 +391,8 @@ can test them. `app.js` is 927 lines today; the new UI goes in `widgets.js` and
   - Saved layouts: a saved box that no longer exists is ignored, and storage that throws
     does not break drawing.
 - **Server**: `test_serves_the_page_and_its_vendored_scripts` checks for the module
-  script tag and that every new module is served.
+  script tag and that every new module is served. `/api/view` carries `threshold`: the
+  rules file's value, 0.3 without one, and 0.3 at a workspace's top level.
 - **In the browser**, before calling it done: tiny-tale-backend, this repo, the
   `workspace` fixture (clusters, quick find across members) and a TypeScript project, in
   light and dark. Check the role colours and legend counts, a pick-out and Clear, a drag
