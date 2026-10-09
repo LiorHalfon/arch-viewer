@@ -176,7 +176,7 @@ export function createFinder(host, { load, onPick }) {
 
 // ---------- metrics panel ----------
 
-function metricsText(view, threshold) {
+export function metricsText(view, threshold) {
   const count = (zone) => view.nodes.filter((n) => n.zone === zone).length;
   return `<p>Each dot is a box in this view: ${plural(count("pain"), "box", "boxes")} in the zone of pain, ${count("useless")} in the zone of uselessness, ${count("main_sequence")} near the main sequence. These are Robert C. Martin's package metrics; <code>archview metrics</code> prints the same numbers.</p>
     <section><h3>Instability, I (across)</h3>
@@ -189,7 +189,7 @@ function metricsText(view, threshold) {
       <p>Code that much else depends on should be abstract, so a change lands behind an interface. Code nothing depends on can be concrete. Healthy boxes sit near the dashed line, the main sequence. D = |A + I − 1| is the distance from it, and a box more than ${threshold} away is in a zone:</p>
       <ul><li><b>Zone of pain</b>, bottom left. Stable and concrete: much imports it and it offers no interface, so every change spreads. Fine for code that rarely changes, such as config or data models.</li>
       <li><b>Zone of uselessness</b>, top right. Abstract and unstable: interfaces that little or nothing uses.</li></ul></section>
-    <p class="more">The longer version, with examples, is <code>docs/metrics.md</code> in the archview repository.</p>`;
+    <p class="more">The longer version, with examples, is <code>docs/metrics.md</code> in the archview repository. Wikipedia's <a href="https://en.wikipedia.org/wiki/Software_package_metrics" target="_blank" rel="noopener noreferrer">Software package metrics</a> page summarises Martin's definitions, which count classes where archview counts modules.</p>`;
 }
 
 export function renderMetricsPanel(body, view, threshold, { onHoverBox, onClickBox }) {

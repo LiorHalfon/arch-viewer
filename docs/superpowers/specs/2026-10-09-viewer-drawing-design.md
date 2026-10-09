@@ -199,8 +199,10 @@ Contents, top to bottom:
   zone. The zone of pain (stable and concrete) is fine for code that rarely changes, such
   as config or data models. The zone of uselessness is abstract code little or nothing
   uses.
-- One line naming `docs/metrics.md` for the longer version. It is not a link: the page
-  works the same offline (N3).
+- One line naming `docs/metrics.md` for the longer version, and a link to Wikipedia's
+  [Software package metrics](https://en.wikipedia.org/wiki/Software_package_metrics)
+  page, which opens in a new tab (added at Lior's request during M13). The viewer
+  fetches nothing; the link loads only when clicked (N3).
 
 Hovering a dot focuses its box in the diagram, as hovering the box does, and hovering a
 box marks its dot. Clicking a dot flashes the box. The chart redraws when the view

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { legendHtml } from "../../src/archview/ui/widgets.js";
+import { legendHtml, metricsText } from "../../src/archview/ui/widgets.js";
 import { sampleView } from "./support.mjs";
 
 const pressed = (html, attr) => {
@@ -38,6 +38,12 @@ test("None shows today's box key and nothing to pick", () => {
   const html = legendHtml(sampleView(), "none", {});
   assert.ok(!html.includes("data-key="));
   assert.ok(html.includes("package") && html.includes("abstract"));
+});
+
+test("the metrics panel cites the Wikipedia page in a new tab", () => {
+  const html = metricsText(sampleView(), 0.3);
+  assert.match(html, /<a href="https:\/\/en\.wikipedia\.org\/wiki\/Software_package_metrics" target="_blank" rel="noopener noreferrer">/);
+  assert.ok(html.includes("docs/metrics.md"));
 });
 
 test("the lines key says thicker means more imports", () => {

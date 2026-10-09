@@ -5,6 +5,12 @@ viewer uses the same numbers: View → Colour by → Instability or Zone colours
 by them, and the link under the legend's buttons opens a panel that plots the current
 view's boxes and explains them in short. This page is the longer version.
 
+The metrics come from Martin's *Agile Software Development: Principles, Patterns and
+Practices* (2002). Wikipedia's
+[Software package metrics](https://en.wikipedia.org/wiki/Software_package_metrics)
+page summarises them. archview uses the same formulas with one change of unit, described
+under [Modules, not classes](#modules-not-classes).
+
 ## What `archview metrics` prints
 
 On tiny-tale-backend, at commit `e46eb18`:
@@ -54,11 +60,8 @@ A is the share of a component's modules that are abstract.
 - A TypeScript file counts when it has an `abstract class`, or exports types and
   interfaces and no values.
 
-`config` has A = 0.40 because 2 of its 5 modules define such a class.
-
-One abstract class is enough for the whole module to count, even next to ten concrete
-classes. That is coarser than Martin's own definition, which counts abstract classes
-against all classes. ADR 0008 chose modules because the model's unit is the module.
+`config` has A = 0.40 because 2 of its 5 modules define such a class. One abstract class
+is enough for the whole module to count, even next to ten concrete classes.
 
 ## Distance and the zones
 
@@ -89,6 +92,21 @@ expected to be: they are shared code that changes rarely. `story_generator` is t
 to watch. 29 modules elsewhere import it and only a tenth of its modules are abstract,
 so a change inside it reaches `webapp` and `experiments` directly. `error_triage` is in
 the zone of uselessness: 3 of its 7 modules are abstract and nothing imports it.
+
+## Modules, not classes
+
+Martin and the Wikipedia page count classes: Ca and Ce count the classes in other
+packages that depend on, or are depended on by, the package's classes, and A is the
+share of a package's classes and interfaces that are abstract. archview counts modules
+instead, because the module is the unit its model holds (ADR 0008):
+
+- Ca and Ce count modules outside the component, not classes.
+- A is the share of the component's modules that are abstract, where a module counts
+  as abstract when one class in it is.
+
+I and D use Martin's formulas unchanged. The numbers read the same way, but they are
+coarser than a class-level tool's: a module with one `Protocol` and ten concrete classes
+counts as fully abstract.
 
 ## Reading the chart in the viewer
 
