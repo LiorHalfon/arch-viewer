@@ -5,8 +5,9 @@
 import { classOf, LIGHT, schemeFromOptions } from "./colour.js";
 import { enableDrag, layoutKey, loadMoved, saveMoved } from "./drag.js";
 import { drawSvg, edgeGeometry } from "./draw.js";
+import { flatten } from "./find.js";
 import { bounds, clusterFrames, layoutView, routesAfterMove, straightRoute } from "./layout.js";
-import { hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
+import { createFinder, hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -25,6 +26,7 @@ const state = {
   natural: { w: 0, h: 0 },
   sticky: null,         // {ids, label} while a focus is pinned
   metricsPanel: null,   // the metrics panel's handle while it is open
+  pendingFlash: null,   // a box quick find picked, flashed once its level is shown
   trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
@@ -181,6 +183,10 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   stage.scrollTop = place ? place.top : 0;
   $("up").disabled = !view.parent;
   if (state.sticky) focusOn(state.sticky.ids, state.sticky);
+  if (state.pendingFlash) {
+    flashInView(state.pendingFlash);
+    state.pendingFlash = null;
+  }
 }
 
 function crumbs(root) {
@@ -558,25 +564,66 @@ function reach(start, forward) {
 
 // ---------- file drawer (V15) ----------
 
+// The packages and modules under a root (all of a member's when `root` is null),
+// cached per Hide tests setting; the file drawer and quick find share it.
+async function treeFor(pkg, root) {
+  const key = `${placeKey(pkg, root)}|${state.options.tests}`;
+  if (!state.trees.has(key)) {
+    const q = new URLSearchParams(root ? { root } : {});
+    if (pkg) q.set("package", pkg);
+    if (state.options.tests) q.set("hide_tests", "true");
+    state.trees.set(key, await api(`/api/tree?${q}`));
+  }
+  return state.trees.get(key);
+}
+
 async function drawTree() {
   if (!state.options.tree || !state.root) return;
   const root = state.root;
   const pkg = state.package;
-  const key = `${placeKey(pkg, root)}|${state.options.tests}`;
-  if (!state.trees.has(key)) {
-    const q = new URLSearchParams({ root });
-    if (pkg) q.set("package", pkg);
-    if (state.options.tests) q.set("hide_tests", "true");
-    try {
-      state.trees.set(key, await api(`/api/tree?${q}`));
-    } catch (error) {
-      $("tree-head").innerHTML = "";
-      $("tree-body").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
-      return;
-    }
+  let tree;
+  try {
+    tree = await treeFor(pkg, root);
+  } catch (error) {
+    $("tree-head").innerHTML = "";
+    $("tree-body").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
+    return;
   }
   if (root !== state.root || pkg !== state.package) return;
-  renderTree(state.trees.get(key));
+  renderTree(tree);
+}
+
+// ---------- quick find ----------
+
+let finder = null;
+
+async function findEntries() {
+  if (state.isWorkspace && !state.package) {
+    const members = state.project.packages;
+    const trees = await Promise.all(members.map((member) => treeFor(member, null)));
+    return trees.flatMap((tree, i) => flatten(tree, members[i]));
+  }
+  const project = state.view ? state.view.project : state.project.project;
+  return flatten(await treeFor(state.package, project), state.package);
+}
+
+// Open the level that draws the match and flash it there.
+function pickFound(entry) {
+  const pkg = entry.member ?? state.package;
+  if (entry.id === state.root && pkg === state.package) return;
+  if (entry.parent === null) {
+    if (!state.isWorkspace) return go(entry.id, null);
+    state.pendingFlash = entry.member;
+    return go(state.project.project, null);
+  }
+  if (entry.parent === state.root && pkg === state.package) return flashInView(entry.id);
+  state.pendingFlash = entry.id;
+  go(entry.parent, pkg);
+}
+
+function flashInView(id) {
+  document.querySelector(`#graph g.node[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  flash(id);
 }
 
 function treeRows(nodes, depth) {
@@ -1100,9 +1147,12 @@ function bind() {
       "0": () => $("zoom-fit").click(),
       r: reanalyze,
       t: toggleTree,
+      "/": () => finder.open(),
     };
     if (keys[e.key]) { e.preventDefault(); keys[e.key](); }
   });
+  finder = createFinder($("stage").parentElement, { load: findEntries, onPick: pickFound });
+  $("find").onclick = () => finder.open();
 }
 
 async function start() {

@@ -2,6 +2,7 @@
 
 import { chartSvg } from "./chart.js";
 import { legendRows } from "./colour.js";
+import { rank } from "./find.js";
 
 export const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 
@@ -105,6 +106,72 @@ export function legendHtml(view, scheme, { picked = null, explain = false } = {}
   const body = scheme === "none" ? PLAIN_BOXES : classRows(view, scheme, picked);
   const about = explain && EXPLAIN[scheme] ? `<button type="button" class="about">${EXPLAIN[scheme]}</button>` : "";
   return `<div class="lh">Colour by</div><div class="seg" role="group" aria-label="Colour by">${buttons}</div>${body}${about}${LINES}`;
+}
+
+// ---------- quick find ----------
+
+function marked(name, query) {
+  const i = name.toLowerCase().indexOf(query.trim().toLowerCase());
+  if (!query.trim() || i < 0) return esc(name);
+  const end = i + query.trim().length;
+  return `${esc(name.slice(0, i))}<b>${esc(name.slice(i, end))}</b>${esc(name.slice(end))}`;
+}
+
+// A search box floating over the diagram: type, move with the arrow keys, Enter or
+// click to pick, Esc to close. `load` gives the entries (find.js) the first time.
+export function createFinder(host, { load, onPick }) {
+  const box = document.createElement("div");
+  box.className = "finder";
+  box.id = "finder";
+  box.hidden = true;
+  box.innerHTML = `<div class="in"><span aria-hidden="true">⌕</span><input type="text" autocomplete="off" spellcheck="false" aria-label="Find a package or module" placeholder="Find a package or module"><kbd>esc</kbd></div><ul role="listbox" aria-label="Matches"></ul>`;
+  host.append(box);
+  const input = box.querySelector("input");
+  const list = box.querySelector("ul");
+  let entries = [], results = [], selected = 0, failed = false;
+
+  const render = () => {
+    if (failed) { list.innerHTML = '<li class="empty">Could not read the package tree.</li>'; return; }
+    list.innerHTML = results.length
+      ? results.map((r, i) => `<li role="option" data-i="${i}" aria-selected="${i === selected}">
+          <span class="n">${marked(r.name, input.value)}</span>
+          <span class="p">${esc(r.parent ?? (r.member || ""))}</span>
+          <span class="k">${r.kind === "package" ? `package, ${plural(r.items, "item")}` : "module"}</span></li>`).join("")
+      : `<li class="empty">${input.value.trim() ? "No package or module matches." : "Type part of a name."}</li>`;
+  };
+  const search = () => { results = rank(entries, input.value); selected = Math.min(selected, Math.max(0, results.length - 1)); render(); };
+  const close = () => { box.hidden = true; };
+  const pick = (i) => { const entry = results[i]; if (!entry) return; close(); onPick(entry); };
+
+  input.oninput = () => { selected = 0; search(); };
+  input.onkeydown = (e) => {
+    const keys = {
+      ArrowDown: () => { selected = Math.min(results.length - 1, selected + 1); render(); },
+      ArrowUp: () => { selected = Math.max(0, selected - 1); render(); },
+      Enter: () => pick(selected),
+      Escape: close,
+    };
+    if (!keys[e.key]) return;
+    e.preventDefault();
+    e.stopPropagation();
+    keys[e.key]();
+  };
+  list.onclick = (e) => { const li = e.target.closest("li[data-i]"); if (li) pick(Number(li.dataset.i)); };
+  document.addEventListener("pointerdown", (e) => { if (!box.hidden && !box.contains(e.target) && !e.target.closest("#find")) close(); });
+
+  const open = async () => {
+    box.hidden = false;
+    input.focus();
+    input.select();
+    try {
+      entries = await load();
+      failed = false;
+    } catch {
+      failed = true;
+    }
+    search();
+  };
+  return { open, close };
 }
 
 // ---------- metrics panel ----------
