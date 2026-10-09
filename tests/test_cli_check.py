@@ -107,6 +107,28 @@ def test_init_can_exclude_files_and_keeps_the_exclusion(repo, capsys):
     assert run(capsys, "check", str(repo))[0] == 0
 
 
+def test_init_force_keeps_type_checking_imports_so_its_rules_pass(tmp_path, capsys):
+    """`init` infers the rules with the old setting, so it must write it too: without
+    it `check` falls back to "include" and fails on the import `init` skipped (#13)."""
+    for path, text in {
+        "shop/__init__.py": "",
+        "shop/a/__init__.py": "",
+        "shop/a/uses.py": (
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from shop.b.core import B\n"
+        ),
+        "shop/b/__init__.py": "",
+        "shop/b/core.py": "class B: ...\n",
+        "archview.toml": '[archview]\npackage = "shop"\ntype_checking_imports = "ignore"\n',
+    }.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+
+    assert run(capsys, "init", str(tmp_path), "--force")[0] == 0
+
+    assert 'type_checking_imports = "ignore"' in (tmp_path / "archview.toml").read_text()
+    assert run(capsys, "check", str(tmp_path))[0] == 0
+
+
 def test_a_broken_rules_file_is_a_usage_error_not_a_failed_check(repo, capsys):
     (repo / "archview.toml").write_text("[archview]\nalowed = {}\n")
 
@@ -205,3 +227,207 @@ def test_an_outside_violation_in_json(repo, capsys):
     assert problem["rule"] == "archview.externals.api"
     assert problem["components"] == ["api", "grimp"]
     assert problem["imports"][0]["line"] == 8
+
+
+def nested_copy(tmp_path: Path) -> Path:
+    copy = tmp_path / "nested"
+    shutil.copytree(FIXTURES / "nested", copy)
+    return copy
+
+
+def test_check_reports_each_nested_scope_in_its_own_section(tmp_path, capsys):
+    code, out, _ = run(capsys, "check", str(nested_copy(tmp_path)))
+
+    assert code == 1
+    assert (
+        "warning: shop/services/assets/archview.toml is not checked: shop.services.assets "
+        "is not a package archview analyses (excluded, or not a package)"
+    ) in out
+    assert (
+        "shop.services (shop/services/archview.toml)  1 problem\n"
+        "  VIOLATION print -> users (1 import) not allowed by [archview.allowed.print]"
+    ) in out
+    assert out.endswith("1 problem in 3 components and 1 nested scope. exit 1\n")
+    golden("nested-check.txt", out)
+
+
+def test_nested_scopes_appear_in_the_json(tmp_path, capsys):
+    code, out, _ = run(capsys, "check", str(nested_copy(tmp_path)), "--format", "json")
+
+    assert code == 1
+    report = json.loads(out)
+    assert report["ok"] is False
+    [scope] = report["scopes"]
+    assert scope["rules"] == "shop/services/archview.toml"
+    assert scope["project"] == "shop.services"
+    assert scope["scopes"] == []
+    golden("nested-check.json", out)
+
+
+def test_a_passing_nested_scope_says_ok(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    rules = copy / "shop/services/archview.toml"
+    rules.write_text(
+        rules.read_text().replace('print = ["pricing"]', 'print = ["pricing", "users"]')
+    )
+
+    code, out, _ = run(capsys, "check", str(copy))
+
+    assert code == 0
+    assert "shop.services (shop/services/archview.toml)  ok\n" in out
+    assert out.endswith("ok: shop, 3 components and 1 nested scope, no failing problems\n")
+
+
+def test_an_invalid_nested_rules_file_exits_2(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    (copy / "shop/services/archview.toml").write_text("[archview.allowed\n")
+
+    code, _, err = run(capsys, "check", str(copy))
+
+    assert code == 2
+    assert "shop/services/archview.toml: not valid TOML" in err
+
+
+def test_update_baseline_writes_one_baseline_per_scope(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+
+    code, out, _ = run(capsys, "check", str(copy), "--update-baseline")
+
+    assert code == 0
+    lines = out.splitlines()
+    assert len(lines) == 2
+    assert lines[1].endswith("shop/services/archview-baseline.json (1 known problems)")
+    assert (copy / "shop/services/archview-baseline.json").is_file()
+
+    code, out, _ = run(capsys, "check", str(copy))
+    assert code == 0
+    assert "known:" in out
+
+
+def add_print_scope(copy: Path) -> None:
+    """A second depth: `shop.services.print` gets rules for its own children, and one
+    violation, `render.pdf` importing `layout.page`."""
+    printing = copy / "shop/services/print"
+    for child in ("layout", "render"):
+        (printing / child).mkdir()
+        (printing / child / "__init__.py").write_text("")
+    (printing / "layout/page.py").write_text("")
+    (printing / "render/pdf.py").write_text("from shop.services.print.layout import page\n")
+    (printing / "archview.toml").write_text(
+        "[archview.allowed]\nflow = []\nlayout = []\nrender = []\n"
+    )
+
+
+def test_nested_files_at_two_depths_are_checked_apart(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    add_print_scope(copy)
+
+    code, out, _ = run(capsys, "check", str(copy))
+
+    assert code == 1
+    outer = out.index("shop.services (shop/services/archview.toml)  1 problem\n")
+    inner = out.index("shop.services.print (shop/services/print/archview.toml)  1 problem\n")
+    assert outer < inner
+    assert "VIOLATION print -> users" in out[outer:inner]
+    assert "render -> layout" not in out[outer:inner]
+    assert "  VIOLATION render -> layout (1 import)" in out[inner:]
+    assert "print -> users" not in out[inner:]
+    assert out.endswith("2 problems in 3 components and 2 nested scopes. exit 1\n")
+
+    code, out, _ = run(capsys, "check", str(copy), "--update-baseline")
+
+    assert code == 0
+    assert len(out.splitlines()) == 3
+    for where in (copy, copy / "shop/services", copy / "shop/services/print"):
+        assert (where / "archview-baseline.json").is_file()
+    assert run(capsys, "check", str(copy))[0] == 0
+
+
+def test_init_root_writes_a_nested_rules_file_the_check_then_passes(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    rules = copy / "shop/services/archview.toml"
+    rules.unlink()
+
+    code, out, _ = run(capsys, "init", str(copy), "--root", "services")
+
+    assert code == 0
+    assert out == f"wrote {rules.resolve()}\n"
+    assert 'print = ["pricing", "users"]' in rules.read_text()
+    assert run(capsys, "check", str(copy))[0] == 0
+
+
+def test_init_root_refuses_an_existing_file_and_force_keeps_components_and_ignored(
+    tmp_path, capsys
+):
+    copy = nested_copy(tmp_path)
+    rules = copy / "shop/services/archview.toml"
+    rules.write_text(
+        '[archview]\nignored = ["users"]\n\n'
+        '[archview.allowed]\npay = []\nprint = ["pay"]\n\n'
+        '[archview.components]\npay = ["shop.services.pricing"]\n'
+    )
+
+    code, _, err = run(capsys, "init", str(copy), "--root", "services")
+    assert code == 2
+    assert "--force" in err
+
+    assert run(capsys, "init", str(copy), "--root", "services", "--force")[0] == 0
+    text = rules.read_text()
+    assert 'ignored = ["users"]' in text
+    assert 'pay = []\nprint = ["pay"]\n' in text
+    assert text.endswith('[archview.components]\npay = ["shop.services.pricing"]\n')
+
+
+def test_init_root_stdout_prints_the_rules_and_leaves_the_file_alone(tmp_path, capsys):
+    copy = nested_copy(tmp_path)
+    rules = copy / "shop/services/archview.toml"
+    before = rules.read_text()
+
+    code, out, _ = run(capsys, "init", str(copy), "--root", "shop.services", "--stdout")
+
+    assert code == 0
+    assert out.startswith("# Dependency rules between the children of shop.services,")
+    assert rules.read_text() == before
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (("--root", "services.print.flow"), "shop.services.print.flow is not a package"),
+        (("--root", "shop"), "shop is the project"),
+        (("--root", "nope"), "no module or package 'nope'"),
+        (("--root", "services", "--externals"), "--externals"),
+        (("--root", "services", "--config", "x.toml"), "--config"),
+        (("--root", "services", "--exclude", "x"), "--exclude"),
+        (("--root", "services", "--tsconfig", "tsconfig.json"), "--tsconfig"),
+        (("--root", "services", "--language", "python"), "--language"),
+    ],
+)
+def test_init_root_usage_errors_exit_2(tmp_path, capsys, args, message):
+    copy = nested_copy(tmp_path)
+
+    code, _, err = run(capsys, "init", str(copy), "--force", *args)
+
+    assert code == 2
+    assert message in err
+
+
+def test_init_root_keeps_type_checking_imports_so_its_rules_pass(tmp_path, capsys):
+    """The nested file is inferred with the root's setting, which `check` also reads (#13)."""
+    copy = nested_copy(tmp_path)
+    root = copy / "archview.toml"
+    root.write_text(
+        root.read_text().replace(
+            'package = "shop"', 'package = "shop"\ntype_checking_imports = "ignore"'
+        )
+    )
+    (copy / "shop/services/pricing/types.py").write_text(
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from shop.services.users import repo\n"
+    )
+
+    assert run(capsys, "init", str(copy), "--root", "services", "--force")[0] == 0
+
+    assert "pricing = []" in (copy / "shop/services/archview.toml").read_text()
+    assert run(capsys, "check", str(copy))[0] == 0

@@ -25,8 +25,8 @@ from archview.model.layers import assign_layers
 from archview.model.metrics import DEFAULT_THRESHOLD
 from archview.model.query import Cycle, _cycle
 from archview.model.view import View, ViewEdge, ViewNode
-from archview.project import Project, open_project, project_report
-from archview.rules.baseline import apply_baseline, load_baseline
+from archview.project import Project, open_project, package_dir, project_report, rules_files
+from archview.rules.baseline import Baseline, apply_baseline, baseline_of, load_baseline
 from archview.rules.check import (
     Edges,
     Notice,
@@ -336,11 +336,44 @@ def _outside_imports(package: Package) -> dict[str, list[Import]]:
 
 
 def check_workspace(ws: Workspace) -> WorkspaceReport:
-    """Each package's own check, where it has rules, plus the rules between them."""
+    """Each package's own check, where it has rules, plus the rules between them.
+    `between` also names each nested rules file in a package without rules."""
     packages = tuple(
         (p.name, project_report(p.project, in_workspace=True)) for p in ws.packages if p.has_rules
     )
-    return WorkspaceReport(ws.name, packages, _check_between(ws))
+    between = _check_between(ws)
+    warnings = (*between.warnings, *_unchecked_member_rules(ws))
+    return WorkspaceReport(ws.name, packages, replace(between, warnings=warnings))
+
+
+def _unchecked_member_rules(ws: Workspace) -> list[Notice]:
+    """Nested rules files in a package without a rules file of its own: nothing checks
+    inside that package, so each file is named rather than passed over unread."""
+    unread = [p for p in ws.packages if not p.has_rules]
+    found = sorted(
+        (_shown(ws, path), p.name) for p in unread for path in rules_files(package_dir(p.project))
+    )
+    return [
+        Notice(
+            "unchecked_rules_file", f"{shown} is not checked: {name} has no rules file of its own"
+        )
+        for shown, name in found
+    ]
+
+
+def _shown(ws: Workspace, path: Path) -> str:
+    """`path` relative to the workspace root with POSIX separators, or in full outside it."""
+    path = path.resolve()
+    return path.relative_to(ws.root).as_posix() if path.is_relative_to(ws.root) else str(path)
+
+
+def between_baseline(ws: Workspace) -> Baseline:
+    """What `--update-baseline` writes for the rules between packages: their check
+    without the workspace baseline. No package's own check runs, so a package baseline
+    that `--update-baseline` has yet to write is no obstacle."""
+    rules = ws.config.workspace
+    cleared = replace(ws, config=replace(ws.config, workspace=replace(rules, baseline=None)))
+    return baseline_of(_check_between(cleared))
 
 
 def _check_between(ws: Workspace) -> Report:

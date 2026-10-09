@@ -38,9 +38,11 @@ from archview.project import (
     Project,
     ProjectError,
     SeveralPackages,
-    baseline_path,
+    fresh_baselines,
     open_project,
     project_report,
+    scope_dir,
+    shown_path,
 )
 from archview.render.check import report_to_dict, report_to_text
 from archview.render.dot import to_dot
@@ -54,13 +56,22 @@ from archview.render.query import (
     why_to_text,
 )
 from archview.render.workspace import workspace_to_dict, workspace_to_text
-from archview.rules.baseline import Baseline, baseline_of
+from archview.rules.baseline import Baseline
 from archview.rules.check import Report, check
-from archview.rules.config import RULES_FILE, Config, ConfigError, find_config, load_config
-from archview.rules.init import infer_rules
+from archview.rules.config import (
+    RULES_FILE,
+    Config,
+    ConfigError,
+    find_config,
+    load_config,
+    load_nested_config,
+    parse_nested_config,
+)
+from archview.rules.init import infer_rules, infer_scope_rules
 from archview.rules.overlay import failing_imports, outside_targets, violating_edges
 from archview.workspace import (
     Workspace,
+    between_baseline,
     check_workspace,
     open_workspace,
     workspace_cycles,
@@ -222,10 +233,8 @@ def _check(args: argparse.Namespace) -> int:
         return _check_workspace(args, ws)
     project = _rules_project(args)
     if args.update_baseline:
-        path = baseline_path(project)
-        baseline = baseline_of(check(project.model, project.config))
-        path.write_text(baseline.to_json())
-        sys.stdout.write(f"wrote {path} ({len(baseline.entries)} known problems)\n")
+        written = [_write_baseline(path, b) for path, b in fresh_baselines(project)]
+        sys.stdout.write("\n".join(written) + "\n")
         return 0
     report = project_report(project)
     if args.format == "json":
@@ -247,21 +256,15 @@ def _check_workspace(args: argparse.Namespace, ws: Workspace) -> int:
 
 
 def _update_workspace_baseline(ws: Workspace) -> int:
-    """Each configured package's own baseline, exactly as a single project's
-    `--update-baseline` would write it, plus the workspace baseline when
-    `[archview.workspace].baseline` names one."""
-    written = [
-        _write_baseline(
-            baseline_path(p.project), baseline_of(check(p.project.model, p.project.config))
-        )
-        for p in ws.packages
-        if p.has_rules
-    ]
+    """Each configured package's own baselines, exactly as a single project's
+    `--update-baseline` would write them, plus the workspace baseline when
+    `[archview.workspace].baseline` names one. All are worked out before any is
+    written, so a broken rules file in one package leaves every baseline as it was."""
+    fresh = [pair for p in ws.packages if p.has_rules for pair in fresh_baselines(p.project)]
     rules = ws.config.workspace
     if rules.baseline:
-        cleared = replace(ws, config=replace(ws.config, workspace=replace(rules, baseline=None)))
-        between = check_workspace(cleared).between
-        written.append(_write_baseline(ws.root / rules.baseline, baseline_of(between)))
+        fresh.append((ws.root / rules.baseline, between_baseline(ws)))
+    written = [_write_baseline(path, baseline) for path, baseline in fresh]
     sys.stdout.write(
         "\n".join(written) + "\n" if written else "no baseline configured; nothing written\n"
     )
@@ -397,6 +400,8 @@ def _cycles(args: argparse.Namespace) -> int:
 
 
 def _init(args: argparse.Namespace) -> int:
+    if args.root:
+        return _init_scope(args)
     repo = args.path.expanduser().resolve()
     existing = args.config if args.config else find_config(repo)
     if existing and not existing.is_file():
@@ -411,10 +416,53 @@ def _init(args: argparse.Namespace) -> int:
 
     project = open_project(repo, args.package, config=config, language=args.language)
     text = infer_rules(project.model, config, externals=args.externals)
+    return _write_rules(args, args.config or repo / RULES_FILE, text)
+
+
+def _init_scope(args: argparse.Namespace) -> int:
+    """`init --root`: the nested rules file of one package, inferred with the root rules'
+    settings, so the edges it writes are the edges `check` reads (#13). A flag that
+    shapes that model or the root rules is refused: nothing would write it down."""
+    for name in ("externals", "config", "exclude", "tsconfig", "language"):
+        if getattr(args, name):
+            raise UsageError(f"--{name} is for the root rules file; leave it out with --root")
+    project = _open(args, [args.root])
+    scope = _scope_package(project.model, args.root)
+    target = scope_dir(project, scope) / RULES_FILE
+    if target.is_file() and not (args.force or args.stdout):
+        raise UsageError(f"{target} already has rules; --force regenerates them")
+    config = _scope_config(project, scope, target)
+    return _write_rules(args, target, infer_scope_rules(project.model, scope, config))
+
+
+def _scope_package(model: Model, name: str) -> str:
+    """`name` resolved to a package below the project: one a nested rules file can hold."""
+    try:
+        scope = resolve(model, name)
+    except UnknownName as error:
+        raise UsageError(str(error)) from None
+    if scope == model.project:
+        raise UsageError(f"{scope} is the project; `archview init` without --root writes its rules")
+    if next(n.kind for n in model.nodes if n.id == scope) != "package":
+        raise UsageError(f"{scope} is not a package; only a package has children to rule")
+    return scope
+
+
+def _scope_config(project: Project, scope: str, target: Path) -> Config:
+    """The keys the scope takes from the root rules, plus `components` and `ignored` from
+    the nested file already at `target`, as the root's `init --force` keeps its own."""
+    shown = shown_path(project, target)
+    config = parse_nested_config({}, project.config, shown, scope)
+    if not target.is_file():
+        return config
+    kept = load_nested_config(target, project.config, shown, scope)
+    return replace(config, components=kept.components, ignored=kept.ignored)
+
+
+def _write_rules(args: argparse.Namespace, target: Path, text: str) -> int:
     if args.stdout:
         sys.stdout.write(text)
         return 0
-    target = args.config or repo / RULES_FILE
     target.write_text(text)
     sys.stdout.write(f"wrote {target}\n")
     return 0
@@ -570,6 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init = commands.add_parser("init", help="write rules inferred from the current imports")
     _common(init)
+    init.add_argument("--root", help="package whose children get a nested rules file")
     init.add_argument("--force", action="store_true", help="regenerate existing rules")
     init.add_argument("--stdout", action="store_true", help="print instead of writing")
     init.add_argument(

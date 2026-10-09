@@ -43,15 +43,17 @@ def baseline_of(report: Report) -> Baseline:
     return Baseline(frozenset(fp for p in report.problems if p.fails for fp in _fingerprints(p)))
 
 
-def load_baseline(path: Path) -> Baseline:
+def load_baseline(path: Path, shown: str | None = None) -> Baseline:
+    """The baseline at `path`; errors name it `shown`, or by its file name."""
+    name = shown or path.name
     try:
         data = json.loads(path.read_text())
     except OSError as error:
         raise ConfigError(f"cannot read baseline {path}: {error.strerror}") from error
     except json.JSONDecodeError as error:
-        raise ConfigError(f"baseline {path.name} is not valid JSON: {error}") from error
+        raise ConfigError(f"baseline {name} is not valid JSON: {error}") from error
     if not isinstance(data, dict) or data.get("archview_baseline") != FORMAT:
-        raise ConfigError(f"{path.name} is not an archview baseline (format {FORMAT})")
+        raise ConfigError(f"{name} is not an archview baseline (format {FORMAT})")
     return Baseline(frozenset(tuple(entry) for entry in data["entries"]))
 
 

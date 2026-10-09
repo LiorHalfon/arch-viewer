@@ -2,7 +2,9 @@
 
 import pytest
 
-from archview.model.names import ancestors, last, parent, truncate, within
+from archview.model.graph import Model, Node
+from archview.model.names import ancestors, last, parent, stripped_source_root, truncate, within
+from tests.builders import model
 
 
 @pytest.mark.parametrize(
@@ -28,3 +30,25 @@ def test_parent_ancestors_last_and_truncate_split_on_the_given_separator():
     assert last("app/ui/Button.web.tsx", "/") == "Button.web.tsx"
     assert last("app.api.routes", ".") == "routes"
     assert truncate("app/ui/Button.tsx", 2, "/") == "app/ui"
+
+
+def test_stripped_source_root_is_the_directory_the_ids_lost():
+    nodes = (
+        Node("app", None, "package"),
+        Node("app/x.ts", "app", "module", "src/x.ts"),
+        Node("app/ui/y.ts", "app", "module", "src/ui/y.ts"),
+    )
+    m = Model("app", nodes, (), language="typescript", separator="/")
+
+    assert stripped_source_root(m) == "src"
+
+
+def test_stripped_source_root_is_empty_when_ids_start_at_the_repo():
+    nodes = (Node("app", None, "package"), Node("app/x.ts", "app", "module", "x.ts"))
+    m = Model("app", nodes, (), language="typescript", separator="/")
+
+    assert stripped_source_root(m) == ""
+
+
+def test_stripped_source_root_is_none_for_python():
+    assert stripped_source_root(model(("app.x", "app.y"))) is None

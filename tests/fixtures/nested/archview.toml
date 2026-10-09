@@ -1,0 +1,8 @@
+# The root rules: between the children of shop.
+[archview]
+package = "shop"
+
+[archview.allowed]
+api = ["services"]
+models = []
+services = ["models"]

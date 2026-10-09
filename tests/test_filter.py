@@ -1,8 +1,9 @@
 """Exclusions (A11) and cycle labels."""
 
 from archview.model.cycles import describe_cycle
-from archview.model.filter import without_files
-from tests.builders import model
+from archview.model.filter import scoped_model, without_files
+from archview.model.graph import ExtractionWarning
+from tests.builders import model, model_with_external
 
 
 def test_drops_excluded_files_and_every_import_that_touches_them():
@@ -79,3 +80,36 @@ def test_hides_typescript_tests_by_their_conventional_names():
     assert [(i.importer, i.imported) for i in kept.imports] == [
         ("app/services/pricing.ts", "app/domain/order.ts")
     ]
+
+
+def test_scoped_model_keeps_the_scope_and_the_imports_inside_it():
+    m = model(
+        ("app.svc.a.x", "app.svc.b.y"),  # inside
+        ("app.svc.a.x", "app.models.m"),  # leaves the scope
+        ("app.api.r", "app.svc.a.x"),  # enters the scope
+    )
+
+    s = scoped_model(m, "app.svc")
+
+    assert s.project == "app.svc"
+    assert {n.id for n in s.nodes} == {
+        "app.svc",
+        "app.svc.a",
+        "app.svc.a.x",
+        "app.svc.b",
+        "app.svc.b.y",
+    }
+    assert [(i.importer, i.imported) for i in s.imports] == [("app.svc.a.x", "app.svc.b.y")]
+    assert next(n for n in s.nodes if n.id == "app.svc").parent is None
+
+
+def test_scoped_model_drops_externals_and_extraction_warnings():
+    m = model_with_external()
+    warning = ExtractionWarning("dynamic_import", "shop.llm", "shop/llm.py", 3, "import_module(x)")
+    m = m.__class__(m.project, m.nodes, m.imports, warnings=(warning,))
+
+    s = scoped_model(m, "shop")
+
+    assert not any(n.kind == "external" for n in s.nodes)
+    assert [(i.importer, i.imported) for i in s.imports] == [("shop.api", "shop.llm")]
+    assert s.warnings == ()

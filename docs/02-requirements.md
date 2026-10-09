@@ -94,6 +94,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C14 | A package declares its contract with `public` in its own rules file; a sibling may reach only those components, and the workspace tables accept qualified `package.component` targets. The component an import reaches is resolved, not guessed: the sibling packages are analysed together for Python, and `Import.resolved` carries tsc's resolution for TypeScript. A grant naming an unpublished component is a config error; an import that cannot be placed is reported, never assumed public. | MVP (M9) | GitHub issue #4; ADR 0013 |
 | C15 | `check` says what it is not checking. `type_checking_imports` defaults to `"include"`, and the key is a `ConfigError` where it cannot take effect (a workspace root's bare `[archview]` table). A `[archview.externals]` table that covers one component and not a neighbour reaching the same package says so, by name (`partial_externals`). `externals_undeclared = "error"` closes the table, failing a component that reaches outside without a key (`undeclared_externals`). A `source_roots` entry that contributes no modules to the package says so (`empty_source_root`). | MVP (M10) | GitHub issues #5, #8, #10; ADR 0014 |
 | C16 | A `source_roots` entry outside `package` contributes its top-level packages as components, so a rule can reach test code; `[[archview.exceptions]]` gains an optional `kind = "type_only"`, exempting only an import whose `type_checking` flag is set (a value import between the same pair still fails). | MVP (M11) | GitHub issues #8, #10; ADR 0015 |
+| C17 | An `archview.toml` inside a package below the project package holds rules between that package's children (`allowed`, `forbidden`, `layers`, `independent`, `exceptions`, `components`, `ignored`, the fail switches, `metrics`, `baseline`). `check` reports each such scope as its own section with its own baseline, `init --root X` infers the file, and `serve` draws a scope's failing imports in the drill-down. A key that shapes the model is a `ConfigError` in a nested file, and a nested file that no analysed package owns gets an `unchecked_rules_file` notice. | MVP (M12) | GitHub issue #14; ADR 0016 |
 
 ## 7. Agent integration
 
@@ -135,13 +136,13 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 - `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-09-22, after M11)
+## 12. Implementation status (2026-10-09, after M12)
 
 | Area | Built | Not yet |
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012) | V10 collapse/expand in place (needs the ELK step); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C16. C5 text + JSON | C5 GitHub Actions annotations |
+| Checker | C1–C4, C6–C17. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of

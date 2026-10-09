@@ -258,6 +258,10 @@ button.icon:hover { border-color: var(--accent); }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
 .panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+/* A section of the rules panel (a workspace package, the rules between packages, a
+   nested scope) - set apart from the Warnings/unused headings inside it. */
+.panel h3.group { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); border-top: 1px solid var(--border); padding-top: 12px; margin-top: 18px; }
+.panel h3.group:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 .imports { list-style: none; margin: 0; padding: 0; }
 .imports li { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; cursor: pointer; }
 .imports li:hover { border-color: var(--accent); background: var(--focus); }

@@ -67,10 +67,16 @@ class Report:
     warnings: tuple[Notice, ...]
     metrics: dict[str, Metrics] = field(default_factory=dict)
     unused: tuple[Pair, ...] = ()
+    # (rules file path as shown, report) for each nested rules file under this project
+    scopes: tuple[tuple[str, Report], ...] = ()
+
+    @property
+    def failing(self) -> int:
+        return sum(p.fails for p in self.problems) + sum(r.failing for _, r in self.scopes)
 
     @property
     def failed(self) -> bool:
-        return any(p.fails for p in self.problems)
+        return self.failing > 0
 
 
 @dataclass(frozen=True, slots=True)

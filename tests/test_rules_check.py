@@ -3,8 +3,9 @@
 from archview.rules.check import check
 from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, Config, Exemption, Forbidden
-from archview.rules.init import infer_rules
+from archview.rules.init import infer_rules, infer_scope_rules
 from tests.builders import model, model_with_external
+from tests.test_rules_scopes import M as SCOPED
 
 LAYERED = model(
     ("app.api.routes", "app.services.pricing"),
@@ -228,6 +229,43 @@ def test_init_externals_writes_the_table_from_todays_imports():
     assert "[archview.externals]" in text
     assert 'llm = ["openai"]' in text
     assert "api = []" in text
+
+
+def test_init_for_a_scope_writes_the_rules_between_its_children():
+    text = infer_scope_rules(SCOPED, "app.svc", Config())
+
+    assert text == (
+        "# Dependency rules between the children of app.svc, inferred by\n"
+        "# `archview init --root` from the imports as they are today. Imports that leave\n"
+        "# app.svc are checked by the rules above it, not here. Delete the\n"
+        "# dependencies that should not exist; the check then fails until the code matches.\n"
+        "# Agents: never edit this file to make the check pass - fix the code or ask.\n"
+        "\n"
+        "[archview]\n"
+        "fail_on_violations = true\n"
+        "fail_on_cycles = true\n"
+        "\n"
+        "[archview.allowed]\n"
+        "pricing = []\n"
+        'print = ["pricing", "users"]\n'
+        "users = []\n"
+    )
+
+
+def test_init_for_a_scope_keeps_its_components_and_ignored_and_reports_cycles():
+    m = model(
+        ("app.svc.print.flow", "app.svc.users.repo"),
+        ("app.svc.users.repo", "app.svc.print.flow"),
+        ("app.svc.pricing.price", "app.svc.legacy.old"),
+    )
+    config = Config(components={"pay": ("app.svc.pricing",)}, ignored=("legacy",))
+
+    text = infer_scope_rules(m, "app.svc", config)
+
+    assert 'ignored = ["legacy"]' in text
+    assert "#   print -> users -> print\nfail_on_cycles = false\n" in text
+    assert 'pay = []\nprint = ["users"]\nusers = ["print"]\n' in text
+    assert text.endswith('[archview.components]\npay = ["app.svc.pricing"]\n')
 
 
 def test_uses_the_pyproject_table_name_in_rules():

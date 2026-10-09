@@ -1,0 +1,5 @@
+# Nested rules: between the children of shop.services.
+[archview.allowed]
+print = ["pricing"]
+pricing = []
+users = []
