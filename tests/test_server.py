@@ -40,9 +40,13 @@ def test_serves_the_page_and_its_vendored_scripts(client):
     page = client.get("/")
 
     assert page.status_code == 200
-    assert '<script src="/ui/app.js"></script>' in page.text
+    assert '<script type="module" src="/ui/app.js"></script>' in page.text
     assert client.get("/ui/vendor/viz-global.js").status_code == 200
     assert client.get("/ui/vendor/highlight.min.js").status_code == 200
+    for module in ("layout.js", "draw.js"):
+        served = client.get(f"/ui/{module}")
+        assert served.status_code == 200
+        assert "javascript" in served.headers["content-type"]
 
 
 def test_summarises_the_project(client, repo):
@@ -201,6 +205,19 @@ def rules_with_one_violation(repo):
             'api = ["domain", "infra", "services"]', 'api = ["domain", "infra"]'
         )
     )
+
+
+def test_the_view_carries_the_zone_threshold(repo, capsys):
+    from archview.cli import main
+
+    assert client_for(repo).get("/api/view").json()["threshold"] == 0.3
+
+    main(["init", str(repo)])
+    rules = repo / "archview.toml"
+    rules.write_text(rules.read_text() + "\n[archview.metrics]\nthreshold = 0.4\n")
+
+    assert client_for(repo).get("/api/view").json()["threshold"] == 0.4
+    assert client_for(WORKSPACE).get("/api/view").json()["threshold"] == 0.3
 
 
 def test_marks_edges_and_imports_that_break_the_rules(repo, capsys):

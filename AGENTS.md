@@ -7,23 +7,24 @@ AI coding agents to a declared dependency structure.
 
 ## State of the repo
 
-**M1–M12 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
+**M1–M13 are done**: `src/archview/` holds the extractors (grimp + an `ast` pass for
 Python, the TypeScript compiler API for TypeScript, ADR 0010), the model (views,
 cycles, layers, metrics, agent queries), the checker (`rules/`, with layers, zones,
 baseline and rules that name a package outside the project, ADR 0011, notices for
 what it is not checking, ADR 0014, and rules that reach test code plus exceptions
 scoped to type-only imports, ADR 0015, and rules files inside sub-packages, ADR 0016), workspace mode (`workspace.py`, several
 packages checked and drawn as one architecture, with a public surface per package,
-ADRs 0012 and 0013), the viewer (`server/` + `ui/`) and the CLI (`graph`, `check`,
+ADRs 0012 and 0013), the viewer (`server/` + `ui/`, drawing its own SVG from
+Graphviz's layout with colour schemes, dragging and quick find, ADR 0017) and the CLI (`graph`, `check`,
 `init`, `metrics`, `serve`, `why`, `deps`, `rdeps`, `cycles`). The repo commits its
 own `archview.toml` and `tests/test_self_check.py` enforces it; GitHub Actions
 (`.github/workflows/ci.yml`) runs tests, lint and `archview check` on every push.
 Read in this order:
 
 1. `docs/02-requirements.md` — what to build (IDs A*/V*/C*/G*/N* are referenced everywhere)
-2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M12
+2. `docs/05-approach-and-roadmap.md` — architecture, formats, milestones M1–M13
 3. `docs/superpowers/specs/` — the binding design specs a milestone is built from (ADRs 0011, 0012 both open by naming the one they record)
-4. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode, 0013 a package's public surface, 0014 say what is not checked, 0015 test code under the rules and type-only exceptions, 0016 rules files inside sub-packages
+4. `docs/decisions/` — ADRs; 0001–0004 record what M1 settled, 0005 the optional MCP server, 0006 the checker semantics, 0007 the viewer, 0008 the M4 depth, 0009 the agent queries and the Stop hook, 0010 the TypeScript extractor, 0011 rules for outside imports, 0012 workspace mode, 0013 a package's public surface, 0014 say what is not checked, 0015 test code under the rules and type-only exceptions, 0016 rules files inside sub-packages, 0017 the viewer drawing its own SVG
 5. `docs/03-reference-uncle-bob-tools.md` — the original design (arch-view, dependency-checker)
 6. `docs/04-research-tool-landscape.md` — what exists; why grimp, why not X
 7. `docs/06-using-archview-in-a-repo.md` — adoption, the CLAUDE.md paragraph, hooks, workspace mode
@@ -37,7 +38,7 @@ Read in this order:
 - Scope = viewer **and** checker, sharing one analysis core.
 - Extraction via **grimp** (BSD-2). Do not write a custom import resolver.
 - Rules file: `archview.toml` with an `allowed` map per component (dependency-checker style); `archview init` infers it.
-- Viewer: local web UI; Graphviz-WASM (`@viz-js/viz`) for the MVP, ELK + React Flow only if interactions demand it.
+- Viewer: local web UI, plain ES modules, no build step. Graphviz-WASM (`@viz-js/viz`) lays every view out and the UI draws the SVG from its JSON (ADR 0017); ELK + React Flow only if interactions demand more.
 - Static analysis only — never import or execute the analysed project's sources, though reading TypeScript does run that repo's own `typescript` compiler. No network. Permissive licences only.
 - Working name `archview` for the package and CLI.
 
@@ -76,6 +77,7 @@ uv run archview check --package core               # at a workspace root: check 
 uv run archview graph --package core               # ditto for the view; drop --package for the whole workspace
 npm ci --prefix tests/fixtures/ts-sample           # once, for the TypeScript tests
 uv run pytest && uv run ruff check
+node --test "tests/ui/*.test.mjs"                 # the viewer's JS modules alone (pytest runs them too)
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff
 ```
 

@@ -438,6 +438,22 @@ archview graph --mermaid              # paste into a PR description
 archview metrics                      # Ca, Ce, I, A, D and zone per component
 ```
 
+In the viewer:
+
+- **Colour by** (the legend's buttons, or View → Colour by) colours boxes by their role
+  in the current view, by instability or by zone, or not at all. The legend counts the
+  boxes in each class; click a class to pick them out, and Esc to clear. Under
+  Instability or Zone, a link opens a panel that plots the view's boxes and explains
+  the numbers; [docs/metrics.md](metrics.md) is the longer version.
+- **Drag a box** to move it. Graphviz routes the lines again when you let go. The
+  layout is kept for that view in your browser, and **Reset layout** puts Graphviz's
+  back. Nothing is written into the repo.
+- **Line width** follows the number of imports. Hovering a box colours what it imports
+  blue and what imports it violet, and shows its numbers in a card.
+- **`/`** finds any package or module by name and opens the level that draws it.
+- **Export → SVG or PNG** saves the view as you see it: your layout and colours, in
+  light colours, with a legend.
+
 ## Asking it (agents and humans)
 
 ```bash

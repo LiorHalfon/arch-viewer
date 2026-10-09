@@ -1,7 +1,13 @@
-"use strict";
+// archview viewer: one root at a time, laid out by Graphviz (viz-js) and drawn by
+// draw.js, drill down by click. Every root keeps its own zoom and scroll position,
+// so Back returns to where you were.
 
-// archview viewer: one root at a time, drawn by Graphviz (viz-js), drill down by click.
-// Every root keeps its own zoom and scroll position, so Back returns to where you were.
+import { classOf, LIGHT, schemeFromOptions } from "./colour.js";
+import { enableDrag, layoutKey, loadMoved, saveMoved } from "./drag.js";
+import { drawSvg, edgeGeometry } from "./draw.js";
+import { flatten } from "./find.js";
+import { bounds, clusterFrames, layoutView, routesAfterMove, straightRoute } from "./layout.js";
+import { createFinder, hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -11,15 +17,21 @@ const state = {
   package: null,        // the workspace member currently drilled into, or null at its top
   root: null,
   view: null,
+  layout: null,         // Graphviz's layout of the current view (layout.js)
+  moved: new Map(),     // boxes moved by hand in the current view: id -> {x, y}
+  routes: {},           // the current view's edge routes (Graphviz's, or routed again after a drop)
   views: new Map(),     // "root=..&package=..&externals=..&hide_tests=.." -> view payload
   places: new Map(),    // "package|root" -> {zoom, left, top}
   zoom: 1,
   natural: { w: 0, h: 0 },
   sticky: null,         // {ids, label} while a focus is pinned
+  metricsPanel: null,   // the metrics panel's handle while it is open
+  pendingFlash: null,   // a box quick find picked, flashed once its level is shown
   trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
-  options: { tests: false, externals: false, zones: false, legend: true, tree: true },
+  options: { tests: false, externals: false, colour: "role", legend: true, tree: true },
+  palette: null,        // the theme's colour tokens, read from app.css, for label ink
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -41,7 +53,6 @@ const enterOrOpen = (id) => go(id, state.isWorkspace && !state.package ? id : st
 const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toFixed(2));
 const parentOf = (id) => (inProject(id) && id.includes(sep()) ? id.slice(0, id.lastIndexOf(sep())) : null);
-const ZONE_NAMES = { main_sequence: "main sequence", pain: "zone of pain", useless: "zone of uselessness", isolated: "no dependencies", external: "third-party" };
 const WARNING_LABELS = { dynamic_import: "dynamic import", unresolved_import: "unresolved import" };
 const GRAMMARS = { ts: "typescript", tsx: "typescript", mts: "typescript", cts: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript" };
 // The highlight.js grammar for one file; an unknown one would throw, so fall back.
@@ -71,7 +82,16 @@ function toast(message) {
 // ---------- options (remembered per browser) ----------
 
 function loadOptions() {
-  try { Object.assign(state.options, JSON.parse(localStorage.getItem("archview.options") || "{}")); } catch { /* storage unavailable */ }
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("archview.options") || "{}") || {}; } catch { /* storage unavailable */ }
+  Object.assign(state.options, saved);
+  state.options.colour = schemeFromOptions(saved);
+  delete state.options.zones;  // before M13 this was a checkbox; schemeFromOptions reads it
+}
+
+function paletteFromCss() {
+  const css = getComputedStyle(document.documentElement);
+  return Object.fromEntries(Object.keys(LIGHT).map((token) => [token, css.getPropertyValue(token).trim()]));
 }
 
 function saveOptions() {
@@ -81,9 +101,8 @@ function saveOptions() {
 function applyOptions() {
   $("opt-tests").checked = state.options.tests;
   $("opt-externals").checked = state.options.externals;
-  $("opt-zones").checked = state.options.zones;
+  document.querySelectorAll('input[name="colour"]').forEach((r) => { r.checked = r.value === state.options.colour; });
   $("opt-legend").checked = state.options.legend;
-  document.body.classList.toggle("zones", state.options.zones);
   $("legend").hidden = !state.options.legend;
   $("tree").hidden = !state.options.tree;
   $("main").classList.toggle("with-tree", state.options.tree);
@@ -147,9 +166,15 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   crumbs(root);
   stats(view);
   rulesButton();
-  if (!keepPanel) closePanel();
+  // The metrics panel stays open across navigation and redraws for the new view.
+  const metricsOpen = !!state.metricsPanel;
+  if (!keepPanel && !metricsOpen) closePanel();
+  layOut(view);
   draw(view);
+  resetButton();
   notes();
+  legend();
+  if (metricsOpen) openMetricsPanel();
   drawTree();
   const place = state.places.get(key);
   setZoom(place ? place.zoom : fitZoom(), false);
@@ -158,6 +183,10 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   stage.scrollTop = place ? place.top : 0;
   $("up").disabled = !view.parent;
   if (state.sticky) focusOn(state.sticky.ids, state.sticky);
+  if (state.pendingFlash) {
+    flashInView(state.pendingFlash);
+    state.pendingFlash = null;
+  }
 }
 
 function crumbs(root) {
@@ -253,17 +282,125 @@ function notes() {
 function draw(view) {
   const graph = $("graph");
   graph.innerHTML = "";
-  if (!view.nodes.length) {
+  hideCard();
+  if (!state.layout) {
     graph.innerHTML = '<p class="hint">Nothing to show at this level.</p>';
     return;
   }
-  const svg = state.viz.renderSVGElement(view.dot);
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
-  const box = svg.viewBox.baseVal;
-  state.natural = { w: box.width, h: box.height };
-  graph.append(svg);
+  const at = positions();
+  const clusters = clusterFrames(state.layout, at);
+  const box = drawingBox(at, clusters);
+  graph.innerHTML = drawSvg(view, state.layout, {
+    positions: at, routes: state.routes, clusters, box, weighted: true, scheme: state.options.colour, palette: state.palette,
+  });
+  state.natural = { w: box.w, h: box.h };
+  const svg = graph.querySelector("svg");
   wire(svg, view);
+  enableDrag(svg, { toSvgPoint: (e) => svgPoint(svg, e), onMove: previewMove, onDrop: dropBox, onCancel: redraw });
+}
+
+// ---------- layout and dragging ----------
+
+const storage = (() => {
+  try { return window.localStorage; } catch { return null; }
+})();
+
+const viewKey = () => layoutKey({
+  repo: state.project.repo, project: state.view.project, package: state.package,
+  root: state.root, externals: state.options.externals, hideTests: state.options.tests,
+});
+
+// Lay the view out with Graphviz, then put back the boxes moved in it before.
+function layOut(view) {
+  state.layout = view.nodes.length ? layoutView(state.viz, view.dot) : null;
+  state.moved = state.layout ? loadMoved(storage, viewKey(), new Set(Object.keys(state.layout.nodes))) : new Map();
+  state.routes = state.layout ? state.layout.routes : {};
+  if (state.moved.size) state.routes = routesFor(new Set(state.moved.keys()), state.layout.routes);
+}
+
+const positions = () => Object.fromEntries(state.moved);
+const centre = (id) => state.moved.get(id) || state.layout.nodes[id];
+
+function routesFor(moved, previous) {
+  const started = performance.now();
+  const edges = state.view.edges.map(({ source, target }) => ({ source, target }));
+  const routes = routesAfterMove(state.viz, state.layout, positions(), edges, previous, moved);
+  console.debug("archview: rerouted in", Math.round(performance.now() - started), "ms");
+  return routes;
+}
+
+// Graphviz's own SVG pads the drawing by 4 points; a box dragged past that grows it.
+function drawingBox(at, clusters) {
+  const pad = { x: -4, y: -4, w: state.layout.w + 8, h: state.layout.h + 8 };
+  if (!state.moved.size) return pad;
+  const b = bounds(state.layout, at, state.routes, clusters, 4);
+  const x = Math.min(pad.x, b.x), y = Math.min(pad.y, b.y);
+  return { x, y, w: Math.max(pad.x + pad.w, b.x + b.w) - x, h: Math.max(pad.y + pad.h, b.y + b.h) - y };
+}
+
+function svgPoint(svg, e) {
+  const p = svg.createSVGPoint();
+  p.x = e.clientX;
+  p.y = e.clientY;
+  return p.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// While a box moves, its own lines follow as straight dashes; the rest stay.
+function previewMove(id, by) {
+  hideCard();
+  const svg = $("graph").querySelector("svg");
+  svg.querySelector(`g.node[data-id="${CSS.escape(id)}"]`).setAttribute("transform", `translate(${by.x} ${by.y})`);
+  const from = centre(id);
+  const at = (other) => (other === id ? { x: from.x + by.x, y: from.y + by.y } : centre(other));
+  svg.querySelectorAll("g.edge").forEach((g) => {
+    const { source, target } = g.dataset;
+    if (source !== id && target !== id) return;
+    const line = g.querySelector(".line");
+    const route = straightRoute(at(source), state.layout.nodes[source], at(target), state.layout.nodes[target]);
+    const geo = edgeGeometry(route, Number.parseFloat(line.getAttribute("stroke-width")) || 1);
+    line.setAttribute("d", geo.d);
+    g.querySelector(".hit").setAttribute("d", geo.d);
+    g.querySelector(".arrow")?.setAttribute("points", geo.arrow);
+    const count = g.querySelector(".count");
+    if (count && geo.label) {
+      count.setAttribute("x", geo.label[0]);
+      count.setAttribute("y", geo.label[1]);
+    }
+    g.classList.add("preview");
+  });
+}
+
+function dropBox(id, by) {
+  const from = centre(id);
+  state.moved.set(id, { x: from.x + by.x, y: from.y + by.y });
+  saveMoved(storage, viewKey(), state.moved);
+  state.routes = routesFor(new Set([id]), state.routes);
+  redraw();
+  resetButton();
+}
+
+function resetLayout() {
+  state.moved = new Map();
+  saveMoved(storage, viewKey(), state.moved);
+  state.routes = state.layout ? state.layout.routes : {};
+  redraw();
+  resetButton();
+}
+
+function resetButton() {
+  $("reset-layout").disabled = !state.moved.size;
+}
+
+// Draw the current view again in place: same zoom, scroll and pinned focus.
+function redraw() {
+  if (!state.view) return;
+  const stage = $("stage");
+  const { scrollLeft, scrollTop } = stage;
+  draw(state.view);
+  setZoom(state.zoom, false);
+  stage.scrollLeft = scrollLeft;
+  stage.scrollTop = scrollTop;
+  if (state.sticky) focusOn(state.sticky.ids, state.sticky);
 }
 
 function nodeById(id) {
@@ -272,28 +409,28 @@ function nodeById(id) {
 
 function wire(svg, view) {
   svg.querySelectorAll("g.node").forEach((g) => {
-    const id = g.querySelector("title").textContent;
+    const id = g.dataset.id;
     const node = nodeById(id);
-    g.dataset.id = id;
-    g.querySelector("title").textContent = tooltip(node);
+    g.setAttribute("aria-label", tooltip(node));
     g.onclick = (e) => {
       if (e.shiftKey || e.altKey || node.kind === "external") return openNode(node);
       return node.has_children ? enterOrOpen(id) : openSource(id);
     };
     g.oncontextmenu = (e) => { e.preventDefault(); openNode(node); };
-    g.onmouseenter = () => { if (!state.sticky) focusOn(new Set([id])); };
-    g.onmouseleave = () => { if (!state.sticky) unfocus(); };
+    g.onmouseenter = () => {
+      if (svg.classList.contains("dragging")) return;
+      if (!state.sticky) focusOn(new Set([id]));
+      showCard($("stage").parentElement, node, state.view, g.getBoundingClientRect(), { drag: true });
+      state.metricsPanel?.mark(id);
+    };
+    g.onmouseleave = () => {
+      if (!state.sticky) unfocus();
+      hideCard();
+      state.metricsPanel?.mark(null);
+    };
   });
   svg.querySelectorAll("g.edge").forEach((g) => {
-    const [source, target] = g.querySelector("title").textContent.split("->");
-    g.dataset.source = source;
-    g.dataset.target = target;
-    const path = g.querySelector("path");
-    if (path) {
-      const hit = path.cloneNode();
-      hit.setAttribute("class", "hit");
-      g.insertBefore(hit, path);
-    }
+    const { source, target } = g.dataset;
     const edge = view.edges.find((e) => e.source === source && e.target === target);
     const flags = [edge.violation && "breaks a rule", edge.in_cycle && "in a cycle", edge.abstract && "to an abstraction", edge.type_checking && "type checking only"].filter(Boolean);
     g.querySelector("title").textContent = `${short(source)} → ${short(target)}: ${plural(edge.count, "import")}${flags.length ? ` (${flags.join(", ")})` : ""}`;
@@ -321,12 +458,16 @@ function focusOn(ids, pinned = null) {
   if (!svg) return;
   svg.classList.add("focusing");
   const single = ids.size === 1 && !(pinned && pinned.strict);
+  // Direction colours follow one box: the hovered one, or the one a focus was pinned on.
+  const focus = !pinned && ids.size === 1 ? [...ids][0] : pinned?.root ?? null;
   const shown = new Set(ids);
   svg.querySelectorAll("g.edge").forEach((g) => {
     const related = single
       ? ids.has(g.dataset.source) || ids.has(g.dataset.target)
       : ids.has(g.dataset.source) && ids.has(g.dataset.target);
     g.classList.toggle("related", related);
+    g.classList.toggle("out", focus !== null && g.dataset.source === focus);
+    g.classList.toggle("in", focus !== null && g.dataset.target === focus);
     if (related && single) { shown.add(g.dataset.source); shown.add(g.dataset.target); }
   });
   svg.querySelectorAll("g.node").forEach((g) => {
@@ -340,16 +481,72 @@ function unfocus() {
   if (svg) svg.classList.remove("focusing");
 }
 
-function pin(ids, label, strict = true, root = null) {
-  state.sticky = { ids, label, strict, root };
+// `pick`: the legend class this focus picks out, so its row shows as pressed.
+function pin(ids, label, strict = true, root = null, pick = null) {
+  state.sticky = { ids, label, strict, root, pick };
   focusOn(ids, state.sticky);
   notes();
+  legend();
 }
 
 function clearFocus() {
   state.sticky = null;
   unfocus();
   notes();
+  legend();
+}
+
+// ---------- colour and legend ----------
+
+function setScheme(scheme) {
+  if (state.sticky?.pick) clearFocus();
+  state.options.colour = scheme;
+  saveOptions();
+  applyOptions();
+  redraw();
+  legend();
+}
+
+function pickClass(row) {
+  if (state.sticky?.pick === row.key) return clearFocus();
+  if (!row.count) return;
+  const ids = [...classOf(state.view, state.options.colour)].filter(([, key]) => key === row.key).map(([id]) => id);
+  pin(new Set(ids), row.focus, true, null, row.key);
+}
+
+function legend() {
+  if (!state.view) return;
+  renderLegend($("legend"), state.view, state.options.colour, {
+    picked: state.sticky?.pick ?? null,
+    onScheme: setScheme,
+    onPick: pickClass,
+    onExplain: openMetricsPanel,
+  });
+}
+
+// ---------- the metrics panel ----------
+
+function openMetricsPanel() {
+  $("view-menu").open = false;
+  const body = openPanel(`<h2>What instability, abstractness and zones mean</h2><div class="sub">${esc(state.root)}</div>`, "");
+  state.metricsPanel = renderMetricsPanel(body, state.view, state.view.threshold ?? 0.3, {
+    onHoverBox: (id) => {
+      if (state.sticky) return;
+      if (id) focusOn(new Set([id]));
+      else unfocus();
+    },
+    onClickBox: flash,
+  });
+}
+
+// Two pulses of a ring around the box (a steady ring with reduced motion).
+function flash(id) {
+  const g = document.querySelector(`#graph g.node[data-id="${CSS.escape(id)}"]`);
+  if (!g) return;
+  g.classList.remove("flash");
+  void g.getBoundingClientRect();  // restart the animation
+  g.classList.add("flash");
+  g.addEventListener("animationend", () => g.classList.remove("flash"), { once: true });
 }
 
 function reach(start, forward) {
@@ -367,25 +564,66 @@ function reach(start, forward) {
 
 // ---------- file drawer (V15) ----------
 
+// The packages and modules under a root (all of a member's when `root` is null),
+// cached per Hide tests setting; the file drawer and quick find share it.
+async function treeFor(pkg, root) {
+  const key = `${placeKey(pkg, root)}|${state.options.tests}`;
+  if (!state.trees.has(key)) {
+    const q = new URLSearchParams(root ? { root } : {});
+    if (pkg) q.set("package", pkg);
+    if (state.options.tests) q.set("hide_tests", "true");
+    state.trees.set(key, await api(`/api/tree?${q}`));
+  }
+  return state.trees.get(key);
+}
+
 async function drawTree() {
   if (!state.options.tree || !state.root) return;
   const root = state.root;
   const pkg = state.package;
-  const key = `${placeKey(pkg, root)}|${state.options.tests}`;
-  if (!state.trees.has(key)) {
-    const q = new URLSearchParams({ root });
-    if (pkg) q.set("package", pkg);
-    if (state.options.tests) q.set("hide_tests", "true");
-    try {
-      state.trees.set(key, await api(`/api/tree?${q}`));
-    } catch (error) {
-      $("tree-head").innerHTML = "";
-      $("tree-body").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
-      return;
-    }
+  let tree;
+  try {
+    tree = await treeFor(pkg, root);
+  } catch (error) {
+    $("tree-head").innerHTML = "";
+    $("tree-body").innerHTML = `<p class="hint">${esc(error.message)}</p>`;
+    return;
   }
   if (root !== state.root || pkg !== state.package) return;
-  renderTree(state.trees.get(key));
+  renderTree(tree);
+}
+
+// ---------- quick find ----------
+
+let finder = null;
+
+async function findEntries() {
+  if (state.isWorkspace && !state.package) {
+    const members = state.project.packages;
+    const trees = await Promise.all(members.map((member) => treeFor(member, null)));
+    return trees.flatMap((tree, i) => flatten(tree, members[i]));
+  }
+  const project = state.view ? state.view.project : state.project.project;
+  return flatten(await treeFor(state.package, project), state.package);
+}
+
+// Open the level that draws the match and flash it there.
+function pickFound(entry) {
+  const pkg = entry.member ?? state.package;
+  if (entry.id === state.root && pkg === state.package) return;
+  if (entry.parent === null) {
+    if (!state.isWorkspace) return go(entry.id, null);
+    state.pendingFlash = entry.member;
+    return go(state.project.project, null);
+  }
+  if (entry.parent === state.root && pkg === state.package) return flashInView(entry.id);
+  state.pendingFlash = entry.id;
+  go(entry.parent, pkg);
+}
+
+function flashInView(id) {
+  document.querySelector(`#graph g.node[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  flash(id);
 }
 
 function treeRows(nodes, depth) {
@@ -467,6 +705,7 @@ function setZoom(zoom, keepCentre = true) {
 
 function openPanel(titleHtml, bodyHtml, code = false) {
   if (!code && state.source) { state.source = null; drawTree(); }
+  state.metricsPanel = null;  // any panel replaces the metrics panel; openMetricsPanel sets it again
   $("main").classList.add("with-panel");
   $("panel").hidden = false;
   $("panel-title").innerHTML = titleHtml;
@@ -478,6 +717,7 @@ function openPanel(titleHtml, bodyHtml, code = false) {
 }
 
 function closePanel() {
+  state.metricsPanel = null;
   $("main").classList.remove("with-panel");
   $("panel").hidden = true;
   if (state.source) { state.source = null; drawTree(); }
@@ -537,7 +777,8 @@ function openNode(node) {
       <dt>Instability I</dt><dd>${num(node.instability)}</dd>
       <dt>Abstractness A</dt><dd>${num(node.abstractness)}</dd>
       <dt>Distance D</dt><dd>${num(node.distance)}</dd>
-      <dt>Zone</dt><dd>${zone}</dd>`;
+      <dt>Zone</dt><dd>${zone}</dd>
+      <dt></dt><dd><button class="link" data-explain>What do these mean?</button></dd>`;
   const body = openPanel(
     `<h2>${esc(node.name)} ${node.abstract ? '<span class="badge abs">abstract</span>' : ""}${node.in_cycle ? ' <span class="badge">cycle</span>' : ""}</h2><div class="sub">${esc(node.id)}</div>`,
     `<div class="actions">
@@ -569,6 +810,8 @@ function openNode(node) {
     reached: () => pin(reach(node.id, false), `what reaches ${node.name}`, true, node.id),
   };
   body.querySelectorAll("[data-act]").forEach((b) => { b.onclick = actions[b.dataset.act]; });
+  const explain = body.querySelector("[data-explain]");
+  if (explain) explain.onclick = openMetricsPanel;
   body.querySelectorAll(".links li").forEach((li) => {
     li.onclick = () => openEdge(view.edges.find((e) => e.source === li.dataset.s && e.target === li.dataset.t));
   });
@@ -736,9 +979,10 @@ function openMetricsTable() {
         <td>${num(n.instability)}</td><td>${num(n.abstractness)}</td><td>${num(n.distance)}</td>
         <td><span class="zone zone-${n.zone}">${ZONE_NAMES[n.zone]}</span></td></tr>`).join("");
     const body = openPanel(
-      `<h2>Metrics</h2><div class="sub">${esc(state.root)} · I = instability, A = abstractness, D = |A + I − 1|</div>`,
+      `<h2>Metrics</h2><div class="sub">${esc(state.root)} · I = instability, A = abstractness, D = |A + I − 1| · <button class="link" data-explain>What do these mean?</button></div>`,
       `<table class="metrics"><thead><tr>${columns.map(([k, label]) => `<th data-k="${k}">${label}${k === sortKey ? (descending ? " ▾" : " ▴") : ""}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`,
     );
+    $("panel-title").querySelector("[data-explain]").onclick = openMetricsPanel;
     body.querySelectorAll("th").forEach((th) => {
       th.onclick = () => { descending = th.dataset.k === sortKey ? !descending : true; sortKey = th.dataset.k; render(); };
     });
@@ -760,11 +1004,22 @@ function download(name, blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// The view as drawn: moved boxes, routes and colour scheme, in light colours, with a
+// legend for the scheme.
+function exportSvg() {
+  const at = positions();
+  const clusters = clusterFrames(state.layout, at);
+  return drawSvg(state.view, state.layout, {
+    positions: at, routes: state.routes, clusters, box: drawingBox(at, clusters), weighted: true, scheme: state.options.colour, mode: "export",
+  });
+}
+
 async function exportView(format) {
   $("export-menu").open = false;
   const base = state.root.replaceAll(sep(), "-");
   if (format === "svg" || format === "png") {
-    const svgText = state.viz.renderString(state.view.dot, { format: "svg" });
+    if (!state.layout) return toast("Nothing to export at this level");
+    const svgText = exportSvg();
     if (format === "svg") return download(`${base}.svg`, new Blob([svgText], { type: "image/svg+xml" }));
     const image = new Image();
     image.onload = () => {
@@ -866,6 +1121,7 @@ function bind() {
   $("zoom-in").onclick = () => setZoom(state.zoom * 1.25);
   $("zoom-out").onclick = () => setZoom(state.zoom / 1.25);
   $("zoom-fit").onclick = () => setZoom(fitZoom());
+  $("reset-layout").onclick = resetLayout;
   $("reanalyze").onclick = reanalyze;
   $("rules").onclick = openRules;
   $("metrics-table").onclick = openMetricsTable;
@@ -881,7 +1137,7 @@ function bind() {
   };
   option("opt-tests", "tests", true);
   option("opt-externals", "externals", true);
-  option("opt-zones", "zones", false);
+  document.querySelectorAll('input[name="colour"]').forEach((r) => { r.onchange = () => setScheme(r.value); });
   option("opt-legend", "legend", false);
   $("graph").onclick = (e) => {
     if (e.target.closest("g.node, g.edge")) return;
@@ -902,15 +1158,24 @@ function bind() {
       "0": () => $("zoom-fit").click(),
       r: reanalyze,
       t: toggleTree,
+      "/": () => finder.open(),
     };
     if (keys[e.key]) { e.preventDefault(); keys[e.key](); }
   });
+  finder = createFinder($("stage").parentElement, { load: findEntries, onPick: pickFound });
+  $("find").onclick = () => finder.open();
 }
 
 async function start() {
   loadOptions();
   applyOptions();
   bind();
+  state.palette = paletteFromCss();
+  // Label ink is picked from the fill's colour in code, so a theme change redraws.
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    state.palette = paletteFromCss();
+    redraw();
+  });
   try {
     [state.viz, state.project] = await Promise.all([Viz.instance(), api("/api/project")]);
   } catch (error) {
