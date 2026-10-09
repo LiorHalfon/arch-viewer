@@ -430,7 +430,7 @@ class ViewerState:
 
     def source(self, module: str, package: str | None = None) -> dict[str, Any]:
         if package is None and self.workspace is not None:
-            raise NotFound(f"{module} has no source file")
+            package = self._owner(module)
         analysis = self._analysis(package)
         node = next((n for n in analysis.project.model.nodes if n.id == module), None)
         if node is None or node.file is None:
@@ -448,3 +448,11 @@ class ViewerState:
             ],
             "warnings": [asdict(w) for w in analysis.project.model.warnings if w.module == module],
         }
+
+    def _owner(self, module: str) -> str:
+        """The workspace package whose model holds `module`. The rules panel at the
+        workspace top level lists imports from every package without naming one."""
+        for name, analysis in self._packages.items():
+            if any(n.id == module for n in analysis.project.model.nodes):
+                return name
+        raise NotFound(f"{module} has no source file")

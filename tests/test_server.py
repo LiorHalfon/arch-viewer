@@ -374,6 +374,18 @@ def test_the_api_reads_a_source_file_from_a_package():
     assert body["file"].endswith("ports.py")
 
 
+def test_the_workspace_top_level_reads_a_source_file_from_the_package_that_has_it():
+    """The rules panel at the workspace top level lists imports from every package;
+    clicking one asks for its source with no `package`, so the server finds the owner."""
+    client = client_for(WORKSPACE)
+
+    body = client.get("/api/source", params={"module": "plugin.adapter"}).json()
+
+    assert body["module"] == "plugin.adapter"
+    assert body["file"].endswith("adapter.py")
+    assert client.get("/api/source", params={"module": "nope.x"}).status_code == 404
+
+
 def test_a_single_package_repo_still_works(repo):
     client = client_for(repo)
 

@@ -664,10 +664,15 @@ async function openRules() {
     toast(error.message);
     return;
   }
-  const scopes = report.scopes || [];
+  // At a workspace's top level `/api/check` returns the workspace report (M8): the
+  // rules between packages, plus each package's own report. Anywhere else, one project.
+  const workspace = Boolean(report.between);
   const order = (r) => [...r.problems.filter((p) => p.fails), ...r.problems.filter((p) => !p.fails)];
+  const failingIn = (r) => r.problems.filter((p) => p.fails).length
+    + (r.scopes || []).reduce((n, s) => n + failingIn(s), 0);
   const shown = [];  // every problem shown, in order: data-p indexes into it across all sections
-  const failing = [report, ...scopes].reduce((n, r) => n + r.problems.filter((p) => p.fails).length, 0);
+  const failing = (workspace ? [report.between, ...report.packages] : [report])
+    .reduce((n, r) => n + failingIn(r), 0);
   const card = (p) => {
     const i = shown.push(p) - 1;
     const what = p.kind === "cycle" ? cycleText(p.components) : p.components.join(" → ");
@@ -688,11 +693,20 @@ async function openRules() {
       ? `<h3>Warnings</h3><ul class="links">${r.warnings.map((w) => `<li>${esc(w.message)}</li>`).join("")}</ul>` : "";
     return (problems.length ? problems.map(card).join("") : empty) + unused + warnings;
   };
-  const scopeSection = (s) => `<h3>${esc(s.project)}</h3><div class="sub">${esc(s.rules)} · ${plural(s.components.length, "component")}</div>`
-    + section(s, '<p class="hint">No problems.</p>');
+  const none = '<p class="hint">No problems.</p>';
+  const scopeSection = (s) => `<h3 class="group">${esc(s.project)}</h3><div class="sub">${esc(s.rules)} · ${plural(s.components.length, "component")}</div>`
+    + section(s, none);
+  const scopes = (r) => (r.scopes || []).map(scopeSection).join("");
+  const packageSection = (p) => `<h3 class="group">${esc(p.package)}</h3><div class="sub">${plural(p.components.length, "component")}</div>`
+    + section(p, none) + scopes(p);
+  const [counted, content] = workspace
+    ? [plural(report.between.components.length, "package"),
+      `<h3 class="group">Between packages</h3>${section(report.between, none)}${report.packages.map(packageSection).join("")}`]
+    : [plural(report.components.length, "component"),
+      section(report, (report.scopes || []).length ? "" : none) + scopes(report)];
   const body = openPanel(
-    `<h2>${failing ? plural(failing, "failing problem") : "Rules pass"}</h2><div class="sub">${esc(state.project.rules)} · ${plural(report.components.length, "component")}</div>`,
-    section(report, scopes.length ? "" : '<p class="hint">No problems.</p>') + scopes.map(scopeSection).join(""),
+    `<h2>${failing ? plural(failing, "failing problem") : "Rules pass"}</h2><div class="sub">${esc(state.project.rules)} · ${counted}</div>`,
+    content,
   );
   body.querySelectorAll(".imports[data-p]").forEach((ul) => {
     const imports = shown[Number(ul.dataset.p)].imports;
