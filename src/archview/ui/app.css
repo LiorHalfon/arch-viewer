@@ -22,6 +22,15 @@
   --pain: #fde2cf;
   --useless: #e9dcf7;
   --in: #8b3fd1;
+  --role-entry: #2771cc;
+  --role-between: #1baf7a;
+  --role-foundation: #eda100;
+  --isolated: #d9dee5;
+  --seq-1: #b7d3f6;
+  --seq-2: #86b6ef;
+  --seq-3: #4b93ea;
+  --seq-4: #256abf;
+  --seq-5: #104281;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --line: 18px;
 }
@@ -49,6 +58,15 @@
     --pain: #4a2c1a;
     --useless: #35264a;
     --in: #b48cf2;
+    --role-entry: #4b93ea;
+    --role-between: #199e70;
+    --role-foundation: #c98500;
+    --isolated: #2e353d;
+    --seq-1: #184f95;
+    --seq-2: #256abf;
+    --seq-3: #4b93ea;
+    --seq-4: #6da7ec;
+    --seq-5: #b7d3f6;
   }
 }
 

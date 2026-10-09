@@ -2,6 +2,7 @@
 // The markup keeps the DOM contract the rest of the viewer relies on: one
 // `g.node[data-id]` per box and one `g.edge[data-source][data-target]` per edge.
 
+import { classOf, fillToken, inkFor, LIGHT } from "./colour.js";
 import { edgeKey } from "./layout.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -53,24 +54,37 @@ function labelLines(node) {
   return [`${node.name}${node.tangled ? " ⟲" : ""}`, `(${modules})`];
 }
 
-function shape(node, x0, y0, w, h) {
-  const rect = (cls, x, y, width, height, r) => `<rect class="${cls}" x="${n(x)}" y="${n(y)}" width="${n(width)}" height="${n(height)}" rx="${r}"/>`;
+function shape(node, x0, y0, w, h, fill) {
+  const style = fill ? ` style="fill:${fill}"` : "";
+  const rect = (cls, x, y, width, height, r) => `<rect class="${cls}" x="${n(x)}" y="${n(y)}" width="${n(width)}" height="${n(height)}" rx="${r}"${style}/>`;
   if (node.kind !== "package") return rect("shape", x0, y0, w, h, 6);
   const tab = (cy) => rect("shape tab", x0 - 4, cy - 2.5, 8, 5, 1);
   return rect("shape", x0, y0, w, h, 2) + tab(y0 + h / 4) + tab(y0 + (3 * h) / 4);
 }
 
-function drawNode(node, box, at) {
+// The fill a scheme gives this box, and the label ink that reads on it. Under
+// "none" the stylesheet's own fills apply; a red name (cycle) keeps its colour.
+function paint(node, scheme, key, palette) {
+  if (scheme === "none") return { fill: null, ink: null };
+  const token = fillToken(node, scheme, key);
+  if (!token) return { fill: null, ink: null };
+  const red = node.in_cycle || node.tangled;
+  return { fill: `var(${token})`, ink: inkFor(palette[token] || LIGHT[token]), red };
+}
+
+function drawNode(node, box, at, colours) {
   const { w, h } = box;
   const x0 = at.x - w / 2, y0 = at.y - h / 2;
   const zone = (node.zone === "pain" || node.zone === "useless") && `zone-${node.zone}`;
   const cls = classes("node", node.kind, node.in_cycle && "cycle", node.tangled && "tangled", node.abstract && "abstract", zone);
   const [name, sub] = labelLines(node);
-  const text = (c, y, value) => `<text class="${c}" x="${n(at.x)}" y="${n(y)}" text-anchor="middle">${esc(value)}</text>`;
+  const ink = (c) => (!colours.ink || (c === "name" && colours.red) ? "" : ` style="fill:${colours.ink}${c === "sub" ? ";fill-opacity:.75" : ""}"`);
+  const italic = (c) => (c === "name" && node.abstract ? ' font-style="italic"' : "");
+  const text = (c, y, value) => `<text class="${c}" x="${n(at.x)}" y="${n(y)}" text-anchor="middle"${italic(c)}${ink(c)}>${esc(value)}</text>`;
   const words = sub ? text("name", at.y - 3.5, name) + text("sub", at.y + 13.3, sub) : text("name", at.y + 4.9, name);
   return `<g class="${cls}" data-id="${esc(node.id)}">`
     + `<rect class="ring" x="${n(x0 - 4)}" y="${n(y0 - 4)}" width="${n(w + 8)}" height="${n(h + 8)}" rx="8"/>`
-    + `${shape(node, x0, y0, w, h)}${words}</g>`;
+    + `${shape(node, x0, y0, w, h, colours.fill)}${words}</g>`;
 }
 
 function drawCluster(c) {
@@ -87,9 +101,12 @@ export function drawSvg(view, layout, opts = {}) {
     const route = routes[edgeKey(e.source, e.target)];
     if (route) parts.push(drawEdge(e, route, opts.weighted));
   }
+  const scheme = opts.scheme || "none";
+  const keys = classOf(view, scheme);
+  const palette = opts.palette || LIGHT;
   for (const node of view.nodes) {
     const size = layout.nodes[node.id];
-    if (size) parts.push(drawNode(node, size, positions[node.id] || size));
+    if (size) parts.push(drawNode(node, size, positions[node.id] || size, paint(node, scheme, keys.get(node.id), palette)));
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n(box.x)} ${n(box.y)} ${n(box.w)} ${n(box.h)}">${parts.join("")}</svg>`;
 }

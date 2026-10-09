@@ -2,6 +2,7 @@
 // draw.js, drill down by click. Every root keeps its own zoom and scroll position,
 // so Back returns to where you were.
 
+import { LIGHT, schemeFromOptions } from "./colour.js";
 import { drawSvg } from "./draw.js";
 import { layoutView } from "./layout.js";
 import { hideCard, showCard, ZONE_NAMES } from "./widgets.js";
@@ -23,7 +24,8 @@ const state = {
   trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
-  options: { tests: false, externals: false, zones: false, legend: true, tree: true },
+  options: { tests: false, externals: false, colour: "role", legend: true, tree: true },
+  palette: null,        // the theme's colour tokens, read from app.css, for label ink
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -74,7 +76,16 @@ function toast(message) {
 // ---------- options (remembered per browser) ----------
 
 function loadOptions() {
-  try { Object.assign(state.options, JSON.parse(localStorage.getItem("archview.options") || "{}")); } catch { /* storage unavailable */ }
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("archview.options") || "{}") || {}; } catch { /* storage unavailable */ }
+  Object.assign(state.options, saved);
+  state.options.colour = schemeFromOptions(saved);
+  delete state.options.zones;  // before M13 this was a checkbox; schemeFromOptions reads it
+}
+
+function paletteFromCss() {
+  const css = getComputedStyle(document.documentElement);
+  return Object.fromEntries(Object.keys(LIGHT).map((token) => [token, css.getPropertyValue(token).trim()]));
 }
 
 function saveOptions() {
@@ -84,9 +95,9 @@ function saveOptions() {
 function applyOptions() {
   $("opt-tests").checked = state.options.tests;
   $("opt-externals").checked = state.options.externals;
-  $("opt-zones").checked = state.options.zones;
+  $("opt-zones").checked = state.options.colour === "zone";
   $("opt-legend").checked = state.options.legend;
-  document.body.classList.toggle("zones", state.options.zones);
+  document.body.classList.toggle("zones", state.options.colour === "zone");
   $("legend").hidden = !state.options.legend;
   $("tree").hidden = !state.options.tree;
   $("main").classList.toggle("with-tree", state.options.tree);
@@ -264,9 +275,21 @@ function draw(view) {
   state.layout = layoutView(state.viz, view.dot);
   // Graphviz's own SVG pads the drawing by 4 points on every side.
   const box = { x: -4, y: -4, w: state.layout.w + 8, h: state.layout.h + 8 };
-  graph.innerHTML = drawSvg(view, state.layout, { box, weighted: true });
+  graph.innerHTML = drawSvg(view, state.layout, { box, weighted: true, scheme: state.options.colour, palette: state.palette });
   state.natural = { w: box.w, h: box.h };
   wire(graph.querySelector("svg"), view);
+}
+
+// Draw the current view again in place: same zoom, scroll and pinned focus.
+function redraw() {
+  if (!state.view) return;
+  const stage = $("stage");
+  const { scrollLeft, scrollTop } = stage;
+  draw(state.view);
+  setZoom(state.zoom, false);
+  stage.scrollLeft = scrollLeft;
+  stage.scrollTop = scrollTop;
+  if (state.sticky) focusOn(state.sticky.ids, state.sticky);
 }
 
 function nodeById(id) {
@@ -885,7 +908,12 @@ function bind() {
   };
   option("opt-tests", "tests", true);
   option("opt-externals", "externals", true);
-  option("opt-zones", "zones", false);
+  $("opt-zones").onchange = () => {
+    state.options.colour = $("opt-zones").checked ? "zone" : "role";
+    saveOptions();
+    applyOptions();
+    redraw();
+  };
   option("opt-legend", "legend", false);
   $("graph").onclick = (e) => {
     if (e.target.closest("g.node, g.edge")) return;
@@ -915,6 +943,12 @@ async function start() {
   loadOptions();
   applyOptions();
   bind();
+  state.palette = paletteFromCss();
+  // Label ink is picked from the fill's colour in code, so a theme change redraws.
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    state.palette = paletteFromCss();
+    redraw();
+  });
   try {
     [state.viz, state.project] = await Promise.all([Viz.instance(), api("/api/project")]);
   } catch (error) {
