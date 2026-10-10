@@ -73,15 +73,17 @@ def infer_rules(model: Model, config: Config | None = None, externals: bool = Fa
     return "\n".join(lines) + "\n"
 
 
-def infer_scope_rules(model: Model, scope: str, config: Config) -> str:
+def infer_scope_rules(model: Model, scope: str, config: Config, externals: bool = False) -> str:
     """The text of the nested `archview.toml` for the package `scope`: the rules between
-    its children as they are today.
+    its children as they are today, and with `externals` what each imports from outside
+    the project.
 
     `model` is the whole project's; `config` is the nested one, with the keys it takes
     from the root rules set, so the edges written here are the edges `check` reads.
     It keeps `ignored` and `components` from `config`.
     """
     present, edges = _today(scoped_model(model, scope), config)
+    outside = _edge_table("archview.externals", present, edges.outside) if externals else []
     lines = [
         f"# Dependency rules between the children of {scope}, inferred by",
         "# `archview init --root` from the imports as they are today. Imports that leave",
@@ -91,6 +93,7 @@ def infer_scope_rules(model: Model, scope: str, config: Config) -> str:
         "",
         "[archview]",
         *_rule_lines(present, edges, config),
+        *outside,
         *_components_table(config),
     ]
     return "\n".join(lines) + "\n"

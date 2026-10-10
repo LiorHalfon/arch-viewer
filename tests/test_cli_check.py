@@ -396,7 +396,6 @@ def test_init_root_stdout_prints_the_rules_and_leaves_the_file_alone(tmp_path, c
         (("--root", "services.print.flow"), "shop.services.print.flow is not a package"),
         (("--root", "shop"), "shop is the project"),
         (("--root", "nope"), "no module or package 'nope'"),
-        (("--root", "services", "--externals"), "--externals"),
         (("--root", "services", "--config", "x.toml"), "--config"),
         (("--root", "services", "--exclude", "x"), "--exclude"),
         (("--root", "services", "--tsconfig", "tsconfig.json"), "--tsconfig"),

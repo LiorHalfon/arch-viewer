@@ -1,8 +1,10 @@
 """Exclusions (A11) and cycle labels."""
 
+from dataclasses import replace
+
 from archview.model.cycles import describe_cycle
 from archview.model.filter import scoped_model, without_files
-from archview.model.graph import ExtractionWarning
+from archview.model.graph import ExtractionWarning, Import, Node
 from tests.builders import model, model_with_external
 
 
@@ -103,13 +105,38 @@ def test_scoped_model_keeps_the_scope_and_the_imports_inside_it():
     assert next(n for n in s.nodes if n.id == "app.svc").parent is None
 
 
-def test_scoped_model_drops_externals_and_extraction_warnings():
+def test_scoped_model_drops_extraction_warnings():
     m = model_with_external()
     warning = ExtractionWarning("dynamic_import", "shop.llm", "shop/llm.py", 3, "import_module(x)")
     m = m.__class__(m.project, m.nodes, m.imports, warnings=(warning,))
 
+    assert scoped_model(m, "shop").warnings == ()
+
+
+def test_scoped_model_keeps_what_the_scope_imports_from_outside_the_project():
+    """The rest of the project is the rules above's business; outside packages a nested
+    file's `externals` can judge (issue #18)."""
+    m = model_with_external()
+    others = Node("requests", None, "external")
+    m = replace(
+        m,
+        nodes=(
+            *m.nodes,
+            Node("other", None, "package"),
+            Node("other.x", "other", "module", "o.py"),
+            others,
+        ),
+        imports=(
+            *m.imports,
+            Import("shop.api", "other.x", "shop/api.py", 5, "import other.x"),
+            Import("other.x", "requests", "o.py", 1, "import requests"),
+        ),
+    )
+
     s = scoped_model(m, "shop")
 
-    assert not any(n.kind == "external" for n in s.nodes)
-    assert [(i.importer, i.imported) for i in s.imports] == [("shop.api", "shop.llm")]
-    assert s.warnings == ()
+    assert [n.id for n in s.nodes if n.kind == "external"] == ["openai"]
+    assert [(i.importer, i.imported) for i in s.imports] == [
+        ("shop.api", "shop.llm"),
+        ("shop.llm", "openai"),
+    ]

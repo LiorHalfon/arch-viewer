@@ -2,10 +2,12 @@
 
 from dataclasses import replace
 
+import pytest
+
 from archview.model.graph import Import, Model, Node
 from archview.rules.check import check, component_map
 from archview.rules.components import ComponentMap
-from archview.rules.config import ALL, Config, Exemption, Forbidden
+from archview.rules.config import ALL, Config, ConfigError, Exemption, Forbidden
 from archview.rules.init import infer_rules, infer_scope_rules
 from tests.builders import model, model_with_external
 from tests.test_rules_scopes import M as SCOPED
@@ -269,6 +271,23 @@ def test_folding_puts_the_modules_directly_in_the_project_in_its_own_component()
         "app",
         "api",
     ]
+
+
+def test_an_externals_key_naming_part_of_a_component_points_at_its_own_rules_file():
+    m = model(("shop.llm.chat", "openai"), ("shop.api.routes", "shop.llm.chat"))
+    m = replace(
+        m, nodes=tuple(Node("openai", None, "external") if n.id == "openai" else n for n in m.nodes)
+    )
+    config = Config(externals={"api": (), "llm.chat": ("openai",)})
+
+    with pytest.raises(ConfigError) as error:
+        check(m, config)
+
+    assert str(error.value) == (
+        "[archview.externals] has the key 'llm.chat', a part of llm, but its keys name "
+        "whole components. To say what part of llm may import, give llm a rules file of "
+        "its own, with an [archview.externals] table keyed by llm's children"
+    )
 
 
 def test_components_of_a_slash_separated_project_include_root_files():
