@@ -8,13 +8,15 @@ an agent with a small context budget.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from archview.model.cycles import find_cycles
 from archview.model.graph import Import, Model
 from archview.model.metrics import Metrics, metrics
-from archview.model.patterns import matches_name
+from archview.model.names import own_modules, within
+from archview.model.patterns import below, matches_name
 from archview.rules.components import ComponentMap
 from archview.rules.config import (
     ALL,
@@ -98,13 +100,17 @@ class WorkspaceReport:
         return self.between.failed or any(report.failed for _, report in self.packages)
 
 
-def component_map(config: Config, model: Model) -> ComponentMap:
+def component_map(config: Config, model: Model, fold: bool = False) -> ComponentMap:
+    """The components `config` defines on `model`. With `fold`, the modules directly in
+    the project join its own root module's component (`cycles --fold-root-modules`)."""
     return ComponentMap(
         model.project,
         model.separator,
         config.components,
         frozenset(config.ignored),
         _extra_roots(model),
+        base=config.scope,
+        folded=own_modules(model, model.project) if fold else frozenset(),
     )
 
 
@@ -144,7 +150,7 @@ def component_edges(model: Model, components: ComponentMap, config: Config | Non
         pair = _pair(imp, components, external)
         if pair is None:
             continue
-        hit = _exemption(imp, exemptions, model.separator)
+        hit = _exemption(imp, exemptions, model.separator, components.base)
         if hit is not None:
             used.add(hit)
             continue
@@ -165,23 +171,66 @@ def _pair(imp: Import, components: ComponentMap, external: set[str]) -> Pair | N
     return None if target is None or target == source else (source, target)
 
 
-def _exemption(imp: Import, exemptions, sep: str) -> int | None:
+def _exemption(imp: Import, exemptions, sep: str, base: str | None = None) -> int | None:
+    """The index of the first exception that exempts `imp`; a nested rules file's
+    patterns are read below its scope, `base` (issue #22)."""
     for index, e in enumerate(exemptions):
         if (
-            matches_name(e.importer, imp.importer, sep)
-            and matches_name(e.imported, imp.imported, sep)
+            matches_name(below(e.importer, base, sep), imp.importer, sep)
+            and matches_name(below(e.imported, base, sep), imp.imported, sep)
             and (e.kind is None or EXCEPTION_KINDS[e.kind](imp))
         ):
             return index
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class Leftover:
+    """A component left with nothing but the `__init__` of `packages` once the modules
+    below them went to other components, `taken_by` (issue #23)."""
+
+    packages: tuple[str, ...]
+    taken_by: tuple[str, ...]
+
+
+def leftovers(model: Model, components: ComponentMap) -> dict[str, Leftover]:
+    """The components that own only package roots, with other components owning modules
+    below them: what is left of a package split into components."""
+    sep = model.separator
+    owner = {n.id: components.of(n.id) for n in model.nodes if n.file and n.id != model.project}
+    roots: dict[str, list[str]] = defaultdict(list)
+    plain: set[str] = set()
+    for node in model.nodes:
+        component = owner.get(node.id)
+        if component is None:
+            continue
+        if node.kind == "package":
+            roots[component].append(node.id)
+        else:
+            plain.add(component)
+    found = {}
+    for component, packages in sorted(roots.items()):
+        if component in plain:
+            continue
+        taken = {
+            other
+            for module, other in owner.items()
+            if other not in (component, None) and any(within(module, p, sep) for p in packages)
+        }
+        if taken:
+            found[component] = Leftover(tuple(packages), tuple(sorted(taken)))
+    return found
+
+
 def present_components(model: Model, components: ComponentMap) -> tuple[str, ...]:
-    """Components that own at least one file; the project root only if it imports or is imported."""
+    """Components that own at least one file. The project's own root module, and what
+    is left of a package split into components (`leftovers`), count only if they import
+    or are imported."""
     found = {components.of(n.id) for n in model.nodes if n.file and n.id != model.project}
     touched = {components.of(i.importer) for i in model.imports} | {
         components.of(i.imported) for i in model.imports
     }
+    found -= set(leftovers(model, components)) - touched
     if components.of(model.project) in touched:
         found.add(components.of(model.project))
     found.discard(None)
@@ -199,6 +248,7 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     model = checked_imports(model, config)
     components = component_map(config, model)
     present = present_components(model, components)
+    left = leftovers(model, components)
     _reject_outside_sources(model, config)
     names = names_of(config, model, components, present)
     edges = component_edges(model, components, config)
@@ -208,11 +258,13 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     )
 
     problems = [
-        *_rule_problems(edges, present, config, table, names),
+        *_rule_problems(edges, present, config, table, names, left),
         *_cycle_problems(edges.internal, present, config, table),
         *_zone_problems(measured, config, table),
     ]
-    warnings = _warnings(model, config, components, present, edges, table, in_workspace, names)
+    warnings = _warnings(
+        model, config, components, present, edges, table, in_workspace, names, left
+    )
     return Report(
         model.project,
         present,
@@ -304,6 +356,7 @@ def _rule_problems(
     config: Config,
     table: str,
     names: Names | None = None,
+    left: Mapping[str, Leftover] | None = None,
 ) -> list[Problem]:
     plain = [f for f in config.all_forbidden() if not _qualified_rule(f, names)]
     parts = [f for f in config.all_forbidden() if _qualified_rule(f, names)]
@@ -317,7 +370,8 @@ def _rule_problems(
                 outgoing = [
                     i for (s, _), imps in edges.internal.items() if s == component for i in imps
                 ]
-                problems.append(_undeclared(component, outgoing, table, fails))
+                leftover = (left or {}).get(component)
+                problems.append(_undeclared(component, outgoing, table, fails, leftover))
     for (source, target), imports in edges.internal.items():
         if (source, target) in forbidden:
             origin = forbidden[(source, target)].origin
@@ -501,19 +555,37 @@ def _may(allowed: dict, source: str, target: str) -> bool:
     return targets == ALL or target in targets
 
 
-def _undeclared(component: str, outgoing: list[Import], table: str, fails: bool) -> Problem:
+def _undeclared(
+    component: str,
+    outgoing: list[Import],
+    table: str,
+    fails: bool,
+    leftover: Leftover | None = None,
+) -> Problem:
+    hint = (
+        f"{component} is not declared in [{table}.allowed]; a human decides what a new "
+        "component may import - ask before adding it."
+    )
+    if leftover is not None:
+        hint = (
+            f"{component} is {_only_init(leftover)}; its modules belong to "
+            f"{_and_join(list(leftover.taken_by))}. It is a component of its own because "
+            "it imports or is imported: move that code into one of them, or ask a human "
+            f"to declare {component} in [{table}.allowed]."
+        )
     return Problem(
         kind="undeclared",
         rule=f"{table}.allowed",
         components=(component,),
         count=len(outgoing),
         imports=tuple(outgoing),
-        hint=(
-            f"{component} is not declared in [{table}.allowed]; a human decides what a new "
-            "component may import - ask before adding it."
-        ),
+        hint=hint,
         fails=fails,
     )
+
+
+def _only_init(leftover: Leftover) -> str:
+    return f"only the __init__ of {_and_join(list(leftover.packages))}"
 
 
 def _forbidden(source: str, target: str, imports: list[Import], rule: str, fails: bool) -> Problem:
@@ -719,8 +791,10 @@ def _warnings(
     table: str,
     in_workspace: bool = False,
     names: Names | None = None,
+    left: Mapping[str, Leftover] | None = None,
 ) -> list[Notice]:
     external = {n.id for n in model.nodes if n.kind == "external"}
+    left = left or {}
     known_components = set(present)
     # `allowed` is consulted only for `edges.internal` pairs (`_rule_problems`), where
     # both sides are components: an outside name or "*" there is a rule that can never
@@ -739,10 +813,16 @@ def _warnings(
     for component, targets in sorted((config.allowed or {}).items()):
         for name in [component] + ([] if targets == ALL else list(targets)):
             if name not in known_components and not placed(name):
+                what = (
+                    f"is {_only_init(left[name])}; it needs no rule while "
+                    "it imports nothing and nothing imports it"
+                    if name in left
+                    else "has no modules"
+                )
                 warnings.append(
                     Notice(
                         "unknown_component",
-                        f"[{table}.allowed.{component}] names {name!r}, which has no modules",
+                        f"[{table}.allowed.{component}] names {name!r}, which {what}",
                     )
                 )
     for component, targets in sorted((config.externals or {}).items()):
@@ -795,11 +875,12 @@ def _warnings(
             Notice(w.kind, f"{w.file}:{w.line} {w.text}: {label}{target} is not checked")
         )
     modules = [n.id for n in model.nodes]
+    where = f" below {config.scope}" if config.scope else ""
     for name, pattern in components.unmatched_patterns(modules):
         warnings.append(
             Notice(
                 "unmatched_pattern",
-                f"[{table}.components.{name}] pattern {pattern!r} matches no module",
+                f"[{table}.components.{name}] pattern {pattern!r} matches no module{where}",
             )
         )
     return _dedupe(warnings)

@@ -211,7 +211,7 @@ def test_deps_with_an_unknown_package_fails_clearly(capsys):
 
 
 @pytest.mark.parametrize("command", ["graph", "cycles"])
-@pytest.mark.parametrize("flag", ["--root", "--hide-tests"])
+@pytest.mark.parametrize("flag", ["--root", "--hide-tests", "--fold-root-modules"])
 def test_a_package_scoped_flag_at_a_workspace_root_is_rejected(capsys, command, flag):
     """Silently ignoring `--root`/`--hide-tests`/`--externals` at a workspace root
     would let a user believe they had scoped the view down when they had not."""

@@ -647,5 +647,5 @@ def workspace_cycles(ws: Workspace) -> tuple[Cycle, ...]:
     """The cycles among the packages themselves, with a path each - the workspace's
     top-level analogue of `archview.model.query.all_cycles` for a single level."""
     view = workspace_view(ws)
-    edges = {(e.source, e.target): e for e in view.edges}
-    return tuple(_cycle(ws.name, members, edges) for members in view.cycles)
+    edges = {(e.source, e.target): e.imports for e in view.edges}
+    return tuple(_cycle(ws.name, members, edges, None) for members in view.cycles)

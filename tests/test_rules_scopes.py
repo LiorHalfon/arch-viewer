@@ -39,6 +39,48 @@ def test_an_exception_names_modules_by_their_full_name():
     assert r.problems == ()
 
 
+def test_a_component_pattern_is_read_below_the_scope():
+    config = Config(
+        allowed={"billing": ("people",), "people": ()},
+        components={"billing": ("print", "pricing"), "people": ("users",)},
+        scope="app.svc",
+    )
+
+    r = check_scope(M, "app.svc", config)
+
+    assert r.components == ("billing", "people")
+    assert r.problems == ()
+
+
+def test_a_component_pattern_written_in_full_is_still_read_in_full():
+    config = Config(
+        allowed={"billing": ("people",), "people": ()},
+        components={"billing": ("app.svc.print", "pricing"), "people": ("app.svc.users",)},
+        scope="app.svc",
+    )
+
+    assert check_scope(M, "app.svc", config).components == ("billing", "people")
+
+
+def test_an_exception_may_name_modules_below_the_scope():
+    exc = Exemption("print.**", "users.**", "legacy")
+    r = check_scope(M, "app.svc", Config(allowed=ALLOWED, exceptions=(exc,), scope="app.svc"))
+    assert r.problems == ()
+    assert [w.kind for w in r.warnings] == []
+
+
+def test_an_unmatched_pattern_says_it_was_read_below_the_scope():
+    config = Config(allowed=ALLOWED, components={"people": ("user",)}, scope="app.svc")
+
+    assert (
+        Notice(
+            "unmatched_pattern",
+            "[archview.components.people] pattern 'user' matches no module below app.svc",
+        )
+        in check_scope(M, "app.svc", config).warnings
+    )
+
+
 def test_a_forbidden_target_outside_the_scope_is_a_dead_rule():
     allowed = {"print": ("pricing", "users"), "pricing": (), "users": ()}
     r = check_scope(

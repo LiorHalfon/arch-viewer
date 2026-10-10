@@ -4,10 +4,11 @@ from dataclasses import replace
 
 import pytest
 
-from archview.model.graph import Node
+from archview.model.graph import Import, Node
 from archview.model.query import (
     UnknownName,
     all_cycles,
+    cycles_among,
     dependencies,
     dependents,
     resolve,
@@ -270,3 +271,38 @@ def test_queries_work_on_slash_separated_ids():
         "app/api/routes.ts",
         "app/domain/order.ts",
     ]
+
+
+ROOT_MODULES = model(
+    ("pkg.wiring", "pkg.a.x"),
+    ("pkg.a.x", "pkg.paths"),
+    ("pkg.c.root", "pkg.c.d.y"),
+    ("pkg.c.d.y", "pkg.c.helpers"),
+)
+
+
+def test_folding_finds_the_cycles_through_a_packages_own_modules_at_every_level():
+    assert all_cycles(ROOT_MODULES) == ()
+    assert [(c.level, c.path) for c in all_cycles(ROOT_MODULES, fold=True)] == [
+        ("pkg", ("pkg", "pkg.a", "pkg")),
+        ("pkg.c", ("pkg.c", "pkg.c.d", "pkg.c")),
+    ]
+
+
+def test_cycles_leave_out_the_levels_to_skip():
+    found = all_cycles(ROOT_MODULES, fold=True, skip={"pkg"})
+
+    assert [c.level for c in found] == ["pkg.c"]
+
+
+def test_cycles_among_components_name_the_rules_file_they_come_from():
+    there = Import("pkg.a.x", "pkg.b.y", "pkg/a/x.py", 1, "import pkg.b.y")
+    back = Import("pkg.b.y", "pkg.a.x", "pkg/b/y.py", 2, "import pkg.a.x")
+    edges = {("left", "right"): [there], ("right", "left"): [back]}
+
+    (cycle,) = cycles_among("pkg", ["left", "right", "alone"], edges, "archview.toml")
+
+    assert (cycle.rules, cycle.path) == ("archview.toml", ("left", "right", "left"))
+    assert "in pkg (components from archview.toml): left -> right -> left" in cycles_to_text(
+        (cycle,), "pkg"
+    )

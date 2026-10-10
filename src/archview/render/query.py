@@ -83,7 +83,8 @@ def cycles_to_text(cycles: Sequence[Cycle], root: str) -> str:
         return f"no cycles under {root}\n"
     lines = [_plural(len(cycles), "cycle")]
     for cycle in cycles:
-        lines += ["", f"in {cycle.level}: {' -> '.join(cycle.path)}"]
+        level = f"{cycle.level} (components from {cycle.rules})" if cycle.rules else cycle.level
+        lines += ["", f"in {level}: {' -> '.join(cycle.path)}"]
         for step in cycle.steps:
             lines.append(
                 f"  {step.source} -> {step.target}  ({_plural(len(step.imports), 'import')})"
@@ -113,6 +114,7 @@ def cycles_to_dict(cycles: Sequence[Cycle], root: str) -> dict[str, Any]:
         "cycles": [
             {
                 "level": c.level,
+                "rules": c.rules,
                 "members": list(c.members),
                 "path": list(c.path),
                 "missed": list(c.missed),

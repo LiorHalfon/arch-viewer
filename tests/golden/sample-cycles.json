@@ -3,6 +3,7 @@
   "cycles": [
     {
       "level": "sample",
+      "rules": null,
       "members": [
         "sample.infra",
         "sample.services"

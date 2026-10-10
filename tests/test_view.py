@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from archview.model.graph import Import, Node
 from archview.model.view import build_view, tangled_packages
 from tests.builders import model, model_with_external
 
@@ -215,3 +216,48 @@ def test_tangled_packages_are_found_with_slash_separated_ids():
     m = model(("app/a/x.ts", "app/b/y.ts"), ("app/b/y.ts", "app/a/x.ts"), sep="/")
 
     assert tangled_packages(m) == frozenset({"app"})
+
+
+SHOP_ROOT = model(("shop.wiring", "shop.services.orders"), ("shop.services.orders", "shop.paths"))
+
+
+def test_folding_counts_a_packages_own_modules_as_one_child_named_after_it():
+    view = build_view(SHOP_ROOT, "shop", fold=True)
+
+    assert [(n.id, n.name, n.module_count) for n in view.nodes] == [
+        ("shop", "shop", 2),
+        ("shop.services", "services", 1),
+    ]
+    assert [(e.source, e.target) for e in view.edges] == [
+        ("shop", "shop.services"),
+        ("shop.services", "shop"),
+    ]
+    assert view.cycles == (("shop", "shop.services"),)
+
+
+def test_without_folding_each_own_module_is_a_child_of_its_own():
+    view = build_view(SHOP_ROOT, "shop")
+
+    assert [n.id for n in view.nodes] == ["shop.paths", "shop.services", "shop.wiring"]
+    assert view.cycles == ()
+
+
+def test_folding_a_package_with_no_own_modules_changes_nothing():
+    m = model(("pkg.a.x", "pkg.b.y"))
+
+    assert build_view(m, "pkg", fold=True) == build_view(m, "pkg")
+
+
+def test_folding_takes_in_the_package_module_when_an_import_touches_it():
+    m = model(("pkg.a.x", "pkg.b.y"))
+    init = Node("pkg", None, "package", "pkg/__init__.py")
+    m = replace(
+        m,
+        nodes=tuple(init if n.id == "pkg" else n for n in m.nodes),
+        imports=(*m.imports, Import("pkg.b.y", "pkg", "pkg/b/y.py", 3, "import pkg")),
+    )
+
+    view = build_view(m, "pkg", fold=True)
+
+    assert [(n.id, n.module_count) for n in view.nodes] == [("pkg", 1), ("pkg.a", 1), ("pkg.b", 1)]
+    assert [(e.source, e.target) for e in view.edges] == [("pkg.a", "pkg.b"), ("pkg.b", "pkg")]

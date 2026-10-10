@@ -351,6 +351,7 @@ def test_a_nested_file_takes_the_rule_keys_and_inherits_the_model_keys():
         False,
     )
     assert c.path == NESTED_FILE
+    assert c.scope == "shop.services"  # module patterns are read below it (#22)
 
 
 def test_every_root_only_key_has_a_test_value():

@@ -107,6 +107,9 @@ class Config:
     metrics: MetricRules = field(default_factory=MetricRules)
     baseline: str | None = None
     workspace: WorkspaceRules | None = None
+    # The package a nested rules file holds the rules for; its module patterns are read
+    # below it (issue #22). None for the root rules.
+    scope: str | None = None
 
     def all_forbidden(self) -> tuple[Forbidden, ...]:
         """`forbidden`, plus what `layers` and `independent` imply (requirement C8)."""
@@ -231,7 +234,9 @@ def parse_nested_config(
         config = parse_config(merged, where, shown)
     except ConfigError as error:
         raise ConfigError(f"{shown}: {error}") from error
-    return replace(config, type_checking_imports=root.type_checking_imports, exclude=root.exclude)
+    return replace(
+        config, type_checking_imports=root.type_checking_imports, exclude=root.exclude, scope=scope
+    )
 
 
 def _read_toml(path: Path, shown: str | None = None) -> dict[str, Any]:

@@ -5,6 +5,8 @@ Date: 2026-09-16 (M5)
 ## Status
 
 Accepted. Changes the `why` line in `docs/05` §2 ("grimp `find_shortest_chains`").
+Amended by ADR 0019 (0.6.0): `cycles` reads a level that has a rules file by that
+file's components, as `check` does.
 
 ## Context
 
