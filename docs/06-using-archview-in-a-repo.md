@@ -393,6 +393,18 @@ Three things follow from that:
   `[[archview.workspace.exceptions]]`, which requires a written reason, for a
   deliberate one-off.
 
+A `[[archview.workspace.forbidden]]` rule may name a part as well, on either side.
+`to = "core.model"` fires only on imports that reach core's `model`, and
+`from = "plugin.adapter"` only on imports made in plugin's `adapter`. Such an import
+is reported once, as `FORBIDDEN`, and not again as a violation. A qualified name is a
+package, a dot, and one of that package's components, the same names `public` uses.
+In TypeScript a component is a directory or a file below the package's source root,
+written with a dot after the package: `core.ports`, `core.index.ts`. A qualified name
+whose package or component does not exist, in `allowed` or in `forbidden`, stops the
+check with exit 2. A plain name in `forbidden` that is not a package gets an
+`unknown_component` notice, since the rules between packages only see imports between
+them.
+
 Outside a workspace `public` does nothing, and `check` says so rather than ignoring it.
 
 The component an import reaches is resolved, never guessed: for Python by analysing
