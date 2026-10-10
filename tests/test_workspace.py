@@ -582,6 +582,122 @@ def test_a_qualified_grant_naming_an_unpublished_component_is_an_error(tmp_path)
         check_workspace(open_workspace(root))
 
 
+def kinds(report) -> list[tuple[str, tuple[str, ...]]]:
+    return [(p.kind, p.components) for p in report.problems]
+
+
+def test_a_qualified_forbidden_target_fires_on_the_component_it_names(tmp_path):
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": (), "plugin": ("core",)},
+        forbidden=[{"from": "plugin", "to": "core.model"}],
+    )
+    plugin_imports(root, "from core.model import Thing")
+
+    report = check_workspace(open_workspace(root))
+
+    assert kinds(report.between) == [("forbidden", ("plugin", "core.model"))]
+    assert report.between.problems[0].rule == "archview.workspace.forbidden"
+    assert report.failed
+
+
+def test_a_qualified_forbidden_target_leaves_the_rest_of_the_package_alone(tmp_path):
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": (), "plugin": ("core",)},
+        forbidden=[{"from": "plugin", "to": "core.model"}],
+    )
+    plugin_imports(root, "from core.ports import Port")
+
+    assert not check_workspace(open_workspace(root)).failed
+
+
+def test_a_qualified_forbidden_source_fires_only_on_that_part(tmp_path):
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": (), "plugin": ("core",)},
+        forbidden=[{"from": "plugin.adapter", "to": "core"}],
+    )
+    plugin_imports(root, "from core.ports import Port")
+    (root / "plugin" / "src" / "plugin" / "other.py").write_text("from core.model import Thing\n")
+
+    report = check_workspace(open_workspace(root))
+
+    assert kinds(report.between) == [("forbidden", ("plugin.adapter", "core"))]
+    assert [i.file for i in report.between.problems[0].imports] == ["src/plugin/adapter.py"]
+
+
+def test_an_import_a_qualified_rule_forbids_is_not_also_a_violation(tmp_path):
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": (), "plugin": ()},
+        forbidden=[{"from": "plugin", "to": "core.model"}],
+    )
+    plugin_imports(root, "from core.model import Thing")
+
+    report = check_workspace(open_workspace(root))
+
+    assert kinds(report.between) == [("forbidden", ("plugin", "core.model"))]
+
+
+def test_a_qualified_forbidden_rule_still_counts_its_imports_in_a_cycle(tmp_path):
+    root = _prepare_workspace(
+        tmp_path,
+        allowed={"core": ("plugin",), "plugin": ("core",)},
+        forbidden=[{"from": "plugin", "to": "core.ports"}],
+    )
+    (root / "core" / "src" / "core" / "uses_plugin.py").write_text("from plugin import Adapter\n")
+
+    report = check_workspace(open_workspace(root))
+
+    assert ("cycle", ("core", "plugin")) in kinds(report.between)
+    assert ("forbidden", ("plugin", "core.ports")) in kinds(report.between)
+
+
+@pytest.mark.parametrize(
+    ("rule", "message"),
+    [
+        ({"from": "plugin", "to": "nope.model"}, "'nope' is not a package of the workspace"),
+        ({"from": "plugin", "to": "core.modle"}, "core has no component 'modle'"),
+        ({"from": "plugin.adaptor", "to": "core"}, "plugin has no component 'adaptor'"),
+    ],
+)
+def test_a_qualified_forbidden_name_that_places_nowhere_is_a_config_error(tmp_path, rule, message):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)}, forbidden=[rule])
+
+    with pytest.raises(ConfigError, match=message):
+        check_workspace(open_workspace(root))
+
+
+def test_a_qualified_grant_that_places_nowhere_is_a_config_error(tmp_path):
+    root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core.modle",)})
+
+    with pytest.raises(
+        ConfigError,
+        match=r"\[archview\.workspace\.allowed\.plugin\] names 'core\.modle', but core has "
+        r"no component 'modle'; it has: model, ports",
+    ):
+        check_workspace(open_workspace(root))
+
+
+def test_a_forbidden_rule_naming_no_package_says_it_cannot_fire(tmp_path):
+    ws = workspace_with(
+        tmp_path,
+        allowed={"core": (), "plugin": ("core",)},
+        forbidden=[{"from": "plugin", "to": "requests"}],
+    )
+
+    report = check_workspace(ws)
+
+    assert [(w.kind, w.message) for w in report.between.warnings] == [
+        (
+            "unknown_component",
+            "[[archview.workspace.forbidden]] to names 'requests', which is not a package of "
+            "the workspace; the rules between packages see only imports between them",
+        )
+    ]
+
+
 def test_the_private_hint_names_what_the_package_publishes(tmp_path):
     """An agent reading the report learns the contract without opening another file."""
     root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
@@ -667,7 +783,7 @@ def test_a_typescript_relative_import_is_attributed_to_a_component(tmp_path):
         tmp_path, 'import { Widget } from "../../core/src/index";\nexport const a = Widget;\n'
     )
     edges = cross_edges(open_workspace(root))
-    assert [t for _, t in edges.by_component] == ["core/index.ts"]
+    assert [t for _, t in edges.by_component] == ["core.index.ts"]
     assert edges.unplaced == ()
 
 
@@ -677,7 +793,7 @@ def test_a_bare_npm_name_is_placed_when_tsconfig_maps_it(tmp_path):
     npm name to a real file and archview can say which component it reached."""
     root = _ts_copy(tmp_path, 'import { helper } from "@fixture/core";\nexport const a = helper;\n')
     edges = cross_edges(open_workspace(root))
-    assert [t for _, t in edges.by_component] == ["core/index.ts"]
+    assert [t for _, t in edges.by_component] == ["core.index.ts"]
     assert edges.unplaced == ()
 
 
@@ -698,3 +814,44 @@ def test_an_unplaced_import_becomes_a_workspace_warning(tmp_path):
     report = check_workspace(open_workspace(root))
     assert [w.kind for w in report.between.warnings] == ["unplaced_import"]
     assert "index.ts" in report.between.warnings[0].message
+
+
+TS_OTHER = 'import { x } from "../../core/src/other";\nexport const y = x;\n'
+
+
+def _ts_with_other(tmp_path: Path, public: str | None) -> Path:
+    """A ts-workspace copy whose core has a second file, `other.ts`, that web imports."""
+    root = _ts_copy(tmp_path, TS_OTHER, public)
+    (root / "core" / "src" / "other.ts").write_text("export const x = 1;\n")
+    return root
+
+
+@requires_typescript
+def test_a_typescript_import_of_an_unpublished_file_is_private(tmp_path):
+    report = check_workspace(open_workspace(_ts_with_other(tmp_path, '["index.ts"]')))
+
+    assert kinds(report.between) == [("private", ("web", "core.other.ts"))]
+
+
+@requires_typescript
+def test_a_typescript_import_of_a_published_file_lands_on_it(tmp_path):
+    root = _ts_with_other(tmp_path, '["other.ts"]')
+
+    view = workspace_view(open_workspace(root))
+
+    assert not check_workspace(open_workspace(root)).failed
+    assert ("web", "core/other.ts") in [(e.source, e.target) for e in view.edges]
+
+
+@requires_typescript
+def test_a_typescript_qualified_forbidden_target_fires(tmp_path):
+    root = _ts_with_other(tmp_path, None)
+    rules = root / "archview.toml"
+    rules.write_text(
+        rules.read_text()
+        + '\n[[archview.workspace.forbidden]]\nfrom = "web"\nto = "core.other.ts"\n'
+    )
+
+    report = check_workspace(open_workspace(root))
+
+    assert kinds(report.between) == [("forbidden", ("web", "core.other.ts"))]
