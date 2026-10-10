@@ -100,6 +100,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C16 | A `source_roots` entry outside `package` contributes its top-level packages as components, so a rule can reach test code; `[[archview.exceptions]]` gains an optional `kind = "type_only"`, exempting only an import whose `type_checking` flag is set (a value import between the same pair still fails). | MVP (M11) | GitHub issues #8, #10; ADR 0015 |
 | C17 | An `archview.toml` inside a package below the project package holds rules between that package's children (`allowed`, `forbidden`, `layers`, `independent`, `exceptions`, `components`, `ignored`, the fail switches, `metrics`, `baseline`). `check` reports each such scope as its own section with its own baseline, `init --root X` infers the file, and `serve` draws a scope's failing imports in the drill-down. A key that shapes the model is a `ConfigError` in a nested file, and a nested file that no analysed package owns gets an `unchecked_rules_file` notice. | MVP (M12) | GitHub issue #14; ADR 0016 |
 | C18 | Outside workspace mode too, a rules file may name a part of a component with a qualified name, `component.part` (a module or sub-package inside it), in an `allowed` value and in `forbidden`'s `from` and `to`. A grant that names parts admits only imports into those parts' subtrees; a plain grant still admits the whole component; the meaning matches the workspace's qualified grant. A qualified name archview cannot place (no such component, no such module, or a module that belongs to another component) is a `ConfigError`, never a rule that silently cannot fire. | MVP (0.5.1) | GitHub issue #17; ADR 0018 |
+| C19 | The commands read components the way `check` does. `cycles` reads a level that has a rules file, the project's or a nested scope's, by that file's components and names the file. In a nested rules file, the module patterns in `components` and `exceptions` are read below the scope, and a pattern that starts with the scope's own name is read in full. A component left with only the `__init__` of a package whose modules went to other components counts only when it imports or is imported. `graph --root` takes a name relative to the package, as the queries do. `cycles --fold-root-modules` and `graph --fold-root-modules` count a package's own modules as one member named after the package, at every level. | MVP (0.6.0) | GitHub issues #21, #22, #23, #24, #25; ADR 0019 |
 
 ## 7. Agent integration
 
@@ -147,7 +148,7 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15–V19. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012). The UI draws its own SVG from Graphviz's layout (ADR 0017) | V10 collapse/expand in place (now possible on ADR 0017's drawing); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C18. C5 text + JSON | C5 GitHub Actions annotations |
+| Checker | C1–C4, C6–C19. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
@@ -159,6 +160,13 @@ Clarified during M5 (ADR 0009): the queries run on the filtered model, not on gr
 unless asked.
 
 M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on storygenerator.
+
+0.6.0 (2026-10-10): five issues from a component refactor of tiny-tale-backend (C19,
+ADR 0019). `cycles` agrees with `check` on components, a nested file's module patterns
+read like the rest of the file, and a package split into components no longer leaves
+its `__init__` behind as a component that needs a rule. `--fold-root-modules` finds
+the cycles between a package's root modules and its children, which reproduced the
+five root cycles that refactor found with a script of its own.
 
 M9 (2026-09-22): a package publishes a contract its siblings are checked against
 (C14, ADR 0013); the model JSON is schema 4, carrying the resolved target of an

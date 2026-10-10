@@ -216,6 +216,52 @@ This is the same meaning a workspace gives `server = ["core.ports"]` (below); th
 modes share one implementation. `[archview.externals]` keys still name whole
 components. See ADR 0018.
 
+### Modules at the root of a package
+
+Each module directly in the project package is a component of its own, the same as
+each child package. With `shop/wiring.py`, `shop/paths.py` and `shop/services/`,
+`check` sees three components: `wiring`, `paths` and `services`. That matches the
+import graph, but it hides a common smell. When `wiring` imports `services` and
+`services` imports `paths`, the package root sits both above and below its child.
+Read as directories, `shop` and `shop/services` form a cycle, and archview reports a
+DAG.
+
+To find these cycles at every level, fold each package's own modules into one box
+named after the package:
+
+```bash
+archview cycles --fold-root-modules   # in shop: shop -> shop.services -> shop
+archview graph --fold-root-modules    # the same box in the diagram
+```
+
+The flag is a lens and changes no rule. To have `check` hold the root modules to a
+rule, group them with `[archview.components]`:
+
+```toml
+[archview.components]
+root = ["shop.wiring", "shop.paths"]
+```
+
+`check` then reports `CYCLE root -> services -> root`, and `cycles` without the flag
+reports the same cycle. A new module at the root is a component nobody declared, so
+`check` fails on it until someone adds it to the pattern or to `allowed`.
+
+### Splitting a package into components
+
+`[archview.components]` can split one package into several components:
+
+```toml
+[archview.components]
+repos_interfaces = ["app.repos.interfaces"]
+repos_sql = ["app.repos.sql"]
+```
+
+That leaves `app/repos/__init__.py` behind. While it imports nothing and nothing
+imports it, it is not a component and needs no rule. Once it imports or is imported,
+it is a component named `repos`, and `check` reports it as undeclared with a hint
+naming the components that hold its modules. A rule kept for an `__init__` that needs
+none gets a notice saying so.
+
 ## Test code under the rules
 
 **Use `source_roots = ["src", "."]`, not `["src", "tests"]`.** A `source_roots`
@@ -433,8 +479,11 @@ How it works:
   prints it as a section of its own with its own count of problems. The exit code is 1
   if the root or any scope fails.
 - Names in `allowed`, `forbidden`, `layers`, `independent` and `ignored` are the short
-  child names (`print`). Module patterns in `components` and `exceptions` use full
-  module names (`src.webapp.services.print.*`), as the root file does.
+  child names (`print`). Module patterns in `components` and `exceptions` are read
+  below the scope too, so `print.*` in `src/webapp/services/archview.toml` means
+  `src.webapp.services.print.*`. A pattern that starts with the scope's own name is read
+  in full, so `src.webapp.services.print.*` still works. A pattern that matches no
+  module says where it was read: `matches no module below src.webapp.services`.
 - A scope's own `__init__.py`, when it imports or is imported, is a component named
   after the full scope id, `"src.webapp.services"` above. This is the way a project's
   root module is a component named after the project. Leave it out of `allowed` and
@@ -510,9 +559,17 @@ archview rdeps services.pricing       # who imports it; also works for externals
 archview cycles [--root webapp]       # every cycle at every level, as a path with its imports
 ```
 
-Names can be full (`pkg.domain`) or relative to the package (`domain`). Every query
-takes `--format json`, `--hide-tests` and `--runtime-only` (leave out TYPE_CHECKING
-imports). `why` exits 1 when there is no dependency. See ADR 0009.
+Names can be full (`pkg.domain`) or relative to the package (`domain`), here and in
+`graph --root`. Every query takes `--format json`, `--hide-tests` and `--runtime-only`,
+which leaves out TYPE_CHECKING imports. `why` exits 1 when there is no dependency. See
+ADR 0009.
+
+`cycles` reads a level that has a rules file the way `check` does: the project level
+by the root file's components, and a nested scope by its own. Such a cycle names the
+file, as in `in shop (components from archview.toml): root -> services -> root`, and its
+members are component names. Every other level is read as the package tree, with full
+names. `--fold-root-modules` counts each package's own modules as one member named
+after the package, at every level.
 
 ## Paragraph for the repo's CLAUDE.md / AGENTS.md
 

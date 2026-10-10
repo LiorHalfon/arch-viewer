@@ -6,7 +6,9 @@ Date: 2026-10-09 (M12)
 
 Accepted. Implements `docs/superpowers/specs/2026-10-08-nested-rules-design.md`
 (GitHub issue #14). Builds on ADR 0006 (checker semantics) and ADR 0012 (workspace
-mode).
+mode). Amended by ADR 0019 (0.6.0): module patterns in `components` and `exceptions`
+are read below the scope, and a package's `__init__` left behind by a split into
+components needs a rule only when it imports or is imported.
 
 ## Context
 
