@@ -36,6 +36,7 @@ from archview.rules.check import (
     WorkspaceReport,
     _cycle_problems,
     _exemption,
+    _forbidden,
     _rule_problems,
     checked_imports,
     component_edges,
@@ -44,15 +45,17 @@ from archview.rules.check import (
 )
 from archview.rules.config import (
     ALL,
+    ALL_COMPONENTS,
     RULES_FILE,
     Config,
     ConfigError,
+    Forbidden,
     WorkspaceRules,
     _read_toml,
     find_config,
     load_config,
 )
-from archview.rules.qualified import admitted, is_qualified, narrowing, owner, widened
+from archview.rules.qualified import SEP, admitted, is_qualified, narrowing, owner, widened
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +206,8 @@ class CrossEdges:
     `by_package` is what M8 checked: (source package, target package). `by_component`
     narrows the target to the component actually reached - (source package,
     "target.component") - which is what a public surface is checked against (issue #4).
+    The component is joined to its package with a dot in both languages, as rules
+    write it (`core.ports`, `core.index.ts`).
     `unplaced` holds the imports whose component could not be determined; they are still
     checked at package level and reported, never silently passed.
     """
@@ -284,9 +289,11 @@ def _component_of(
 
 
 def _qualified(module: str, sibling: str, sep: str) -> str:
-    """`core.model.Thing` -> `core.model`; the package root itself -> `core`."""
+    """`core.model.Thing` -> `core.model`, `core/ports/p.ts` -> `core.ports`: the
+    component reached, joined to its package with a dot as rules write it. The package
+    root itself -> `core`."""
     rest = module[len(sibling) :].lstrip(sep)
-    return f"{sibling}{sep}{rest.split(sep)[0]}" if rest else sibling
+    return f"{sibling}{SEP}{rest.split(sep)[0]}" if rest else sibling
 
 
 def _qualified_by_path(resolved: str, importer: Package, sibling: str, ws: Workspace) -> str | None:
@@ -382,16 +389,22 @@ def _check_between(ws: Workspace) -> Report:
     rules = ws.config.workspace
     present = tuple(p.name for p in ws.packages)
     cross = cross_edges(ws)
+    _place_names(ws, rules)
     _reject_unpublished_grants(ws, rules)
-    edges = Edges(internal=cross.by_package, outside={}, exceptions_used=set())
     config = _between_config(ws.config, rules)
+    parts = tuple(f for f in rules.forbidden if _names_a_part(f, present))
+    banned, caught = _part_forbidden(cross, ws, parts, config)
+    plain = replace(config, forbidden=tuple(f for f in rules.forbidden if f not in parts))
+    edges = Edges(internal=_without(cross.by_package, caught), outside={}, exceptions_used=set())
     problems = [
-        *_rule_problems(edges, present, _package_level(config, rules), config.table),
-        *_cycle_problems(edges.internal, present, config, config.table),
-        *_component_problems(cross.by_component, ws, rules, config),
+        *banned,
+        *_rule_problems(edges, present, _package_level(plain, rules), config.table),
+        *_cycle_problems(cross.by_package, present, config, config.table),
+        *_component_problems(_without(cross.by_component, caught), ws, rules, config),
     ]
     ordered = tuple(sorted(problems, key=lambda p: (p.components, p.kind)))
-    report = Report(ws.name, present, ordered, _unplaced_warnings(cross, ws))
+    warnings = (*_unplaced_warnings(cross, ws), *_no_package_warnings(rules, present, config))
+    report = Report(ws.name, present, ordered, warnings)
     if rules.baseline:
         report = _apply_workspace_baseline(report, ws.root, rules.baseline)
     return report
@@ -413,6 +426,119 @@ def _unplaced_warnings(cross: CrossEdges, ws: Workspace) -> tuple[Notice, ...]:
         )
         for imp in sorted(cross.unplaced, key=lambda i: (i.file, i.line))
     )
+
+
+def _names_a_part(f: Forbidden, packages: tuple[str, ...]) -> bool:
+    return is_qualified(f.source, packages) or is_qualified(f.target, packages)
+
+
+def _part_forbidden(
+    cross: CrossEdges, ws: Workspace, rules: tuple[Forbidden, ...], config: Config
+) -> tuple[list[Problem], set[Import]]:
+    """The problems from `forbidden` rules that name a part of a package (issue #19),
+    and the imports they caught. `from` is matched against the component of the
+    importing module, `to` against the component the import reaches; an import whose
+    component could not be placed cannot break a qualified `to`, and is already
+    reported as unplaced. Each import goes to the first rule it breaks."""
+    reached = {imp: target for (_, target), imps in cross.by_component.items() for imp in imps}
+    problems: list[Problem] = []
+    caught: set[Import] = set()
+    for rule in rules:
+        hits: dict[Pair, list[Import]] = defaultdict(list)
+        for (source, package), imports in cross.by_package.items():
+            sep = _package_by_name(ws, source).project.model.separator
+            for imp in imports:
+                if imp in caught:
+                    continue
+                if _matches(rule.source, source, _qualified(imp.importer, source, sep)) and (
+                    _matches(rule.target, package, reached.get(imp))
+                ):
+                    hits[(_side(rule.source, source), _side(rule.target, package))].append(imp)
+        for (source, target), imports in sorted(hits.items()):
+            rule_name = f"{config.table}.forbidden"
+            problems.append(
+                _forbidden(source, target, imports, rule_name, config.fail_on_violations)
+            )
+            caught.update(imports)
+    return problems, caught
+
+
+def _matches(name: str, package: str, part: str | None) -> bool:
+    """True if a rule's `name` covers `part` of `package`: `*`, the package itself, or,
+    for a qualified name, the component it names."""
+    if name == ALL_COMPONENTS:
+        return True
+    if is_qualified(name):
+        return part is not None and admitted(part, (name,))
+    return name == package
+
+
+def _side(name: str, package: str) -> str:
+    """How a problem names one side of a rule: the part when the rule names one."""
+    return name if is_qualified(name) else package
+
+
+def _without(edges: dict[Pair, list[Import]], caught: set[Import]) -> dict[Pair, list[Import]]:
+    kept = {pair: [i for i in imports if i not in caught] for pair, imports in edges.items()}
+    return {pair: imports for pair, imports in kept.items() if imports}
+
+
+def _components(package: Package) -> tuple[str, ...]:
+    """The components a workspace can name in `package`: the children of its root."""
+    model = package.project.model
+    cut = len(model.project) + len(model.separator)
+    return tuple(sorted(n.id[cut:] for n in model.nodes if n.parent == model.project))
+
+
+def _place_names(ws: Workspace, rules: WorkspaceRules) -> None:
+    """Every qualified name in the workspace's `allowed` values and `forbidden` rules
+    must name a package and one of its components; otherwise it is a `ConfigError`,
+    as ADR 0018 made it in a single package. A rule that names nothing archview can
+    place would never fire (issue #19)."""
+    packages = {p.name: p for p in ws.packages}
+    table = f"{ws.config.table}.workspace"
+    used = [
+        (f"[{table}.allowed.{source}]", name)
+        for source, targets in sorted((rules.allowed or {}).items())
+        if targets != ALL
+        for name in targets
+    ]
+    for f in rules.forbidden:
+        used += [(f"[[{table}.forbidden]] from", f.source), (f"[[{table}.forbidden]] to", f.target)]
+    prefix = f"{ws.config.path}: " if ws.config.path else ""
+    for where, name in used:
+        if not is_qualified(name, packages):
+            continue
+        package, component = name.split(SEP, 1)
+        said = f"{prefix}{where} names {name!r}"
+        if package not in packages:
+            known = ", ".join(sorted(packages))
+            raise ConfigError(
+                f"{said}, but {package!r} is not a package of the workspace ({known}); a "
+                "qualified name is a package, a dot, and one of its components"
+            )
+        components = _components(packages[package])
+        if component not in components:
+            raise ConfigError(
+                f"{said}, but {package} has no component {component!r}; it has: "
+                f"{', '.join(components) or 'none'}"
+            )
+
+
+def _no_package_warnings(
+    rules: WorkspaceRules, packages: tuple[str, ...], config: Config
+) -> list[Notice]:
+    """A plain `forbidden` name that is no package can never fire between packages."""
+    return [
+        Notice(
+            "unknown_component",
+            f"[[{config.table}.forbidden]] {side} names {name!r}, which is not a package of "
+            "the workspace; the rules between packages see only imports between them",
+        )
+        for f in rules.forbidden
+        for side, name in (("from", f.source), ("to", f.target))
+        if name != ALL_COMPONENTS and name not in packages and not is_qualified(name, packages)
+    ]
 
 
 def _package_level(config: Config, rules: WorkspaceRules) -> Config:
@@ -610,14 +736,18 @@ def _drawn_edges(cross: CrossEdges, ws: Workspace) -> dict[Pair, list[Import]]:
     published = {
         p.name: p.project.config.public for p in ws.packages if p.project.config.public is not None
     }
+    seps = {p.name: p.project.model.separator for p in ws.packages}
     component_of = {imp: target for (_, target), imps in cross.by_component.items() for imp in imps}
     drawn: dict[Pair, list[Import]] = defaultdict(list)
     for (source, package), imports in cross.by_package.items():
         for imp in imports:
             target = component_of.get(imp)
             surface = published.get(package)
-            reaches = target.split(".", 1)[1] if target and "." in target else None
-            landing = target if surface is not None and reaches in surface else package
+            reaches = target.split(SEP, 1)[1] if target and SEP in target else None
+            if surface is not None and reaches in surface:
+                landing = f"{package}{seps[package]}{reaches}"  # the published node's id
+            else:
+                landing = package
             drawn[(source, landing)].append(imp)
     return _sorted_edges(drawn)
 

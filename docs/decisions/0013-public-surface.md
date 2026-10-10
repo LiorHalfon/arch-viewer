@@ -6,7 +6,8 @@ Date: 2026-09-22 (M9)
 
 Accepted. Implements `docs/superpowers/specs/2026-09-20-public-surface-design.md`
 (GitHub issue #4). Builds on ADR 0011 (rules for outside imports) and ADR 0012
-(workspace mode).
+(workspace mode). Amended by ADR 0020 (0.6.0): a reached component is spelled with a
+dot in both languages, so `public` now checks a TypeScript member's imports.
 
 ## Context
 

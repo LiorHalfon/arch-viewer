@@ -5,7 +5,8 @@ Date: 2026-10-10 (0.5.1)
 ## Status
 
 Accepted. Fixes GitHub issue #17. Builds on ADR 0013 (a workspace's qualified grant)
-and ADR 0016 (rules files inside sub-packages).
+and ADR 0016 (rules files inside sub-packages). Amended by ADR 0020 (0.6.0): workspace
+`forbidden` rules take qualified names too, closing GitHub issue #19.
 
 ## Context
 
