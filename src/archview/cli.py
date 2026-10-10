@@ -25,7 +25,6 @@ from archview.model.filter import without_tests
 from archview.model.graph import Model
 from archview.model.query import (
     UnknownName,
-    all_cycles,
     dependencies,
     dependents,
     resolve,
@@ -40,6 +39,7 @@ from archview.project import (
     SeveralPackages,
     fresh_baselines,
     open_project,
+    project_cycles,
     project_report,
     scope_dir,
     shown_path,
@@ -139,7 +139,7 @@ def _reject_workspace_flags(args: argparse.Namespace, names: tuple[str, ...]) ->
 def _graph(args: argparse.Namespace) -> int:
     ws = _workspace_root(args)
     if ws is not None:
-        _reject_workspace_flags(args, ("root", "hide_tests", "externals"))
+        _reject_workspace_flags(args, ("root", "hide_tests", "externals", "fold_root_modules"))
         view = workspace_view(ws)
         fmt = _output_format(args)
         violations = set()
@@ -149,13 +149,13 @@ def _graph(args: argparse.Namespace) -> int:
         return 0
     project = _workspace_member(args) or _open(args, [args.root] if args.root else None)
     model = without_tests(project.model) if args.hide_tests else project.model
-    where = args.root or project.package
-    if where not in {n.id for n in model.nodes}:
-        raise UsageError(f"{where} is not a module of {project.package}")
+    where = _resolved(model, args.root) if args.root else model.project
 
     report = _graph_report(project) if project.config_path else None
     keep = outside_targets(report) if report is not None else frozenset()
-    view = build_view(model, where, externals=args.externals, keep=keep)
+    view = build_view(
+        model, where, externals=args.externals, keep=keep, fold=args.fold_root_modules
+    )
     if not view.nodes:
         raise UsageError(f"{where} has no children to show; drill into a package instead")
 
@@ -165,6 +165,14 @@ def _graph(args: argparse.Namespace) -> int:
         violations = violating_edges(view, failing_imports(report))
     _write_view(fmt, view, violations)
     return 0
+
+
+def _resolved(model: Model, name: str) -> str:
+    """`name` as `resolve` reads it - full, or relative to the package - or a usage error."""
+    try:
+        return resolve(model, name)
+    except UnknownName as error:
+        raise UsageError(str(error)) from None
 
 
 def _graph_report(project: Project) -> Report | None:
@@ -346,8 +354,11 @@ def _query_model(args: argparse.Namespace, names: list[str]) -> Model:
     """The model the queries run on; `--package`'s own member at a workspace root
     (mirroring `_graph`/`_cycles`), else the package may be named by the first query
     name."""
-    project = _workspace_member(args) or _open(args, names)
-    return _filtered(project.model, args)
+    return _filtered(_query_project(args, names).model, args)
+
+
+def _query_project(args: argparse.Namespace, names: list[str]) -> Project:
+    return _workspace_member(args) or _open(args, names)
 
 
 def _write(args: argparse.Namespace, text: str, data: dict) -> None:
@@ -366,10 +377,7 @@ def _why(args: argparse.Namespace) -> int:
 
 def _neighbours(args: argparse.Namespace, outgoing: bool) -> int:
     model = _query_model(args, [args.name])
-    try:
-        name = resolve(model, args.name)
-    except UnknownName as error:
-        raise UsageError(str(error)) from None
+    name = _resolved(model, args.name)
     found = dependencies(model, name, args.externals) if outgoing else dependents(model, name)
     _write(
         args, neighbours_to_text(name, found, outgoing), neighbours_to_dict(name, found, outgoing)
@@ -380,21 +388,14 @@ def _neighbours(args: argparse.Namespace, outgoing: bool) -> int:
 def _cycles(args: argparse.Namespace) -> int:
     ws = _workspace_root(args)
     if ws is not None:
-        _reject_workspace_flags(args, ("root", "hide_tests", "runtime_only"))
+        _reject_workspace_flags(args, ("root", "hide_tests", "runtime_only", "fold_root_modules"))
         found = workspace_cycles(ws)
         _write(args, cycles_to_text(found, ws.name), cycles_to_dict(found, ws.name))
         return 0
-    member = _workspace_member(args)
-    model = (
-        _filtered(member.model, args)
-        if member
-        else _query_model(args, [args.root] if args.root else [])
-    )
-    try:
-        root = resolve(model, args.root) if args.root else model.project
-    except UnknownName as error:
-        raise UsageError(str(error)) from None
-    found = all_cycles(model, root)
+    project = _query_project(args, [args.root] if args.root else [])
+    model = _filtered(project.model, args)
+    root = _resolved(model, args.root) if args.root else model.project
+    found = project_cycles(project, model, root, fold=args.fold_root_modules)
     _write(args, cycles_to_text(found, root), cycles_to_dict(found, root))
     return 0
 
@@ -437,10 +438,7 @@ def _init_scope(args: argparse.Namespace) -> int:
 
 def _scope_package(model: Model, name: str) -> str:
     """`name` resolved to a package below the project: one a nested rules file can hold."""
-    try:
-        scope = resolve(model, name)
-    except UnknownName as error:
-        raise UsageError(str(error)) from None
+    scope = _resolved(model, name)
     if scope == model.project:
         raise UsageError(f"{scope} is the project; `archview init` without --root writes its rules")
     if next(n.kind for n in model.nodes if n.id == scope) != "package":
@@ -558,6 +556,14 @@ def _query_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _fold_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--fold-root-modules",
+        action="store_true",
+        help="count the modules directly in a package as one box named after the package",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="archview", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -572,6 +578,7 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument("--mermaid", action="store_true", help="same as --format mermaid")
     graph.add_argument("--externals", action="store_true", help="show third-party packages")
     graph.add_argument("--hide-tests", action="store_true", help="leave test code out")
+    _fold_option(graph)
     graph.set_defaults(run=_graph)
 
     check_ = commands.add_parser("check", help="check the dependencies against the rules")
@@ -609,6 +616,7 @@ def build_parser() -> argparse.ArgumentParser:
     cycles = commands.add_parser("cycles", help="the cycles at every level, with a path each")
     _query_options(cycles)
     cycles.add_argument("--root", help="only look under this package")
+    _fold_option(cycles)
     cycles.set_defaults(run=_cycles)
 
     metrics = commands.add_parser("metrics", help="fan-in/out, instability, abstractness, zones")

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from functools import cache
 
-from archview.model.names import ancestors
+from archview.model.names import ancestors, within
 
 
 @cache
@@ -50,3 +50,12 @@ def matches_path(pattern: str, path: str) -> bool:
 def specificity(pattern: str, sep: str) -> tuple[int, int]:
     """Longer, less wild patterns win when several match the same name."""
     return (pattern.count(sep) + 1, -pattern.count("*"))
+
+
+def below(pattern: str, base: str | None, sep: str) -> str:
+    """`pattern` read relative to the package `base`: as written when it already starts
+    with `base` or there is no `base`, else with `base` in front (a nested rules file,
+    issue #22)."""
+    if base is None or within(pattern, base, sep):
+        return pattern
+    return f"{base}{sep}{pattern}"

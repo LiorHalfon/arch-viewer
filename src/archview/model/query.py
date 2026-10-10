@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import difflib
 from collections import defaultdict, deque
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from itertools import pairwise
 
 import networkx as nx
 
-from archview.model.cycles import digraph
+from archview.model.cycles import digraph, find_cycles
 from archview.model.graph import Import, Model
 from archview.model.names import truncate, within
 from archview.model.view import ViewEdge, build_view
+
+Edges = Mapping[tuple[str, str], Sequence[Import]]
 
 
 class UnknownName(ValueError):
@@ -58,7 +61,9 @@ class Cycle:
     """A cycle among the children of `level`: the shortest path through its first member.
 
     In a tangle of more than two members, `others` are the edges among the members
-    that the path does not take, so every member's connections are shown.
+    that the path does not take, so every member's connections are shown. `rules` is
+    the rules file whose components the members are, as shown; None when they are the
+    package's children.
     """
 
     level: str
@@ -67,6 +72,7 @@ class Cycle:
     steps: tuple[Step, ...]
     missed: tuple[str, ...]
     others: tuple[Step, ...] = ()
+    rules: str | None = None
 
 
 def _import_key(imp: Import) -> tuple[str, int, str, str]:
@@ -170,25 +176,42 @@ def _neighbours(model: Model, name: str, outgoing: bool) -> tuple[Dependency, ..
     )
 
 
-def all_cycles(model: Model, root: str | None = None) -> tuple[Cycle, ...]:
-    """The cycles among the children of every package under `root` (default: all)."""
+def all_cycles(
+    model: Model, root: str | None = None, fold: bool = False, skip: Collection[str] = ()
+) -> tuple[Cycle, ...]:
+    """The cycles among the children of every package under `root` (default: all),
+    except the packages in `skip`. With `fold`, a package's own modules count as one
+    child named after the package (issue #25)."""
     root = root or model.project
     packages = sorted(
-        n.id for n in model.nodes if n.kind == "package" and within(n.id, root, model.separator)
+        n.id
+        for n in model.nodes
+        if n.kind == "package" and within(n.id, root, model.separator) and n.id not in skip
     )
     found: list[Cycle] = []
     for package in packages:
-        view = build_view(model, package)
-        edges = {(e.source, e.target): e for e in view.edges}
-        found.extend(_cycle(package, members, edges) for members in view.cycles)
+        view = build_view(model, package, fold=fold)
+        found += cycles_among(package, (n.id for n in view.nodes), _view_edges(view.edges))
     return tuple(found)
 
 
-def _step(source: str, target: str, edges: dict[tuple[str, str], ViewEdge]) -> Step:
-    return Step(source, target, tuple(sorted(edges[(source, target)].imports, key=_import_key)))
+def _view_edges(edges: Iterable[ViewEdge]) -> Edges:
+    return {(e.source, e.target): e.imports for e in edges}
 
 
-def _cycle(level: str, members: tuple[str, ...], edges: dict[tuple[str, str], ViewEdge]) -> Cycle:
+def cycles_among(
+    level: str, members: Iterable[str], edges: Edges, rules: str | None = None
+) -> list[Cycle]:
+    """The cycles among `members`, the children of `level`, given the imports behind
+    each edge between them; `rules` names the file the members come from, if any."""
+    return [_cycle(level, cycle, edges, rules) for cycle in find_cycles(members, edges.keys())]
+
+
+def _step(source: str, target: str, edges: Edges) -> Step:
+    return Step(source, target, tuple(sorted(edges[(source, target)], key=_import_key)))
+
+
+def _cycle(level: str, members: tuple[str, ...], edges: Edges, rules: str | None) -> Cycle:
     inside = set(members)
     graph = digraph(members, (pair for pair in edges if set(pair) <= inside))
     start = members[0]
@@ -207,4 +230,4 @@ def _cycle(level: str, members: tuple[str, ...], edges: dict[tuple[str, str], Vi
     others = tuple(
         _step(s, t, edges) for s, t in sorted(edges) if {s, t} <= inside and (s, t) not in taken
     )
-    return Cycle(level, members, path, steps, missed, others)
+    return Cycle(level, members, path, steps, missed, others, rules)

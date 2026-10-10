@@ -11,6 +11,10 @@ that root's own top-level name - `tests.test_live` belongs to `tests`, exactly a
 project's own root module belongs to a component named after the project (issue #10,
 ADR 0006). `extract/python.py`'s `build_model` graphs those roots alongside the
 project, so such a module is never mistaken for an outside name in the first place.
+
+A nested rules file's patterns are read below its scope (`base`, issue #22), and
+`folded` modules join the project's own component instead of being components of
+their own (`cycles --fold-root-modules`, issue #25).
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from archview.model.names import within
-from archview.model.patterns import matches_name, specificity
+from archview.model.patterns import below, matches_name, specificity
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +33,8 @@ class ComponentMap:
     explicit: Mapping[str, tuple[str, ...]]
     ignored: frozenset[str] = frozenset()
     extra_roots: frozenset[str] = frozenset()
+    base: str | None = None
+    folded: frozenset[str] = frozenset()
 
     def of(self, module: str) -> str | None:
         """The component `module` belongs to, or None if it is outside the project or ignored."""
@@ -52,10 +58,10 @@ class ComponentMap:
 
     def _explicit(self, module: str) -> str | None:
         hits = [
-            (specificity(pattern, self.sep), name)
+            (specificity(full, self.sep), name)
             for name, patterns in self.explicit.items()
-            for pattern in patterns
-            if matches_name(pattern, module, self.sep)
+            for full in (below(p, self.base, self.sep) for p in patterns)
+            if matches_name(full, module, self.sep)
         ]
         if not hits:
             return None
@@ -63,7 +69,7 @@ class ComponentMap:
         return min(name for score, name in hits if score == best)
 
     def _default(self, module: str) -> str | None:
-        if module == self.project:
+        if module == self.project or module in self.folded:
             return self.project
         if within(module, self.project, self.sep):
             return module[len(self.project) + 1 :].split(self.sep)[0]
@@ -77,5 +83,7 @@ class ComponentMap:
             (name, pattern)
             for name, patterns in sorted(self.explicit.items())
             for pattern in patterns
-            if not any(matches_name(pattern, m, self.sep) for m in names)
+            if not any(
+                matches_name(below(pattern, self.base, self.sep), m, self.sep) for m in names
+            )
         ]

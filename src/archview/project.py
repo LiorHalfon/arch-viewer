@@ -2,7 +2,8 @@
 
 Shared by every face of the tool (the CLI commands and the server), so they all see
 the same model for the same repo. `project_report` also checks each nested rules file
-found below the package directory (M12).
+found below the package directory (M12), and `project_cycles` reads the levels those
+files rule by their components, as the check does (issue #21).
 """
 
 from __future__ import annotations
@@ -16,9 +17,10 @@ from pathlib import Path
 from archview.extract import typescript
 from archview.extract.discover import find_packages
 from archview.extract.python import build_model
-from archview.model.filter import without_files
+from archview.model.filter import scoped_model, without_files
 from archview.model.graph import Model
-from archview.model.names import stripped_source_root
+from archview.model.names import stripped_source_root, within
+from archview.model.query import Cycle, all_cycles, cycles_among
 from archview.rules.baseline import (
     BASELINE_FILE,
     Baseline,
@@ -26,7 +28,14 @@ from archview.rules.baseline import (
     baseline_of,
     load_baseline,
 )
-from archview.rules.check import Notice, Report, check
+from archview.rules.check import (
+    Notice,
+    Report,
+    check,
+    component_edges,
+    component_map,
+    present_components,
+)
 from archview.rules.config import (
     RULES_FILE,
     Config,
@@ -247,6 +256,32 @@ def project_report(project: Project, in_workspace: bool = False) -> Report:
     report = _baselined(report, baseline_path(project), project.config.baseline)
     checked = tuple((scope.shown, _scope_report(project, scope, in_workspace)) for scope in scopes)
     return replace(report, scopes=checked)
+
+
+def project_cycles(
+    project: Project, model: Model, root: str, fold: bool = False
+) -> tuple[Cycle, ...]:
+    """`all_cycles` on `model` (the project's, perhaps filtered) under `root`, except
+    that a level with a rules file - the project with its rules, or a nested scope - is
+    read as `check` reads it: the cycles among that file's components (issue #21)."""
+    sep = model.separator
+    ruled: list[tuple[str, Model, Config, str]] = []
+    if project.config_path is not None and root == model.project:
+        ruled.append(
+            (model.project, model, project.config, shown_path(project, project.config_path))
+        )
+    scopes, _ = nested_scopes(project)
+    ruled += [
+        (scope.id, scoped_model(model, scope.id), scope.config, scope.shown)
+        for scope in scopes
+        if within(scope.id, root, sep)
+    ]
+    found = list(all_cycles(model, root, fold, skip={level for level, *_ in ruled}))
+    for level, at, config, shown in ruled:
+        components = component_map(config, at, fold)
+        edges = component_edges(at, components).internal
+        found += cycles_among(level, present_components(at, components), edges, shown)
+    return tuple(sorted(found, key=lambda cycle: cycle.level))
 
 
 def fresh_baselines(project: Project) -> list[tuple[Path, Baseline]]:

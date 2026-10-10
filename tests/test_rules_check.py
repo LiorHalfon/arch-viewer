@@ -1,6 +1,9 @@
 """The checker: actual dependencies against the rules (C2, C3, C4)."""
 
-from archview.rules.check import check
+from dataclasses import replace
+
+from archview.model.graph import Import, Model, Node
+from archview.rules.check import check, component_map
 from archview.rules.components import ComponentMap
 from archview.rules.config import ALL, Config, Exemption, Forbidden
 from archview.rules.init import infer_rules, infer_scope_rules
@@ -183,6 +186,89 @@ def test_the_most_specific_component_pattern_wins():
     assert components.of("app.api") == "api"
     assert components.of("app") == "app"
     assert components.of("other.thing") is None
+
+
+def with_inits(m: Model, *packages: str) -> Model:
+    """`m` with each of `packages` a package that has its own `__init__.py`."""
+    return replace(
+        m,
+        nodes=tuple(
+            replace(n, kind="package", file=f"{n.id.replace('.', '/')}/__init__.py")
+            if n.id in packages
+            else n
+            for n in m.nodes
+        ),
+    )
+
+
+SPLIT = with_inits(
+    model(
+        ("app.services.orders", "app.repos.interfaces.orders"),
+        ("app.repos.sql.orders", "app.repos.interfaces.orders"),
+    ),
+    "app.repos",
+)
+SPLIT_RULES = Config(
+    allowed={
+        "repos_interfaces": (),
+        "repos_sql": ("repos_interfaces",),
+        "services": ("repos_interfaces",),
+    },
+    components={"repos_interfaces": ("app.repos.interfaces",), "repos_sql": ("app.repos.sql",)},
+)
+
+
+def test_the_init_left_by_a_package_split_into_components_is_not_one():
+    report = check(SPLIT, SPLIT_RULES)
+
+    assert report.components == ("repos_interfaces", "repos_sql", "services")
+    assert report.problems == ()
+
+
+def test_the_init_left_by_a_split_needs_a_rule_once_it_imports():
+    m = replace(
+        SPLIT,
+        imports=(
+            *SPLIT.imports,
+            Import("app.repos", "app.repos.sql.orders", "app/repos/__init__.py", 1, "import x"),
+        ),
+    )
+
+    (problem,) = check(m, SPLIT_RULES).problems
+
+    assert (problem.kind, problem.components) == ("undeclared", ("repos",))
+    assert problem.hint.startswith(
+        "repos is only the __init__ of app.repos; its modules belong to "
+        "repos_interfaces and repos_sql."
+    )
+
+
+def test_a_package_that_holds_only_an_init_is_still_a_component():
+    m = model(("app.a.x", "app.b.y"))
+    m = replace(m, nodes=(*m.nodes, Node("app.c", "app", "package", "app/c/__init__.py")))
+
+    report = check(m, Config(allowed={"a": ("b",), "b": ()}))
+
+    assert kinds(report) == [("undeclared", ("c",))]
+
+
+def test_init_writes_no_rule_for_the_init_left_by_a_split():
+    text = infer_rules(SPLIT, SPLIT_RULES)
+
+    assert "repos = " not in text
+    assert 'repos_sql = ["repos_interfaces"]' in text
+
+
+def test_folding_puts_the_modules_directly_in_the_project_in_its_own_component():
+    m = model(("app.wiring", "app.api.routes"), ("app.api.routes", "app.paths"))
+
+    components = component_map(Config(components={"api": ("app.api",)}), m, fold=True)
+
+    assert [components.of(n) for n in ("app.wiring", "app.paths", "app.api.routes")] == [
+        "app",
+        "app",
+        "api",
+    ]
 
 
 def test_components_of_a_slash_separated_project_include_root_files():

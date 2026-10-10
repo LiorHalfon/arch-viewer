@@ -25,6 +25,11 @@ def ancestors(name: str, sep: str) -> list[str]:
     return [sep.join(parts[: i + 1]) for i in range(len(parts))]
 
 
+def own_modules(model: Model, package: str) -> frozenset[str]:
+    """The modules directly in `package`, not in a sub-package of it (issue #25)."""
+    return frozenset(n.id for n in model.nodes if n.parent == package and n.kind == "module")
+
+
 def last(name: str, sep: str) -> str:
     return name.rpartition(sep)[2]
 

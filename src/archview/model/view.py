@@ -9,7 +9,7 @@ from archview.model.cycles import components, find_cycles
 from archview.model.graph import Import, Kind, Model, Node
 from archview.model.layers import assign_layers
 from archview.model.metrics import DEFAULT_THRESHOLD, metrics
-from archview.model.names import ancestors, within
+from archview.model.names import ancestors, last, own_modules, within
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,12 +59,29 @@ class View:
 
 
 def _owner(module: str, children: frozenset[str], sep: str) -> str | None:
-    """The child of the root that `module` belongs to, if any."""
-    return next((c for c in ancestors(module, sep) if c in children), None)
+    """The child of the root that `module` belongs to, if any: its nearest ancestor among
+    `children`, since a folded root is a child that every other child lies below."""
+    return next((c for c in reversed(ancestors(module, sep)) if c in children), None)
 
 
 def _in_subtree(node_id: str, model: Model) -> list[Node]:
     return [n for n in model.nodes if within(n.id, node_id, model.separator)]
+
+
+def _folded(model: Model, root: str, internal: frozenset[str]) -> frozenset[str]:
+    """`internal` with the root's own modules counted as one child: the root itself,
+    standing for them and its own file. It is left out when there is nothing to stand
+    for - no own module, and a root file that no import in the subtree touches."""
+    own = own_modules(model, root)
+    sep = model.separator
+    touched = any(
+        root in (i.importer, i.imported)
+        and within(i.importer, root, sep)
+        and within(i.imported, root, sep)
+        for i in model.imports
+    )
+    kept = internal - own
+    return kept | {root} if own or touched else kept
 
 
 def _grouped_imports(model: Model, children: frozenset[str]) -> dict[tuple[str, str], list[Import]]:
@@ -95,12 +112,16 @@ def build_view(
     externals: bool = False,
     threshold: float = DEFAULT_THRESHOLD,
     keep: frozenset[str] = frozenset(),
+    fold: bool = False,
 ) -> View:
     """The children of `root` and the counted edges between them; with `externals`,
     the third-party packages the subtree imports become boxes too, and `keep` names
-    outside packages to show even without `externals` (a rule broken by reaching one)."""
+    outside packages to show even without `externals` (a rule broken by reaching one).
+    With `fold`, the root's own modules are one child, the root itself (issue #25)."""
     by_id = {n.id: n for n in model.nodes}
     internal = frozenset(n.id for n in model.nodes if n.parent == root and n.kind != "external")
+    if fold:
+        internal = _folded(model, root, internal)
     found = _externals(model, root)
     shown = found if externals else (found & keep)
     children = internal | frozenset(shown)
@@ -143,7 +164,11 @@ def _node(
     threshold: float,
 ) -> ViewNode:
     node = by_id[node_id]
-    files = [n for n in _in_subtree(node.id, model) if n.file is not None]
+    if node_id == root:  # folded: the root's own file and its own modules
+        own = own_modules(model, root) | {root}
+        files = [n for n in model.nodes if n.id in own and n.file is not None]
+    else:
+        files = [n for n in _in_subtree(node.id, model) if n.file is not None]
     abstract = sum(1 for n in files if n.abstract)
     incoming = [i for (_, t), imps in grouped.items() if t == node.id for i in imps]
     outgoing = [i for (s, t), imps in grouped.items() if s == node.id for i in imps]
@@ -161,7 +186,7 @@ def _node(
         return ViewNode(
             node.id, node.id, "external", 0, layer, in_cycle, len(incoming), 0, zone="external"
         )
-    name = node.id[len(root) + 1 :]
+    name = last(root, model.separator) if node_id == root else node.id[len(root) + 1 :]
     return ViewNode(
         id=node.id,
         name=name,
