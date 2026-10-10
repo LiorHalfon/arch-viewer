@@ -102,6 +102,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C18 | Outside workspace mode too, a rules file may name a part of a component with a qualified name, `component.part` (a module or sub-package inside it), in an `allowed` value and in `forbidden`'s `from` and `to`. A grant that names parts admits only imports into those parts' subtrees; a plain grant still admits the whole component; the meaning matches the workspace's qualified grant. A qualified name archview cannot place (no such component, no such module, or a module that belongs to another component) is a `ConfigError`, never a rule that silently cannot fire. | MVP (0.5.1) | GitHub issue #17; ADR 0018 |
 | C19 | The commands read components the way `check` does. `cycles` reads a level that has a rules file, the project's or a nested scope's, by that file's components and names the file. In a nested rules file, the module patterns in `components` and `exceptions` are read below the scope, and a pattern that starts with the scope's own name is read in full. A component left with only the `__init__` of a package whose modules went to other components counts only when it imports or is imported. `graph --root` takes a name relative to the package, as the queries do. `cycles --fold-root-modules` and `graph --fold-root-modules` count a package's own modules as one member named after the package, at every level. | MVP (0.6.0) | GitHub issues #21, #22, #23, #24, #25; ADR 0019 |
 | C20 | In workspace mode, `[[archview.workspace.forbidden]]` takes a qualified name, `package.component`, on either side: `from` matches the importing module's component and `to` the component the import reaches, in Python and TypeScript alike. A qualified name in the workspace's `allowed` or `forbidden` whose package or component does not exist is a `ConfigError`, and a plain `forbidden` name that is no package gets a notice. | MVP (0.6.0) | GitHub issue #19; ADR 0020 |
+| C21 | A nested rules file may hold `[archview.externals]` and `externals_undeclared`, keyed by the scope's children, and the scope sees what its children import from outside the project. An import must pass every rules file that covers it, so a nested file can only narrow what the root allows. A root `externals` key that names a part of a component is a `ConfigError` that points to the nested file. `init --root X --externals` writes the table. | MVP (0.6.0) | GitHub issue #18; ADR 0021 |
 
 ## 7. Agent integration
 
@@ -149,7 +150,7 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 |---|---|---|
 | Analysis | A1–A15. A3 externals are opt-in boxes. A9 "abstract" is defined in ADR 0008 | — |
 | Viewer | V1–V9, V11–V13, V15–V19. V10: hide tests, show externals, focus neighbours, what reaches / is reached. A workspace root's top level is the packages, drilling into each (ADR 0012). The UI draws its own SVG from Graphviz's layout (ADR 0017) | V10 collapse/expand in place (now possible on ADR 0017's drawing); V14 auto-collapse of very large views |
-| Checker | C1–C4, C6–C20. C5 text + JSON | C5 GitHub Actions annotations |
+| Checker | C1–C4, C6–C21. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
 Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
@@ -170,6 +171,8 @@ the cycles between a package's root modules and its children, which reproduced t
 five root cycles that refactor found with a script of its own.
 A workspace's `forbidden` rules take qualified names (C20, ADR 0020), and a
 TypeScript member's `public` list is enforced for the first time.
+A sub-package's own rules file may say what its children import from outside the
+project (C21, ADR 0021).
 
 M9 (2026-09-22): a package publishes a contract its siblings are checked against
 (C14, ADR 0013); the model JSON is schema 4, carrying the resolved target of an

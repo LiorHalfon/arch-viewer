@@ -214,7 +214,9 @@ to   = "openai"
 
 This is the same meaning a workspace gives `server = ["core.ports"]` (below); the two
 modes share one implementation. `[archview.externals]` keys still name whole
-components. See ADR 0018.
+components; to say what part of a component may import from outside the project, give
+that component a rules file of its own (*What a sub-package may import from outside*,
+below). See ADR 0018.
 
 ### Modules at the root of a package
 
@@ -480,10 +482,10 @@ are today. The root file is unchanged and still sees `services` as part of `weba
 On `tiny-tale-backend` this replaced the 27 component patterns issue #14 needed, and
 the false `webapp` cycle went with them.
 
-`init --root` refuses `--config`, `--exclude`, `--externals`, `--language` and
-`--tsconfig` with exit 2. Each one sets the root's rules or shapes the model, and a
-nested file has no key to record it, so `check` would read a different model from the
-one `init` inferred.
+`init --root` refuses `--config`, `--exclude`, `--language` and `--tsconfig` with
+exit 2. Each one sets the root's rules or shapes the model, and a nested file has no
+key to record it, so `check` would read a different model from the one `init`
+inferred. `--externals` works, and writes the nested file's `[archview.externals]`.
 
 How it works:
 
@@ -501,15 +503,14 @@ How it works:
   root module is a component named after the project. Leave it out of `allowed` and
   `check` reports it as `undeclared`.
 - A nested file holds rule keys only. `package`, `language`, `tsconfig`,
-  `source_roots`, `exclude`, `type_checking_imports`, `externals`,
-  `externals_undeclared`, `public` and `workspace` belong to the root, and a nested file
-  that sets one is a `ConfigError` that names the file and the key. The scope uses the
-  root's `exclude` and `type_checking_imports`.
-- A scope sees only imports between its own modules. Imports that leave the scope are
-  checked by the rules above it, so a `forbidden` entry that names something outside the
-  scope gets an `unknown_component` notice. To say which parts of a scope another
-  package may reach, write it in the root file with qualified names:
-  `plugin = ["core.ports", "core.types"]`.
+  `source_roots`, `exclude`, `type_checking_imports`, `public` and `workspace` belong to
+  the root, and a nested file that sets one is a `ConfigError` that names the file and
+  the key. The scope uses the root's `exclude` and `type_checking_imports`.
+- A scope sees the imports between its own modules, and what they import from outside
+  the project. Imports into the rest of the project are checked by the rules above it,
+  so a `forbidden` entry that names a module there gets an `unknown_component` notice.
+  To say which parts of a scope another package may reach, write it in the root file
+  with qualified names: `plugin = ["core.ports", "core.types"]`.
 - A nested file may hold a `baseline`, resolved against that file, or sit next to an
   `archview-baseline.json`. `check --update-baseline` writes one per scope.
 - A nested file may contain further nested files. In a workspace, a member's scopes are
@@ -523,10 +524,41 @@ How it works:
 - `serve` draws a scope's failing imports in red when you drill into it and lists its
   problems in the check panel. `--watch` reloads when a nested file changes.
 
-Not covered: limiting, in the nested file, which modules outside a scope its
-components may import (the root file can, with qualified names), `[archview.externals]`
-keys for a part of a component, `archview metrics` per scope (the numbers are in `check --format json`), and
-`[tool.archview]` in a nested `pyproject.toml`.
+Not covered: limiting, in the nested file, which modules in the rest of the project
+its components may import (the root file can, with qualified names), `archview metrics`
+per scope (the numbers are in `check --format json`), and `[tool.archview]` in a nested
+`pyproject.toml`.
+
+### What a sub-package may import from outside
+
+The root's `[archview.externals]` judges a component as a whole. To say that only two
+modules of a plugin may import its vendor's SDK, put the table in the plugin's own
+rules file, keyed by its children:
+
+```toml
+# src/bespoke_openai/archview.toml
+[archview]
+externals_undeclared = "error"   # a new child must say what it imports from outside
+
+[archview.externals]
+images   = ["agents", "openai"]
+language = ["agents", "openai"]
+models   = []
+pricing  = []
+```
+
+An import has to pass every file that covers it. The root's rules decide what
+`bespoke_openai` may import as a whole, and its own file narrows that per child, so a
+nested file can never allow what the root does not. With `bespoke_openai = []` in the
+root's `[archview.externals]`, the `openai` import in `language.py` fails at the root
+whatever the nested file says. `externals_undeclared`, the `partial_externals` notice,
+the stdlib check and `[[archview.forbidden]]` with a package outside the project in
+`to` work in a nested file as they do at the root, on the scope's children.
+`archview init --root src.bespoke_openai --externals` writes the table from today's
+imports.
+
+A key that names part of a component in the root's `[archview.externals]`, such as
+`"bespoke_openai.language"`, is a `ConfigError` that points here. See ADR 0021.
 
 ## Legacy code: baseline
 
