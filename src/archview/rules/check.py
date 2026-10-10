@@ -251,6 +251,7 @@ def check(model: Model, config: Config, in_workspace: bool = False) -> Report:
     left = leftovers(model, components)
     _reject_outside_sources(model, config)
     names = names_of(config, model, components, present)
+    _reject_part_keys(config, names)
     edges = component_edges(model, components, config)
     table = config.table
     measured = component_metrics(
@@ -689,6 +690,23 @@ def _reject_outside_sources(model: Model, config: Config) -> None:
             raise ConfigError(
                 f"[{config.table}.{f.origin}] has from = {f.source!r}, a package outside "
                 "the project; `from` must name a component"
+            )
+
+
+def _reject_part_keys(config: Config, names: Names) -> None:
+    """`[externals]` keys name whole components. What a part of a component may import
+    belongs in that component's own rules file, keyed by its children (issue #18), so a
+    key that names a part would never fire: a `ConfigError`, as ADR 0018 made it for a
+    part `allowed` cannot place."""
+    prefix = f"{config.path}: " if config.path else ""
+    for key in sorted(config.externals or {}):
+        if names.qualified(key):
+            whole = owner(key)
+            raise ConfigError(
+                f"{prefix}[{config.table}.externals] has the key {key!r}, a part of {whole}, "
+                f"but its keys name whole components. To say what part of {whole} may import, "
+                f"give {whole} a rules file of its own, with an [archview.externals] table "
+                f"keyed by {whole}'s children"
             )
 
 

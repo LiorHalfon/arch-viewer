@@ -183,6 +183,8 @@ NESTED_KEYS = frozenset(
         "fail_on_cycles",
         "metrics",
         "baseline",
+        "externals",
+        "externals_undeclared",
     }
 )
 ROOT_ONLY_KEYS = frozenset(TOP_KEYS) - NESTED_KEYS

@@ -330,8 +330,6 @@ ROOT_ONLY_VALUES = {
     "source_roots": ["src"],
     "exclude": ["x"],
     "type_checking_imports": "ignore",
-    "externals": {},
-    "externals_undeclared": "allow",
     "public": [],
     "workspace": {},
 }
@@ -352,6 +350,24 @@ def test_a_nested_file_takes_the_rule_keys_and_inherits_the_model_keys():
     )
     assert c.path == NESTED_FILE
     assert c.scope == "shop.services"  # module patterns are read below it (#22)
+
+
+def test_a_nested_file_may_say_what_its_children_import_from_outside():
+    c = parse_nested_config(
+        {"externals": {"language": ["openai"], "models": []}, "externals_undeclared": "error"},
+        NESTED_ROOT,
+        NESTED_FILE,
+        "shop.services",
+    )
+    assert c.externals == {"language": ("openai",), "models": ()}
+    assert c.externals_undeclared == "error"
+
+
+def test_a_nested_externals_table_still_rejects_a_stdlib_name():
+    with pytest.raises(ConfigError, match="'os', a stdlib module"):
+        parse_nested_config(
+            {"externals": {"models": ["os"]}}, Config(), NESTED_FILE, "shop.services"
+        )
 
 
 def test_every_root_only_key_has_a_test_value():

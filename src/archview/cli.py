@@ -424,7 +424,7 @@ def _init_scope(args: argparse.Namespace) -> int:
     """`init --root`: the nested rules file of one package, inferred with the root rules'
     settings, so the edges it writes are the edges `check` reads (#13). A flag that
     shapes that model or the root rules is refused: nothing would write it down."""
-    for name in ("externals", "config", "exclude", "tsconfig", "language"):
+    for name in ("config", "exclude", "tsconfig", "language"):
         if getattr(args, name):
             raise UsageError(f"--{name} is for the root rules file; leave it out with --root")
     project = _open(args, [args.root])
@@ -433,7 +433,8 @@ def _init_scope(args: argparse.Namespace) -> int:
     if target.is_file() and not (args.force or args.stdout):
         raise UsageError(f"{target} already has rules; --force regenerates them")
     config = _scope_config(project, scope, target)
-    return _write_rules(args, target, infer_scope_rules(project.model, scope, config))
+    text = infer_scope_rules(project.model, scope, config, externals=args.externals)
+    return _write_rules(args, target, text)
 
 
 def _scope_package(model: Model, name: str) -> str:
