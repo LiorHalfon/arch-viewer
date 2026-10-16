@@ -54,6 +54,8 @@ function fakeSvg() {
   };
 }
 const box = { dataset: { id: "a" }, setPointerCapture: () => {} };
+// A drop swallows the click that follows it on the page too.
+globalThis.window ??= { addEventListener: () => {}, removeEventListener: () => {} };
 const pointer = (x, buttons = 1) => ({ target: { closest: () => box }, button: 0, buttons, pointerId: 1, clientX: x, clientY: 0 });
 
 test("a release the diagram never saw does not leave a drag behind", () => {
@@ -68,6 +70,25 @@ test("a release the diagram never saw does not leave a drag behind", () => {
   svg.fire("pointerdown", pointer(0));
   svg.fire("pointermove", pointer(20, 1));
   assert.equal(moves, 1, "a real drag still moves");
+});
+
+test("a quick release on a trackpad drops the box where it was let go", () => {
+  // Chrome on a Mac trackpad: a fast release sends a move with no button held at the
+  // drop point, then the pointerup.
+  const svg = fakeSvg();
+  const drops = [];
+  let cancels = 0;
+  enableDrag(svg, {
+    toSvgPoint: (e) => ({ x: e.clientX, y: e.clientY }), onMove: () => {},
+    onDrop: (id, by) => drops.push([id, by]), onCancel: () => { cancels += 1; },
+  });
+  svg.fire("pointerdown", pointer(0));
+  svg.fire("pointermove", pointer(20, 1));
+  svg.fire("pointermove", pointer(30, 0));
+  svg.fire("pointerup", pointer(30, 0));
+  assert.deepEqual(drops, [["a", { x: 30, y: 0 }]]);
+  assert.equal(cancels, 0);
+  assert.equal(svg.classList.contains("dragging"), false);
 });
 
 test("storage that refuses a write does not throw", () => {

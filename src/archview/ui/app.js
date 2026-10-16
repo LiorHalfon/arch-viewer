@@ -3,11 +3,14 @@
 // so Back returns to where you were.
 
 import { classOf, LIGHT, schemeFromOptions } from "./colour.js";
+import { loopsIn } from "./cycles.js";
 import { enableDrag, layoutKey, loadMoved, saveMoved } from "./drag.js";
 import { drawSvg, edgeGeometry } from "./draw.js";
 import { flatten } from "./find.js";
-import { bounds, clusterFrames, layoutView, routesAfterMove, straightRoute } from "./layout.js";
+import { bounds, clusterFrames, edgeKey, layoutView, routesAfterMove, straightRoute } from "./layout.js";
+import { enableResize, PANEL_DEFAULT, panelWidth } from "./resize.js";
 import { createFinder, hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
+import { enablePan, keepUnder, wheelFactor } from "./zoom.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -30,7 +33,7 @@ const state = {
   trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
-  options: { tests: false, externals: false, colour: "role", legend: true, tree: true },
+  options: { tests: false, externals: false, colour: "role", legend: true, tree: true, panel: PANEL_DEFAULT },
   palette: null,        // the theme's colour tokens, read from app.css, for label ink
 };
 
@@ -108,6 +111,14 @@ function applyOptions() {
   $("main").classList.toggle("with-tree", state.options.tree);
   $("tree-toggle").setAttribute("aria-expanded", String(state.options.tree));
   $("tree-toggle").classList.toggle("on", state.options.tree);
+  sizePanel(state.options.panel);
+}
+
+// The side panel's width, kept with the options; app.css holds it to the same bounds
+// when the window shrinks.
+function sizePanel(width) {
+  state.options.panel = panelWidth(width, $("main").clientWidth);
+  $("main").style.setProperty("--panel-w", `${state.options.panel}px`);
 }
 
 function viewQuery(root, pkg = state.package) {
@@ -237,7 +248,7 @@ function insideAPackage() {
 
 function stats(view) {
   const parts = [plural(view.nodes.length, "box", "boxes"), plural(view.edges.length, "dependency", "dependencies")];
-  parts.push(view.cycles.length ? `<span class="bad">${plural(view.cycles.length, "cycle")}</span>` : "no cycles");
+  parts.push(view.cycles.length ? `<button class="link bad" id="show-cycles" title="List the cycles at this level">${plural(view.cycles.length, "cycle")}</button>` : "no cycles");
   const violations = view.edges.filter((e) => e.violation).length;
   if (violations) parts.push(`<span class="bad">${plural(violations, "rule break")}</span>`);
   const warnings = state.project.warnings;
@@ -249,6 +260,8 @@ function stats(view) {
   $("stats").innerHTML = parts.join(" · ");
   const button = $("show-warnings");
   if (button) button.onclick = openWarnings;
+  const cycles = $("show-cycles");
+  if (cycles) cycles.onclick = () => openCycles();
 }
 
 function cycleText(cycle) {
@@ -270,8 +283,12 @@ function notes() {
   el.hidden = sections.length === 0;
   el.innerHTML = sections.join("");
   el.querySelectorAll("li[data-cycle]").forEach((li) => {
-    const cycle = view.cycles[Number(li.dataset.cycle)];
-    li.onclick = () => pin(new Set(cycle), cycleText(cycle), false);
+    const n = Number(li.dataset.cycle);
+    const cycle = view.cycles[n];
+    li.onclick = () => {
+      openCycles(n);
+      pin(new Set(cycle), cycleText(cycle), false);
+    };
   });
   const clear = $("clear-focus");
   if (clear) clear.onclick = clearFocus;
@@ -462,9 +479,12 @@ function focusOn(ids, pinned = null) {
   const focus = !pinned && ids.size === 1 ? [...ids][0] : pinned?.root ?? null;
   const shown = new Set(ids);
   svg.querySelectorAll("g.edge").forEach((g) => {
-    const related = single
-      ? ids.has(g.dataset.source) || ids.has(g.dataset.target)
-      : ids.has(g.dataset.source) && ids.has(g.dataset.target);
+    // A loop names its own lines: a line across it is not part of it.
+    const related = pinned?.edges
+      ? pinned.edges.has(edgeKey(g.dataset.source, g.dataset.target))
+      : single
+        ? ids.has(g.dataset.source) || ids.has(g.dataset.target)
+        : ids.has(g.dataset.source) && ids.has(g.dataset.target);
     g.classList.toggle("related", related);
     g.classList.toggle("out", focus !== null && g.dataset.source === focus);
     g.classList.toggle("in", focus !== null && g.dataset.target === focus);
@@ -482,8 +502,9 @@ function unfocus() {
 }
 
 // `pick`: the legend class this focus picks out, so its row shows as pressed.
-function pin(ids, label, strict = true, root = null, pick = null) {
-  state.sticky = { ids, label, strict, root, pick };
+// `edges`: the edgeKeys to light, when only some lines between the boxes belong.
+function pin(ids, label, strict = true, root = null, pick = null, edges = null) {
+  state.sticky = { ids, label, strict, root, pick, edges };
   focusOn(ids, state.sticky);
   notes();
   legend();
@@ -701,6 +722,20 @@ function setZoom(zoom, keepCentre = true) {
   }
 }
 
+// The wheel and a pinch zoom around the pointer rather than the middle of the stage.
+function zoomAtPointer(e) {
+  const svg = $("graph").querySelector("svg");
+  if (!svg) return;
+  e.preventDefault();
+  hideCard();
+  const before = svg.getBoundingClientRect();
+  setZoom(state.zoom * wheelFactor(e), false);
+  const by = keepUnder(before, svg.getBoundingClientRect(), { x: e.clientX, y: e.clientY });
+  const stage = $("stage");
+  stage.scrollLeft += by.x;
+  stage.scrollTop += by.y;
+}
+
 // ---------- panel ----------
 
 function openPanel(titleHtml, bodyHtml, code = false) {
@@ -897,6 +932,46 @@ function openWarnings() {
     const w = warnings[Number(li.dataset.n)];
     li.onclick = () => openSource(w.module, w.line);
   });
+}
+
+// The cycles at this level, each broken into the loops it is made of. Hovering a
+// row lights it up on the diagram; a click keeps it lit.
+function openCycles(tangle = null) {
+  const view = state.view;
+  const counts = new Map(view.edges.map((e) => [edgeKey(e.source, e.target), e.count]));
+  const loopKeys = (loop) => loop.map((id, i) => edgeKey(id, loop[(i + 1) % loop.length]));
+  const linesIn = (members) => view.edges.filter((e) => members.has(e.source) && members.has(e.target)).map((e) => edgeKey(e.source, e.target));
+  const tangles = view.cycles.map((members) => ({ members, ...loopsIn(members, view.edges) }));
+  const loopText = (loop) => [...loop, loop[0]].map(short).join(" → ");
+  const total = tangles.reduce((n, t) => n + t.loops.length, 0);
+  const more = tangles.some((t) => t.more);
+  const body = openPanel(
+    `<h2>Cycles at this level</h2><div class="sub">${plural(view.cycles.length, "cycle")}, made of ${total}${more ? "+" : ""} ${total === 1 && !more ? "loop" : "loops"}</div>`,
+    `<p class="cycles-head"><button id="cycles-all">Highlight all</button> <span class="hint">hover a loop to light it up, click to keep it lit</span></p>
+     ${tangles.map((t, i) => `<section data-tangle="${i}">
+       <h3 class="group cycle-row" data-tangle="${i}">${esc(cycleText(t.members))}</h3>
+       <div class="hint loop-count">${t.more ? `the first ${t.loops.length} loops, shortest first` : plural(t.loops.length, "loop")}</div>
+       <ul class="links loops">${t.loops.map((loop, j) => `<li class="cycle-row" data-tangle="${i}" data-loop="${j}">
+         <div>${esc(loopText(loop))}</div>
+         <div class="n">imports along it: ${loopKeys(loop).map((k) => counts.get(k)).join(", ")}</div></li>`).join("")}</ul>
+     </section>`).join("")}`,
+  );
+  const restore = () => (state.sticky ? focusOn(state.sticky.ids, state.sticky) : unfocus());
+  const light = (row, ids, edges, label) => {
+    row.onmouseenter = () => focusOn(ids, { strict: true, edges });
+    row.onmouseleave = restore;
+    row.onclick = () => pin(ids, label, true, null, null, edges);
+  };
+  body.querySelectorAll(".cycle-row").forEach((row) => {
+    const t = tangles[Number(row.dataset.tangle)];
+    const members = new Set(t.members);
+    if (row.dataset.loop === undefined) return light(row, members, new Set(linesIn(members)), cycleText(t.members));
+    const loop = t.loops[Number(row.dataset.loop)];
+    light(row, new Set(loop), new Set(loopKeys(loop)), loopText(loop));
+  });
+  const everyBox = new Set(view.cycles.flat());
+  light($("cycles-all"), everyBox, new Set(view.cycles.flatMap((c) => linesIn(new Set(c)))), "every cycle");
+  if (tangle !== null) body.querySelector(`section[data-tangle="${tangle}"]`)?.scrollIntoView({ block: "nearest" });
 }
 
 async function openRules() {
@@ -1121,11 +1196,19 @@ function bind() {
   $("zoom-in").onclick = () => setZoom(state.zoom * 1.25);
   $("zoom-out").onclick = () => setZoom(state.zoom / 1.25);
   $("zoom-fit").onclick = () => setZoom(fitZoom());
+  $("stage").addEventListener("wheel", zoomAtPointer, { passive: false });
+  enablePan($("stage"));
   $("reset-layout").onclick = resetLayout;
   $("reanalyze").onclick = reanalyze;
   $("rules").onclick = openRules;
   $("metrics-table").onclick = openMetricsTable;
   $("panel-close").onclick = closePanel;
+  enableResize($("panel-resize"), {
+    width: () => $("panel").getBoundingClientRect().width,
+    onResize: sizePanel,
+    onDone: saveOptions,
+    onReset: () => { sizePanel(PANEL_DEFAULT); saveOptions(); },
+  });
   document.querySelectorAll("[data-export]").forEach((b) => { b.onclick = () => exportView(b.dataset.export); });
   const option = (id, key, redraw) => {
     $(id).onchange = () => {
