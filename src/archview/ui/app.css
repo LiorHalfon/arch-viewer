@@ -122,11 +122,13 @@ main {
   grid-template-columns: 1fr;
   min-height: 0;
 }
-main.with-panel { grid-template-columns: 1fr minmax(360px, 38vw); }
+/* --panel-w is the width the panel was dragged to (resize.js keeps the same bounds) */
+main.with-panel { grid-template-columns: 1fr clamp(280px, var(--panel-w, 360px), 60%); }
 main.with-tree { grid-template-columns: minmax(200px, 260px) 1fr; }
-main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minmax(360px, 38vw); }
+main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr clamp(280px, var(--panel-w, 360px), 60%); }
 .canvas { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
-.stage { overflow: auto; }
+.stage { overflow: auto; cursor: grab; }
+.stage.panning, .stage.panning * { cursor: grabbing; }
 .graph { padding: 24px; width: max-content; min-width: 100%; }
 .graph svg { display: block; margin: 0 auto; }
 .hint { color: var(--muted); }
@@ -246,6 +248,7 @@ main.with-tree.with-panel { grid-template-columns: minmax(200px, 260px) 1fr minm
 .menu-item { border: none; background: transparent; text-align: left; padding: 4px 6px; border-radius: 4px; width: 100%; }
 #rules.bad { color: var(--danger); border-color: var(--danger); font-weight: 600; }
 .stats button.link { border: none; background: none; padding: 0; color: var(--warn); font-weight: 600; font-size: 12px; cursor: pointer; }
+.stats button.link.bad { color: var(--danger); text-decoration: underline; text-underline-offset: 2px; }
 
 /* notes footer: cycles, focus */
 .notes {
@@ -366,6 +369,7 @@ button.icon:hover { border-color: var(--accent); }
 
 /* side panel */
 .panel {
+  position: relative;
   border-left: 1px solid var(--border);
   background: var(--surface);
   display: grid;
@@ -374,6 +378,8 @@ button.icon:hover { border-color: var(--accent); }
   min-height: 0;
 }
 .panel[hidden] { display: none; }
+.panel-resize { position: absolute; inset: 0 auto 0 -4px; width: 7px; z-index: 2; cursor: col-resize; touch-action: none; }
+.panel-resize:hover, .panel-resize:focus-visible { background: var(--accent); opacity: .5; outline: none; }
 .panel-head { display: flex; align-items: flex-start; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
 .panel-title { flex: 1; min-width: 0; }
 .panel-title h2 { font-size: 15px; margin: 0; word-break: break-word; }
@@ -399,6 +405,13 @@ button.icon:hover { border-color: var(--accent); }
 .links li { padding: 2px 0; cursor: pointer; }
 .links li:hover { color: var(--accent); }
 .links .n { color: var(--muted); }
+.cycles-head { display: flex; gap: 10px; align-items: center; margin: 0 0 6px; font-size: 12px; }
+.cycles-head button { white-space: nowrap; }
+.panel h3.cycle-row { cursor: pointer; font-family: var(--mono); font-size: 12px; }
+.panel h3.cycle-row:hover { color: var(--accent); }
+.loop-count { font-size: 12px; margin-bottom: 4px; }
+.loops li { padding: 4px 0; }
+.loops .n { font-size: 11px; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
 .actions button { font-size: 12px; }
 table.metrics { border-collapse: collapse; width: 100%; font-size: 12px; }
@@ -439,4 +452,5 @@ table.metrics tbody tr:hover { background: var(--focus); }
   main.with-tree:not(.with-panel) { grid-template-rows: 1fr; }
   .tree { position: absolute; inset: 0 auto 0 0; width: min(280px, 80vw); z-index: 4; box-shadow: 4px 0 12px rgb(0 0 0 / .15); }
   .panel { border-left: none; border-top: 1px solid var(--border); }
+  .panel-resize { display: none; }
 }

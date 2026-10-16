@@ -588,6 +588,13 @@ In the viewer:
 - **Drag a box** to move it. Graphviz routes the lines again when you let go. The
   layout is kept for that view in your browser, and **Reset layout** puts Graphviz's
   back. Nothing is written into the repo.
+- **The wheel or a pinch** zooms around the pointer; drag the background to pan.
+- **The side panel** (source, details, rules, cycles) resizes from its left edge, and
+  the browser keeps the width; double-click the edge for the default.
+- **The cycle count** at the top (or a cycle in the list below the diagram) opens a
+  panel that breaks each cycle into its loops, shortest first, with the imports along
+  each one. Hover a loop to light it up on the diagram, click to keep it lit, or
+  **Highlight all**.
 - **Line width** follows the number of imports. Hovering a box colours what it imports
   blue and what imports it violet, and shows its numbers in a card.
 - **`/`** finds any package or module by name and opens the level that draws it.

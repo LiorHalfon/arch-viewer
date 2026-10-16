@@ -18,9 +18,9 @@
     <div class="tools">
       <button id="up" title="Up one level (u)" aria-label="Up one level">&uarr;</button>
       <span class="sep"></span>
-      <button id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">&minus;</button>
+      <button id="zoom-out" title="Zoom out (- or the wheel; drag the background to pan)" aria-label="Zoom out">&minus;</button>
       <button id="zoom-fit" title="Fit to window (0)">Fit</button>
-      <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button id="zoom-in" title="Zoom in (+ or the wheel; drag the background to pan)" aria-label="Zoom in">+</button>
       <button id="reset-layout" title="Put back the Graphviz layout for this view" disabled>Reset layout</button>
       <span class="sep"></span>
       <button id="find" title="Find a package or module (/)">Find</button>
@@ -70,6 +70,7 @@
       <footer class="notes" id="notes" hidden></footer>
     </section>
     <aside class="panel" id="panel" hidden>
+      <div class="panel-resize" id="panel-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0" title="Drag to resize (or ← →); double-click for the default width"></div>
       <div class="panel-head">
         <div class="panel-title" id="panel-title"></div>
         <button class="close" id="panel-close" title="Close (Esc)" aria-label="Close panel">&times;</button>

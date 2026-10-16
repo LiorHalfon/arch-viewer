@@ -47,6 +47,15 @@ export function saveMoved(storage, key, moved) {
   }
 }
 
+// The click a browser sends after a drag ends must not open what the pointer was on.
+export function swallowClick(...targets) {
+  const swallow = (click) => { click.stopPropagation(); click.preventDefault(); };
+  for (const target of targets) {
+    target.addEventListener("click", swallow, { capture: true, once: true });
+    setTimeout(() => target.removeEventListener("click", swallow, { capture: true }), 0);
+  }
+}
+
 // Pointer handling on the boxes. `onMove` and `onDrop` get the pointer's offset since
 // it went down, in SVG units. The click that follows a drag is swallowed, so dropping
 // a package does not open it.
@@ -60,6 +69,14 @@ export function enableDrag(svg, { toSvgPoint, onMove, onDrop, onCancel = () => {
     svg.classList.remove("dragging");
     drag = null;
   };
+  const drop = (e) => {
+    // The drop redraws the diagram: the click may reach the page, or the old svg it
+    // left behind, so swallow it on both.
+    swallowClick(window, svg);
+    const { id } = drag, by = offset(e);
+    end();
+    onDrop(id, by);
+  };
   svg.addEventListener("pointerdown", (e) => {
     const g = e.target.closest("g.node");
     if (!g || e.button !== 0) return;
@@ -68,9 +85,11 @@ export function enableDrag(svg, { toSvgPoint, onMove, onDrop, onCancel = () => {
   svg.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.pointer) return;
     if (!(e.buttons & 1)) {
-      // The button came up where the svg could not see it (before pointer capture).
-      if (drag.moving) onCancel(drag.id);
-      end();
+      // The button is up. Moving, it is a release: a quick one on a Mac trackpad sends
+      // this move before the pointerup. Not yet moving, the press came up where the
+      // svg could not see it (before pointer capture).
+      if (drag.moving) drop(e);
+      else end();
       return;
     }
     if (!drag.moving) {
@@ -87,20 +106,8 @@ export function enableDrag(svg, { toSvgPoint, onMove, onDrop, onCancel = () => {
   });
   svg.addEventListener("pointerup", (e) => {
     if (!drag || e.pointerId !== drag.pointer) return;
-    if (drag.moving) {
-      // The drop redraws the diagram: the click may reach the page, or the old svg it
-      // left behind, so swallow it on both.
-      const swallow = (click) => { click.stopPropagation(); click.preventDefault(); };
-      for (const target of [window, svg]) {
-        target.addEventListener("click", swallow, { capture: true, once: true });
-        setTimeout(() => target.removeEventListener("click", swallow, { capture: true }), 0);
-      }
-      const { id } = drag, by = offset(e);
-      end();
-      onDrop(id, by);
-      return;
-    }
-    end();
+    if (drag.moving) drop(e);
+    else end();
   });
   svg.addEventListener("pointercancel", () => {
     if (drag?.moving) onCancel(drag.id);
