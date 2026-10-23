@@ -14,14 +14,17 @@ Playwright's Chromium (`uv run --with playwright python -m playwright install ch
 Every target is found in the page, never by pixel position, so a new layout still works.
 """
 
+import queue
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 
 REPO = Path(__file__).resolve().parent.parent
@@ -30,7 +33,7 @@ OUT = REPO / "docs" / "images"
 VIEWPORT = {"width": 1440, "height": 860}
 GIF_WIDTH = 1080
 GIF_FPS = 12
-REST = (1250, 640)  # where the pointer starts and ends, away from the boxes
+SERVE_TIMEOUT = 120  # seconds for `archview serve` to print its URL (a first `uv run` builds)
 
 STATIONS = "pizzeria.kitchen.stations"
 
@@ -64,6 +67,7 @@ EDGE_MIDPOINT_JS = """
 ([source, target]) => {
   const g = document.querySelector(
     `#graph g.edge[data-source="${source}"][data-target="${target}"]`);
+  if (!g) return null;
   const path = g.querySelector("path");
   const at = path.getPointAtLength(path.getTotalLength() / 2);
   const m = path.getScreenCTM();
@@ -81,12 +85,32 @@ def serve() -> tuple[subprocess.Popen, str]:
         stderr=subprocess.STDOUT,
         text=True,
     )
-    for line in process.stdout:
+    lines: queue.Queue[str | None] = queue.Queue()
+    threading.Thread(target=_read_lines, args=(process.stdout, lines), daemon=True).start()
+    last = ""
+    deadline = time.monotonic() + SERVE_TIMEOUT
+    while (left := deadline - time.monotonic()) > 0:
+        try:
+            line = lines.get(timeout=left)
+        except queue.Empty:
+            break
+        if line is None:
+            process.wait()
+            said = f": {last.strip()}" if last.strip() else ""
+            raise SystemExit(f"record_demo: archview serve exited ({process.returncode}){said}")
         found = re.search(r" at (http://\S+/)", line)
         if found:
             return process, found.group(1)
-    process.wait()
-    raise SystemExit(f"record_demo: archview serve exited ({process.returncode}): {line.strip()}")
+        last = line
+    process.terminate()
+    raise SystemExit(f"record_demo: archview serve printed no URL within {SERVE_TIMEOUT} s")
+
+
+def _read_lines(stream, lines: queue.Queue[str | None]) -> None:
+    """Pass the server's output on line by line, then None; keeps the pipe drained."""
+    for line in stream:
+        lines.put(line)
+    lines.put(None)
 
 
 def centre(page: Page, selector: str) -> tuple[float, float]:
@@ -99,7 +123,10 @@ def node(page: Page, node_id: str) -> tuple[float, float]:
 
 
 def edge_point(page: Page, source: str, target: str) -> tuple[float, float]:
-    return tuple(page.evaluate(EDGE_MIDPOINT_JS, [source, target]))
+    point = page.evaluate(EDGE_MIDPOINT_JS, [source, target])
+    if point is None:
+        raise SystemExit(f"record_demo: the view draws no line {source} -> {target}")
+    return tuple(point)
 
 
 def aside(page: Page) -> tuple[float, float]:
@@ -154,7 +181,7 @@ def shots(page: Page) -> None:
     page.wait_for_timeout(2200)
     click_at(page, centre(page, "#crumbs a:text-is('pizzeria')"))
     wait_for_view(page, "pizzeria")
-    glide(page, REST, steps=40)
+    glide(page, aside(page), steps=40)
     page.wait_for_timeout(1500)
 
 
@@ -174,7 +201,7 @@ def record(url: str, video_dir: Path) -> tuple[Path, float]:
         began = time.monotonic()
         page.goto(url)
         wait_for_view(page, "pizzeria")
-        page.mouse.move(*REST)
+        page.mouse.move(*aside(page))
         page.wait_for_timeout(200)
         start = time.monotonic() - began
         shots(page)
@@ -208,6 +235,11 @@ def main() -> int:
         video, start = record(url, video_dir)
         for path in encode(video, start):
             print(f"{path.relative_to(REPO)}  {path.stat().st_size / 1e6:.1f} MB")
+    except PlaywrightError as error:
+        first = str(error).splitlines()[0]
+        raise SystemExit(f"record_demo: the viewer did not follow the shot list: {first}") from None
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(f"record_demo: ffmpeg failed with exit code {error.returncode}") from None
     finally:
         process.terminate()
         process.wait()

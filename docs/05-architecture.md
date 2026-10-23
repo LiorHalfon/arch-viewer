@@ -7,22 +7,34 @@ How archview is built. It follows Bob's advice (43:52): don't port his Clojure t
 ```
 archview/
   extract/
-    python.py        # grimp -> RawGraph: modules, package tree, imports with file:line, abstract flags
+    discover.py      # which top-level packages a Python repo has, and from where
+    python.py        # grimp -> the model: modules, package tree, imports with file:line
+    facts.py         # one `ast` pass per file: TYPE_CHECKING, lazy and dynamic imports, abstract flags
+    siblings.py      # imports between sibling packages in a workspace (ADR 0013)
+    typescript.py    # the TypeScript compiler's report -> the same model (ADR 0010)
   model/
-    graph.py         # language-agnostic: Tree, Edge, View (aggregation for a root), JSON (de)serialisation
-    cycles.py        # SCCs, cycle listing, cycle-breaker edges (arch-view style ranking)
+    graph.py         # language-agnostic: a tree of nodes plus the imports between them
+    view.py          # aggregation for one root: boxes, counted edges, layers, cycles
+    cycles.py        # SCCs, cycle listing
     layers.py        # topological layering of the condensation DAG (stable, name-sorted)
-    metrics.py       # fan-in/out, I, A, D, zones (dependency-checker formulas)
+    metrics.py       # Ca, Ce, I, A, D, zones (dependency-checker formulas)
+    filter.py, names.py, patterns.py, query.py, serialize.py
   rules/
     config.py        # archview.toml / [tool.archview] loading + validation with helpful errors
-    check.py         # actual edges vs rules -> Violations (component, count, examples, remedy hint)
-    init.py          # infer starter rules from the current graph; baseline support later
+    components.py    # which component a module belongs to
+    check.py         # actual edges vs rules -> problems (component, count, imports, hint)
+    scopes.py        # nested rules files inside sub-packages (ADR 0016)
+    init.py          # infer starter rules from the current graph
+    baseline.py, overlay.py, qualified.py
+  render/            # text, JSON, DOT and Mermaid output for the CLI and the server
+  project.py         # open a repo: its rules, its package, the filtered model
+  workspace.py       # several packages checked and drawn as one architecture (ADR 0012)
   cli.py             # archview serve | check | init | graph | metrics | why | deps | rdeps | cycles
-  server/            # tiny local HTTP server: /api/view?root=..., /api/source?module=..., static UI
-  ui/                # static web UI (Graphviz-WASM first), no build step for the MVP
+  server/            # local FastAPI app: /api/view?root=..., /api/source?module=..., static UI
+  ui/                # plain ES modules, no build step; Graphviz-WASM lays out, the UI draws the SVG
 ```
 
-Rules of the house: `extract` is the only Python-aware package; `model` and `rules` know nothing about Python; `cli`/`server`/`ui` are presentation. The repo commits its own `archview.toml` and `archview check` runs in its CI — the tool must pass its own checker (requirement N8).
+Rules of the house: `extract` is the only language-aware package; `model` and `rules` know nothing about Python or TypeScript; `cli`/`server`/`ui` are presentation. The repo commits its own `archview.toml` and `archview check` runs in its CI — the tool must pass its own checker (requirement N8).
 
 ## 2. Key technical choices
 
@@ -105,7 +117,7 @@ CYCLE services -> infra -> services (2 edges)
 JSON: the same as a list of objects (`kind`, `rule`, `from`, `to`, `count`, `examples[]`, `hint`), stable ordering. No colours, no banners in JSON mode.
 
 ### Viewer: Graphviz-WASM first, ELK + React Flow if needed
-MVP: `archview serve` starts a local server (stdlib `http.server` or FastAPI — import-linter uses FastAPI + uvicorn) that serves `/api/view?root=` (derived view JSON incl. a ready-made DOT string) and `/api/source?module=`. The static page renders DOT with `@viz-js/viz` (vendored, MIT), wires click handlers on node ids (drill-down = fetch new view), keeps a breadcrumb stack with scroll positions, shows the cycles list under the diagram, and opens source in a side panel (`<pre>` + highlight.js is enough; CodeMirror 6 later). Layering: emit `{rank=same; ...}` per layer and `newrank=true`, colour cyclic edges red, package nodes as UML component shapes (Graphviz `shape=component`).
+The first viewer: `archview serve` starts a local FastAPI server (as import-linter does, with uvicorn) that serves `/api/view?root=` (derived view JSON incl. a ready-made DOT string) and `/api/source?module=`. The static page renders DOT with `@viz-js/viz` (vendored, MIT), wires click handlers on node ids (drill-down = fetch new view), keeps a breadcrumb stack with scroll positions, shows the cycles list under the diagram, and opens source in a side panel (`<pre>` + highlight.js is enough; CodeMirror 6 later). Layering: emit `{rank=same; ...}` per layer and `newrank=true`, colour cyclic edges red, package nodes as UML component shapes (Graphviz `shape=component`).
 
 Upgrade path (V2 interactions: focus, collapse in place, hover popups, metrics badges): React + `@xyflow/react` with elkjs layered layout (`hierarchyHandling=INCLUDE_CHILDREN`, `partitioning` per layer, orthogonal edges) — same `/api` JSON, so the server does not change. Alternative to evaluate in one afternoon: LikeC4's Builder API + `<ReactLikeC4 />` for a ready-made drill-down viewer.
 

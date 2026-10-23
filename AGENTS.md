@@ -65,7 +65,7 @@ Read in this order:
 - Work in vertical slices (extract → model → CLI → UI), one feature at a time. Dogfood on `examples/pizzeria` and on any real repo you have.
 - Never edit a rules file to make `archview check` pass; fix the code or ask.
 - Update `docs/02-requirements.md` when a requirement changes; record decisions in `docs/decisions/` (ADR style, one file each). Specs and plans are working notes in `docs/superpowers/`, which git ignores.
-- When a change shows in the viewer, re-record the README's GIF (`uv run scripts/record_demo.py`) and look at it before committing.
+- When a change alters what the README's GIF shows (the pizzeria's views, the panel, the source view), re-record it with `uv run scripts/record_demo.py` and look at it before committing. Each re-record adds about 2.5 MB to the history, so leave it alone for changes it does not show.
 
 ## Useful commands
 

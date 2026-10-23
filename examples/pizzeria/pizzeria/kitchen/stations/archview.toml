@@ -6,6 +6,7 @@
 
 [archview]
 fail_on_violations = true
+# init wrote false here, since it found oven -> toppings -> oven; the demo fails on it.
 fail_on_cycles = true
 
 [archview.allowed]

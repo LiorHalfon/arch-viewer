@@ -3,18 +3,20 @@
 ## Install once
 
 ```bash
-uv tool install --editable ~/git/arch-viewer     # puts `archview` on the PATH; edits stay live
+uv tool install git+https://github.com/LiorHalfon/arch-viewer@v0.7
 cd ~/git/some-repo && archview .                 # opens the viewer (same as `archview serve .`)
 ```
 
-Without a checkout, install a release from GitHub. The floating tag `v0.1` always
-points at the latest 0.1.x release; a minor bump (0.2.0) gets its own `v0.2`. A moved
-tag is only picked up on reinstall or with `uvx --refresh`:
+The floating tag `v0.7` always points at the latest 0.7.x release; a minor bump (0.8.0)
+gets its own `v0.8`. A moved tag is only picked up on reinstall or with `uvx --refresh`:
 
 ```bash
-uv tool install --reinstall git+https://github.com/LiorHalfon/arch-viewer@v0.1
-uvx --refresh --from git+https://github.com/LiorHalfon/arch-viewer@v0.1 archview check
+uv tool install --reinstall git+https://github.com/LiorHalfon/arch-viewer@v0.7
+uvx --refresh --from git+https://github.com/LiorHalfon/arch-viewer@v0.7 archview check
 ```
+
+From a checkout of this repo, `uv tool install --editable .` puts `archview` on the PATH
+with your edits live.
 
 ## TypeScript
 
@@ -56,8 +58,8 @@ direction of dependencies and the cycles, not the zone column.
 
 ```bash
 cd ~/git/some-repo
-uvx --from ~/git/arch-viewer archview init            # writes archview.toml from today's imports
-uvx --from ~/git/arch-viewer archview check           # passes straight away
+archview init            # writes archview.toml from today's imports
+archview check           # passes straight away
 ```
 
 Then open `archview.toml` and **delete the dependencies that should not exist**. From
@@ -470,10 +472,11 @@ toppings = ["oven", "sauce"]
 ```
 
 `archview init --root pizzeria.kitchen.stations` writes this file from the imports as
-they are today; deleting `"dough"` from `boxing` is the rule the demo then breaks. The
-root file is unchanged and still sees the stations as part of `kitchen`. In a real
-backend this replaced the 27 component patterns issue #14 needed, and a false cycle
-through the parent package went with them.
+they are today, with `fail_on_cycles = false` and a comment naming the cycle it found.
+The demo then deleted `"dough"` from `boxing`, the rule it breaks, and switched
+`fail_on_cycles` on, so the cycle fails too. The root file is unchanged and still sees
+the stations as part of `kitchen`. In a real backend this replaced the 27 component
+patterns issue #14 needed, and a false cycle through the parent package went with them.
 
 `init --root` refuses `--config`, `--exclude`, `--language` and `--tsconfig` with
 exit 2. Each one sets the root's rules or shapes the model, and a nested file has no
