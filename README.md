@@ -1,45 +1,132 @@
-# arch-viewer
+# archview
 
-Project brief for an **architecture viewer + dependency-rules checker for Python and TypeScript code bases**, inspired by the tool Uncle Bob describes in [LIVE: Uncle Bob on Software Fundamentals in the Age of AI](https://www.youtube.com/watch?v=zcLPGC-tvgk) (26:55–28:06) and by his real implementations, [unclebob/arch-view](https://github.com/unclebob/arch-view) and [unclebob/dependency-checker](https://github.com/unclebob/dependency-checker).
+AI agents can't quietly break your architecture.
 
-The idea in one paragraph: agents write most of the code; the human's job is to *see* the modular structure and decide how modules should be partitioned and which way dependencies run; a spec file captures that decision and a fast deterministic checker keeps the agents inside it. This repo contains the requirements, the research on what exists, a recommended approach, and the tool itself: milestones M1–M4 are built (graph, checker, browser viewer, metrics, baseline); agent queries (M5) are next.
+You write down which parts of your code may import which. `archview check` reads the
+real imports and fails, with the file and the line, as soon as a change crosses that
+line. It holds an agent on its fortieth edit to the same rules as you on your first.
 
-## Contents
+![The viewer on examples/pizzeria: from the top-level packages into the kitchen, then into its assembly line, where a cycle and a broken rule show up, down to the line of code that breaks the rule](docs/images/demo.gif)
 
-| Path | What it is |
+## Why
+
+Agents write most of the code now. They are fast, and they don't care which way a
+dependency points. Ask one to fix a bug in checkout and it will import the payment
+client from your domain model if that is the shortest path. Each change looks fine on
+its own. A few weeks later nothing can be moved without moving everything.
+
+Uncle Bob's answer, in
+[LIVE: Uncle Bob on Software Fundamentals in the Age of AI](https://www.youtube.com/watch?v=zcLPGC-tvgk&t=1615s)
+(26:55), is to split the work. The human looks at the structure and decides how the
+code is partitioned and which way dependencies run. That decision goes in a file, and a
+fast, deterministic checker keeps the agents inside it. He built
+[arch-view](https://github.com/unclebob/arch-view) and
+[dependency-checker](https://github.com/unclebob/dependency-checker) for Clojure.
+archview is the same idea for Python and TypeScript.
+
+## Quick start
+
+```bash
+uv tool install git+https://github.com/LiorHalfon/arch-viewer@v0.7
+cd your-repo && archview .
+```
+
+`archview .` opens the viewer in your browser. To run it once without installing:
+`uvx --from git+https://github.com/LiorHalfon/arch-viewer@v0.7 archview .`
+
+Python needs nothing else. TypeScript needs Node and the repo's own `npm install`,
+because archview resolves imports with the repo's `typescript`, exactly as `tsc` does.
+
+The demo from the GIF is in this repo:
+
+```bash
+git clone https://github.com/LiorHalfon/arch-viewer && cd arch-viewer
+archview examples/pizzeria
+```
+
+## Hold agents to it
+
+1. `archview init` writes `archview.toml` from the imports as they are today, so the
+   check passes straight away.
+2. Delete the dependencies that should not exist. From then on `archview check` fails
+   until the code matches.
+3. Run the check where an agent can't skip it: CI, pre-commit, and Claude Code's Stop
+   hook, which hands the failure back to the agent before it can finish.
+
+In the demo, the rules for the kitchen's assembly line say `boxing` takes pizzas from
+the `oven` only. The code disagrees, and `toppings` and `oven` import each other:
+
+```
+$ archview check examples/pizzeria
+pizzeria.kitchen.stations (pizzeria/kitchen/stations/archview.toml)  2 problems
+  VIOLATION boxing -> dough (1 import) not allowed by [archview.allowed.boxing]
+    pizzeria/kitchen/stations/boxing.py:3  from pizzeria.kitchen.stations.dough import stretch
+    hint: boxing may import only: oven. Move the code that needs dough, go through an allowed component, or ask a human to change the rule.
+  CYCLE oven -> toppings -> oven (2 edges)
+    pizzeria/kitchen/stations/oven.py:3      from pizzeria.kitchen.stations.toppings import top
+    pizzeria/kitchen/stations/toppings.py:5  from pizzeria.kitchen.stations import oven  [pizzeria.kitchen.stations.oven]
+    hint: break the cycle where it is thinnest: oven -> toppings (1 import) - invert that dependency or move the code.
+2 problems in 7 components and 1 nested scope. exit 1
+```
+
+Each problem names the file, the line and a way out, and the hint is written for an
+agent: fix the code, or ask a human to change the rule. A short paragraph in your
+`CLAUDE.md` or `AGENTS.md` says the same, and points the agent at questions it can ask
+instead of guessing: `archview why A B`, `archview deps X`, `archview rdeps X`,
+`archview cycles`. The paragraph, the hook and the full rules reference are in
+[docs/06-using-archview-in-a-repo.md](docs/06-using-archview-in-a-repo.md).
+
+## What the viewer shows
+
+- Packages and modules as boxes in layers, with arrows from importer to imported and
+  the import count on each line.
+- Click a package to go inside it, click a module to read its source, and use the
+  breadcrumb to go back up.
+- Cycles in red, with a panel that breaks each one into its loops. A package with a
+  cycle somewhere inside it gets a red name, so you can follow it down.
+- Broken rules as dashed lines. Click one to see the imports behind it.
+- Boxes coloured by role, instability or zone ([what those mean](docs/metrics.md)).
+  Drag boxes around, find any module with `/`, export SVG, PNG, Mermaid or DOT.
+- `archview serve --watch` redraws as the code changes.
+
+## Commands
+
+| Command | What it does |
 |---|---|
-| `AGENTS.md` | Context for coding-agent sessions: decisions, conventions, reading order (`CLAUDE.md` only imports it) |
-| `docs/01-video-notes.md` | Paraphrased notes from the talk with timestamps |
-| `docs/02-requirements.md` | Requirements with IDs and priorities (analysis core, viewer, checker, agent integration, non-functional, MVP acceptance) |
-| `docs/03-reference-uncle-bob-tools.md` | How arch-view and dependency-checker actually work (formats, legend, metrics, CLI), and what to improve |
-| `docs/04-research-tool-landscape.md` | Open-source tools and libraries surveyed on 2026-08-30, with verified behaviour and what to reuse vs build |
-| `docs/05-approach-and-roadmap.md` | Proposed architecture, JSON model, `archview.toml` rules format, checker output, viewer stack, milestones M1–M6, risks |
-| `docs/06-using-archview-in-a-repo.md` | Adoption, rules reference, baseline, CLAUDE.md paragraph, hooks |
-| `docs/decisions/` | ADRs — one file per decision that shaped the code |
-| `src/archview/` | The tool: `extract/` (grimp + ast → model), `model/` (tree, view, cycles, layers, metrics, JSON), `rules/` (config, check, init, baseline), `render/` (DOT, Mermaid, check output), `server/` + `ui/` (viewer), `cli.py` |
-| `tests/` | Unit tests, a fixture project covering the awkward import shapes, and golden JSON/DOT |
-| `spike/` | `arch_graph.py`: the original one-file spike. `viewer/view.py`: a drill-down HTML viewer for any repo |
+| `archview .` | Open the viewer (short for `archview serve .`) |
+| `archview init` | Write `archview.toml` from today's imports |
+| `archview check` | Exit 0 when the code follows the rules, 1 when it doesn't, 2 when it can't run. `--format json` for scripts |
+| `archview graph` | The current level as text, `--json`, `--dot` or `--mermaid` |
+| `archview metrics` | Ca, Ce, instability, abstractness, distance and zone per component |
+| `archview why A B` | The imports behind A -> B, or the shortest chain |
+| `archview deps X`, `archview rdeps X` | What X imports, what imports X |
+| `archview cycles` | Every cycle at every level, with its imports |
 
-## Try it
+## Python, TypeScript and monorepos
 
-```bash
-uv tool install --editable .                              # once: `archview` on the PATH
-cd ~/git/some-repo && archview .                          # interactive viewer in the browser
-uv run archview serve ~/git/some-repo --watch             # same, redrawing on file changes
-uv run archview init ~/git/some-repo && uv run archview check ~/git/some-repo
-uv run archview graph ~/git/some-repo --root pkg --json   # machine-readable view
-uv run archview metrics ~/git/some-repo
-```
+archview reads Python with [grimp](https://github.com/seddonym/grimp) and an `ast`
+pass, and TypeScript with the repo's own compiler. Both land in the same model, so the
+viewer and the rules work the same way for each. A monorepo can check several packages
+as one architecture, each with its own rules file and a declared public surface
+([workspace mode](docs/06-using-archview-in-a-repo.md#workspace-mode)).
 
-## Continue in Claude Code
+archview never runs your code and never touches the network. The one exception is
+TypeScript, where it runs the repo's installed `typescript` package to resolve imports.
 
-```bash
-cd ~/git/arch-viewer
-claude
-```
+## Docs
 
-A good next prompt:
+- [Using archview in a repo](docs/06-using-archview-in-a-repo.md): adoption, the rules reference, a baseline for legacy code, hooks
+- [Metrics](docs/metrics.md): instability, abstractness, distance and the zones
+- [Architecture](docs/05-architecture.md) and [decisions](docs/decisions/): how archview itself is built
+- [Requirements](docs/02-requirements.md)
 
-> Read AGENTS.md and the docs in the order it lists. Then start milestone M6 from docs/05-approach-and-roadmap.md: a spike comparing tree-sitter-typescript and the TypeScript compiler API on a real frontend repo, ending in an ADR, and keep `archview check` passing on this repo.
+## Credits
 
-Suggested working style, borrowed from Bob (35:46–41:36): do a story or two, look at the result, reorganise, repeat — not a big up-front plan.
+The idea and the metrics come from Uncle Bob's
+[arch-view](https://github.com/unclebob/arch-view) and
+[dependency-checker](https://github.com/unclebob/dependency-checker). Imports come from
+[grimp](https://github.com/seddonym/grimp), and Graphviz lays out every view through
+[viz-js](https://github.com/mdaines/viz-js). archview checks its own architecture in
+CI, with its own `archview.toml`.
+
+MIT licence.
