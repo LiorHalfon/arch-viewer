@@ -4,8 +4,7 @@ Date: 2026-09-22 (M10)
 
 ## Status
 
-Accepted. Implements `docs/superpowers/specs/2026-09-22-say-what-is-not-checked-design.md`
-(GitHub issues #5, #8, #10). Builds on ADR 0011 (rules for outside imports).
+Accepted (GitHub issues #5, #8, #10). Builds on ADR 0011 (rules for outside imports).
 
 ## Context
 

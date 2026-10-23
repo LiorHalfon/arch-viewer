@@ -50,7 +50,8 @@ The model JSON is
 schema 3 for both languages. Rules files for TypeScript name components as the
 directories and root files below the source root (`"i18n.ts" = [...]`), and
 `[components]` patterns use '/'. A whole-workspace monorepo model, `.vue`/`.svelte`
-files and a global TypeScript fallback are left for later.
+files, a global TypeScript fallback and resolving through a package's `exports` beyond
+what tsc's own resolution does are left for later.
 
 **Measured** (`storygenerator`, an Expo app, 408 source files, 2045 raw imports): full
 analysis takes about 0.5 seconds; the model has 407 modules, 1935 imports, 11

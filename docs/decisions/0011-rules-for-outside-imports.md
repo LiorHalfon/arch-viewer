@@ -8,12 +8,11 @@ Accepted.
 
 ## Context
 
-`docs/superpowers/specs/2026-09-20-outside-rules-design.md` works out how a rule can
-name a package outside the project — a PyPI or npm dependency, or, in a workspace, a
-sibling package. Until M7, `archview check` dropped every import whose target was
-outside the checked package, so none of "the core never imports a vendor SDK" or "only
-this component may depend on `requests`" could be written. This ADR records the
-decisions the design makes and why.
+A rule should be able to name a package outside the project — a PyPI or npm
+dependency, or, in a workspace, a sibling package. Before this change, `archview check`
+dropped every import whose target was outside the checked package, so none of "the core
+never imports a vendor SDK" or "only this component may depend on `requests`" could be
+written. This ADR records the decisions that make it possible and why.
 
 ## Decision
 

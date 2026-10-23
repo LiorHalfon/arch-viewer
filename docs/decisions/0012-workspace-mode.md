@@ -8,13 +8,12 @@ Accepted.
 
 ## Context
 
-`docs/superpowers/specs/2026-09-20-workspace-design.md` (M8, GitHub issue #2) builds
-on M7 (ADR 0011, `2026-09-20-outside-rules-design.md`): once a cross-package import is
-visible as an outside edge, workspace mode only has to attribute it to a sibling
-package. Before M8, a repo with several packages — five Python packages and a React
-app, in the driving example — had one rules file, one `check`, one view per package,
-and nothing checked or drew the edges between them. This ADR records the decisions
-the design makes and why.
+Workspace mode (GitHub issue #2) builds on the rules for outside imports (ADR 0011):
+once a cross-package import is visible as an outside edge, workspace mode only has to
+attribute it to a sibling package. Before it, a repo with several packages — five
+Python packages and a React app, in the driving example — had one rules file, one
+`check`, one view per package, and nothing checked or drew the edges between them. This
+ADR records the decisions that shape it and why.
 
 ## Decision
 
@@ -149,3 +148,11 @@ human's call, the same reasoning that already keeps `init` from writing
 
 The nested-package limitation above is real; a repo that needs it should file it
 against `_owner_by_path` rather than work around it in the rules file.
+
+Not covered:
+
+- Graphs that span several repositories (requirements section 9).
+- Abstractness, the main sequence and zones across packages. The Martin metrics are
+  defined over a component's classes; aggregating them across packages, and across
+  languages, is a separate question.
+- A different `--format` per package. One format covers the whole run.

@@ -4,8 +4,7 @@ Date: 2026-10-09 (M13)
 
 ## Status
 
-Accepted. Implements `docs/superpowers/specs/2026-10-09-viewer-drawing-design.md`.
-Amends ADR 0007: the DOT stays the single *layout* spec, and the UI no longer restyles
+Accepted. Amends ADR 0007: the DOT stays the single *layout* spec, and the UI no longer restyles
 Graphviz's own SVG.
 
 ## Context
@@ -89,3 +88,11 @@ Keep Graphviz for layout and draw the SVG in the UI from its JSON output.
   Graphviz clusters, rather than waiting for ELK.
 - Next: comparing the structure with a git ref and an `archview diff` command (idea 7
   of the mockups), as its own milestone.
+
+Not covered:
+
+- Layer bands behind the rows (idea 5 of the mockups).
+- Moving a box with the keyboard, or dragging a cluster frame as a whole.
+- Saving a layout into the repo, or sharing one between browsers.
+- Routing lines in a Web Worker. The 100-box limit keeps a drop under about 250 ms.
+- A hover card for edges. Edges keep their tooltips and the panel a click opens.

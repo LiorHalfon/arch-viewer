@@ -8,7 +8,7 @@ view can treat it as a workspace edge rather than an ordinary third-party one.
 The structure is a federation, not a merged model: each package keeps its own
 `Project`, language and separator. Merging would collide Python's `.` ids with
 TypeScript's `/` ids, since `Model` carries a single `project` string and a single
-`separator` (see docs/superpowers/specs/2026-09-20-workspace-design.md).
+`separator` (see ADR 0012).
 """
 
 from __future__ import annotations

@@ -4,8 +4,7 @@ Date: 2026-09-22 (M11)
 
 ## Status
 
-Accepted. Implements `docs/superpowers/specs/2026-09-22-test-code-and-type-only-exceptions-design.md`
-(GitHub issues #8, #10). Builds on ADR 0006 (checker semantics) and ADR 0014 (M10's
+Accepted (GitHub issues #8, #10). Builds on ADR 0006 (checker semantics) and ADR 0014 (M10's
 `empty_source_root` warning).
 
 ## Context
@@ -122,6 +121,7 @@ never meant to permit. Both land in existing tables; nothing about `allowed`,
 
 Known limitations:
 
+- **Which roots hold test code is not inferred.** The user lists them in `source_roots`.
 - **A regular package whose `__path__` has several static entries** — via
   `pkgutil.extend_path`, or simply a runtime `__path__.append(...)` in its own
   `__init__.py` (a plugin-system idiom: `spec.submodule_search_locations` *is* the

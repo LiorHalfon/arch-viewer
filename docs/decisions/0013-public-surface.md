@@ -4,8 +4,7 @@ Date: 2026-09-22 (M9)
 
 ## Status
 
-Accepted. Implements `docs/superpowers/specs/2026-09-20-public-surface-design.md`
-(GitHub issue #4). Builds on ADR 0011 (rules for outside imports) and ADR 0012
+Accepted (GitHub issue #4). Builds on ADR 0011 (rules for outside imports) and ADR 0012
 (workspace mode). Amended by ADR 0020 (0.6.0): a reached component is spelled with a
 dot in both languages, so `public` now checks a TypeScript member's imports.
 
@@ -99,5 +98,10 @@ Known limitations:
   `[archview.allowed]`'s job — and nothing below component level. Symbol-level contracts
   ("`ports` publishes `Port` but not `_PortBase`") remain out of scope, as components are
   the unit everywhere else in this tool.
+- **`archview init` does not infer `public`.** What a package publishes is the
+  architectural decision the human is making.
+- **Re-exports are attributed as before.** An import of a name an `__init__` re-exports
+  lands on the package, grimp's default (requirements open decision 3); this decision
+  does not change that.
 - **Reading a model JSON written by an older archview now fails** with a clear schema
   error, as it did at every previous bump.
