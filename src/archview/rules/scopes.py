@@ -1,4 +1,4 @@
-"""Check one scope: a package with its own rules file for its children (spec M12)."""
+"""Check one scope: a package with its own rules file for its children (ADR 0016)."""
 
 from __future__ import annotations
 

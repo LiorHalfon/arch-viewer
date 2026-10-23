@@ -203,7 +203,7 @@ def test_a_rule_reaches_test_code(tmp_path):
 
 def test_the_wrong_spelling_contributes_nothing_and_still_warns(tmp_path):
     """`tests/` is a package rooted at the repo, not at `tests/`. The issue used this
-    spelling and got silence; M10 made it warn and this milestone keeps it warning."""
+    spelling and got silence; ADR 0014 made it warn and ADR 0015 keeps it warning."""
     report = project_report(open_project(_repo(tmp_path, '["src", "tests"]')))
     assert "tests" not in report.components
     assert [w.kind for w in report.warnings if w.kind == "empty_source_root"] == [

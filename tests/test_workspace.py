@@ -121,10 +121,10 @@ def test_owner_attributes_an_outside_name_to_a_sibling():
 def test_aliases_includes_npm_name_with_and_without_scope(tmp_path):
     pkg_dir = tmp_path / "core-ts"
     pkg_dir.mkdir()
-    (pkg_dir / "package.json").write_text(json.dumps({"name": "@bespoke/core"}))
+    (pkg_dir / "package.json").write_text(json.dumps({"name": "@acme/core"}))
     project = _fake_project(pkg_dir, "core-ts", language="typescript")
 
-    assert aliases(project) == frozenset({"core-ts", "@bespoke/core", "core"})
+    assert aliases(project) == frozenset({"core-ts", "@acme/core", "core"})
 
 
 def test_aliases_ignores_missing_or_malformed_package_json(tmp_path):
@@ -203,7 +203,7 @@ def test_open_workspace_requires_a_workspace_table(tmp_path):
 
 def test_open_workspace_error_uses_the_pyproject_table_name(tmp_path):
     """Every other rule name derives from `Config.table`; this one was hardcoded to
-    "archview.workspace" (Fix 4, M7/M8 review)."""
+    "archview.workspace" (a review fix)."""
     (tmp_path / "pyproject.toml").write_text('[tool.archview]\npackage = "root"\n')
     with pytest.raises(ConfigError, match=r"no \[tool\.archview\.workspace\] table"):
         open_workspace(tmp_path)
@@ -212,7 +212,7 @@ def test_open_workspace_error_uses_the_pyproject_table_name(tmp_path):
 def test_between_rules_use_the_pyproject_table_name(tmp_path):
     """`_between_config` hardcoded `table="archview.workspace"`; a workspace root whose
     rules live under `[tool.archview.workspace]` (a `pyproject.toml`) reported problems
-    against an identifier that does not exist in that file (Fix 4, M7/M8 review)."""
+    against an identifier that does not exist in that file (a review fix)."""
     shutil.copytree(FIXTURE, tmp_path, dirs_exist_ok=True)
     (tmp_path / "archview.toml").unlink()
     (tmp_path / "pyproject.toml").write_text(
@@ -280,7 +280,7 @@ def test_a_workspace_exception_exempts_a_cross_package_import(tmp_path):
 def test_a_packages_own_exception_does_not_exempt_a_cross_package_import(tmp_path):
     """Only [[archview.workspace.exceptions]] may exempt a cross-package edge; a
     package's own [[archview.exceptions]] must not silently cancel a workspace rule
-    (M7 widened exceptions to cover outside edges, and a package's own rules file is
+    (ADR 0011 widened exceptions to cover outside edges, and a package's own rules file is
     not the authority for what crosses a package line)."""
     root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ()})
     (root / "plugin" / "archview.toml").write_text(
@@ -526,7 +526,7 @@ def test_an_aliased_re_export_is_attributed_to_the_real_module(tmp_path):
 
 
 def test_by_package_is_unchanged_by_component_attribution(tmp_path):
-    """The M8 view of the same edges must not move."""
+    """The package-level view of the same edges must not move."""
     root = _prepare_workspace(tmp_path, allowed={"core": (), "plugin": ("core",)})
     plugin_imports(root, "from core.ports import Port")
     edges = cross_edges(open_workspace(root))

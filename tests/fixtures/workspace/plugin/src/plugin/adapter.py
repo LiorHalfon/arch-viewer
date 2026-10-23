@@ -1,4 +1,4 @@
-"""A cross-package import (core, a sibling) plus a third-party one (M8 fixture).
+"""A cross-package import (core, a sibling) plus a third-party one (workspace fixture).
 
 `core.ports` is squashed by grimp to the external node `core`, whether or not `core`
 is installed; `openai` is an ordinary external, not a sibling, and must not be

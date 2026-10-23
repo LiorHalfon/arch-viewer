@@ -1,4 +1,4 @@
-"""The bottom of the core package: imports nothing (M8 fixture)."""
+"""The bottom of the core package: imports nothing (workspace fixture)."""
 
 from dataclasses import dataclass
 

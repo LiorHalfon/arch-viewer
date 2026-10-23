@@ -721,7 +721,7 @@ def _partial_externals_warnings(edges: Edges, config: Config, table: str) -> lis
     One notice per *package*, not per (key, package) pair: two keys granting the same
     package used to repeat the same unconstrained-importer list verbatim, once per
     key. Repetitive warnings train people to ignore warnings, which is the failure
-    this milestone exists to fix - so the notice names every granting key once.
+    this notice exists to fix - so the notice names every granting key once.
 
     Silent under `externals_undeclared = "error"`: closed mode already fails every
     unconstrained importer this notice would name, as `undeclared_externals`, and the

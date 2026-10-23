@@ -38,7 +38,7 @@ const state = {
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-// A view payload carries its own project/separator/language (M8: each workspace
+// A view payload carries its own project/separator/language (ADR 0012: each workspace
 // member, or the workspace itself, has its own) - fall back to the plain project
 // summary before the first view has loaded.
 const sep = () => (state.view ? state.view.separator : state.project.separator) || ".";
@@ -89,7 +89,7 @@ function loadOptions() {
   try { saved = JSON.parse(localStorage.getItem("archview.options") || "{}") || {}; } catch { /* storage unavailable */ }
   Object.assign(state.options, saved);
   state.options.colour = schemeFromOptions(saved);
-  delete state.options.zones;  // before M13 this was a checkbox; schemeFromOptions reads it
+  delete state.options.zones;  // before ADR 0017 this was a checkbox; schemeFromOptions reads it
 }
 
 function paletteFromCss() {
@@ -239,7 +239,7 @@ function warningSummary(warnings) {
 }
 
 // `state.project`'s counts (failing rules, warnings) are always workspace-wide once
-// inside a workspace - `/api/project` has no `package=` (M8) - so `rulesButton()`
+// inside a workspace - `/api/project` has no `package=` (ADR 0012) - so `rulesButton()`
 // and `stats()` use this to say so plainly while browsing one package, rather than
 // reading as if the numbers were scoped to it.
 function insideAPackage() {
@@ -982,7 +982,7 @@ async function openRules() {
     toast(error.message);
     return;
   }
-  // At a workspace's top level `/api/check` returns the workspace report (M8): the
+  // At a workspace's top level `/api/check` returns the workspace report (ADR 0012): the
   // rules between packages, plus each package's own report. Anywhere else, one project.
   const workspace = Boolean(report.between);
   const order = (r) => [...r.problems.filter((p) => p.fails), ...r.problems.filter((p) => !p.fails)];
@@ -1189,7 +1189,7 @@ function bind() {
   $("home").onclick = (e) => { e.preventDefault(); go(state.project.project, null); };
   $("up").onclick = () => {
     if (!state.view || !state.view.parent) return;
-    // Up from a package's own root (M8) leaves the package, back to the workspace.
+    // Up from a package's own root (ADR 0012) leaves the package, back to the workspace.
     const leavingPackage = state.isWorkspace && state.root === state.package;
     go(state.view.parent, leavingPackage ? null : state.package);
   };

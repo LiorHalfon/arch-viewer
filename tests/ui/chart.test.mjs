@@ -7,22 +7,22 @@ import { sampleView } from "./support.mjs";
 const box = (name, I, A, fields = {}) => ({ ...sampleView().nodes[0], id: `p.${name}`, name, instability: I, abstractness: A, ...fields });
 const view = (nodes) => ({ root: "p", nodes, edges: [], cycles: [] });
 
-// tiny-tale-backend's src.story_generator: instability and abstractness per box.
-const STORY_GENERATOR = [
-  ["cover", 1, 0.143], ["cover_photo_generator", 0.5, 0], ["font_loading", 0, 0], ["image_storage", 0, 1],
-  ["llm_generated", 1, 0], ["models", 0, 0], ["prompts", 0, 0], ["providers", 0.429, 0.147], ["template_rendered", 0.714, 0.069],
+// A real backend's service package: instability and abstractness per box.
+const SERVICES = [
+  ["admin", 1, 0.143], ["admin_report_exporter", 0.5, 0], ["cache_layers", 0, 0], ["email_senders", 0, 1],
+  ["event_tracker", 1, 0], ["models", 0, 0], ["queries", 0, 0], ["searching", 0.429, 0.147], ["theme_compositors", 0.714, 0.069],
 ].map(([name, I, A]) => box(name, I, A));
 
 test("boxes at one point share a dot", () => {
-  const { dots } = chartSvg(view(STORY_GENERATOR), 0.3);
+  const { dots } = chartSvg(view(SERVICES), 0.3);
   const origin = dots.find((d) => d.ids.includes("p.models"));
-  assert.deepEqual(origin.ids, ["p.font_loading", "p.models", "p.prompts"]);
-  assert.equal(origin.text, "font_loading +2");
+  assert.deepEqual(origin.ids, ["p.cache_layers", "p.models", "p.queries"]);
+  assert.equal(origin.text, "cache_layers +2");
   assert.equal(dots.length, 7);
 });
 
 test("labels stay inside and apart", () => {
-  const { dots } = chartSvg(view(STORY_GENERATOR), 0.3);
+  const { dots } = chartSvg(view(SERVICES), 0.3);
   const width = AREA.left + AREA.width + AREA.right;
   const boxes = dots.filter((d) => d.label).map((d) => {
     const w = d.text.length * 6.2 + 2;
@@ -60,7 +60,7 @@ test("an empty chart says so", () => {
 });
 
 test("the zones follow the threshold", () => {
-  const { svg } = chartSvg(view(STORY_GENERATOR), 0.4);
+  const { svg } = chartSvg(view(SERVICES), 0.4);
   const x = AREA.left + 0.6 * AREA.width;
   assert.ok(svg.includes(`${Number(x.toFixed(2))},${AREA.top + AREA.height}`), "the pain triangle reaches I = 0.6 on the axis");
 });

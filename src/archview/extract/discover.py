@@ -1,7 +1,7 @@
 """Work out which top-level packages a Python repo contains, and from where.
 
 This is the only reason `archview` needs no configuration for the common case
-(requirement V13); the rules file will be able to override it in M2.
+(requirement V13); the rules file's `source_roots` overrides it.
 """
 
 from __future__ import annotations

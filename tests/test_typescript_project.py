@@ -1,4 +1,4 @@
-"""A TypeScript project end to end: language selection, the CLI, errors (M6)."""
+"""A TypeScript project end to end: language selection, the CLI, errors (ADR 0010)."""
 
 import json
 

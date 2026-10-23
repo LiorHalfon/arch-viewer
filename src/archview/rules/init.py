@@ -3,7 +3,7 @@
 `archview init` writes what *is*, so `archview check` passes straight away. The human
 then deletes the dependencies that should not exist, and the checker fails until the
 code matches the design. `archview init --root` does the same for the children of one
-package, in a nested rules file (M12).
+package, in a nested rules file (ADR 0016).
 """
 
 from __future__ import annotations

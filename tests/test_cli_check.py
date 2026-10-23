@@ -432,20 +432,20 @@ def test_init_root_keeps_type_checking_imports_so_its_rules_pass(tmp_path, capsy
     assert run(capsys, "check", str(copy))[0] == 0
 
 
-def bespoke(tmp_path: Path, rules: str) -> Path:
+def acme(tmp_path: Path, rules: str) -> Path:
     """Issue #17's layout: a core with ports, types and desk, and a plugin beside it."""
     for path, text in {
         "src/__init__.py": "",
-        "src/bespoke_story/__init__.py": "",
-        "src/bespoke_story/ports/__init__.py": "class Port: ...\n",
-        "src/bespoke_story/types/__init__.py": "class Kind: ...\n",
-        "src/bespoke_story/desk/__init__.py": "",
-        "src/bespoke_story/desk/cast.py": "class Cast: ...\n",
-        "src/bespoke_openai/__init__.py": "",
-        "src/bespoke_openai/language.py": (
-            "from src.bespoke_story.ports import Port\n"
-            "from src.bespoke_story.types import Kind\n"
-            "from src.bespoke_story.desk import cast\n"
+        "src/acme_shop/__init__.py": "",
+        "src/acme_shop/ports/__init__.py": "class Port: ...\n",
+        "src/acme_shop/types/__init__.py": "class Kind: ...\n",
+        "src/acme_shop/desk/__init__.py": "",
+        "src/acme_shop/desk/cast.py": "class Cast: ...\n",
+        "src/acme_openai/__init__.py": "",
+        "src/acme_openai/language.py": (
+            "from src.acme_shop.ports import Port\n"
+            "from src.acme_shop.types import Kind\n"
+            "from src.acme_shop.desk import cast\n"
         ),
         "archview.toml": '[archview]\npackage = "src"\n\n' + rules,
     }.items():
@@ -456,59 +456,59 @@ def bespoke(tmp_path: Path, rules: str) -> Path:
 
 CONTRACT = """
 [archview.allowed]
-bespoke_story = []
-bespoke_openai = ["bespoke_story.ports", "bespoke_story.types"]
+acme_shop = []
+acme_openai = ["acme_shop.ports", "acme_shop.types"]
 """
 
 
 def test_a_qualified_grant_fails_only_the_import_into_another_part(tmp_path, capsys):
-    code, out, _ = run(capsys, "check", str(bespoke(tmp_path, CONTRACT)))
+    code, out, _ = run(capsys, "check", str(acme(tmp_path, CONTRACT)))
 
     assert code == 1
     assert "has no modules" not in out
     assert (
-        "VIOLATION bespoke_openai -> bespoke_story.desk (1 import) not allowed by "
-        "[archview.allowed.bespoke_openai]"
+        "VIOLATION acme_openai -> acme_shop.desk (1 import) not allowed by "
+        "[archview.allowed.acme_openai]"
     ) in out
-    assert "src/bespoke_openai/language.py:3  from src.bespoke_story.desk import cast" in out
+    assert "src/acme_openai/language.py:3  from src.acme_shop.desk import cast" in out
     assert "language.py:1" not in out
-    assert "bespoke_openai may import only: bespoke_story.ports, bespoke_story.types" in out
+    assert "acme_openai may import only: acme_shop.ports, acme_shop.types" in out
 
 
 def test_a_qualified_forbidden_target_fails_the_check(tmp_path, capsys):
     rules = (
-        '[archview.allowed]\nbespoke_story = []\nbespoke_openai = ["bespoke_story"]\n\n'
-        '[[archview.forbidden]]\nfrom = "bespoke_openai"\nto = "bespoke_story.desk"\n'
+        '[archview.allowed]\nacme_shop = []\nacme_openai = ["acme_shop"]\n\n'
+        '[[archview.forbidden]]\nfrom = "acme_openai"\nto = "acme_shop.desk"\n'
     )
 
-    code, out, _ = run(capsys, "check", str(bespoke(tmp_path, rules)))
+    code, out, _ = run(capsys, "check", str(acme(tmp_path, rules)))
 
     assert code == 1
-    assert "FORBIDDEN bespoke_openai -> bespoke_story.desk (1 import)" in out
+    assert "FORBIDDEN acme_openai -> acme_shop.desk (1 import)" in out
 
 
 @pytest.mark.parametrize(
     ("rules", "where", "name"),
     [
         (
-            '[archview.allowed]\nbespoke_story = []\nbespoke_openai = ["bespoke_story.portz"]\n',
-            "[archview.allowed.bespoke_openai]",
-            "bespoke_story.portz",
+            '[archview.allowed]\nacme_shop = []\nacme_openai = ["acme_shop.portz"]\n',
+            "[archview.allowed.acme_openai]",
+            "acme_shop.portz",
         ),
         (
-            '[[archview.forbidden]]\nfrom = "bespoke_openai"\nto = "bespoke_story.portz"\n',
+            '[[archview.forbidden]]\nfrom = "acme_openai"\nto = "acme_shop.portz"\n',
             "[archview.forbidden]",
-            "bespoke_story.portz",
+            "acme_shop.portz",
         ),
         (
-            '[[archview.forbidden]]\nfrom = "bespoke_storz.desk"\nto = "bespoke_openai"\n',
+            '[[archview.forbidden]]\nfrom = "acme_shoq.desk"\nto = "acme_openai"\n',
             "[archview.forbidden]",
-            "bespoke_storz.desk",
+            "acme_shoq.desk",
         ),
     ],
 )
 def test_a_qualified_name_that_places_nowhere_exits_2(tmp_path, capsys, rules, where, name):
-    code, out, err = run(capsys, "check", str(bespoke(tmp_path, rules)))
+    code, out, err = run(capsys, "check", str(acme(tmp_path, rules)))
 
     assert code == 2
     assert out == ""

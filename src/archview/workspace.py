@@ -1,7 +1,7 @@
 """Open a workspace: several packages, each with its own project, joined by name.
 
 A cross-package import already shows up as an outside edge in each package's own
-model (M7's outside edges). This module does the one new thing workspace mode needs:
+model (ADR 0011's outside edges). This module does the one new thing workspace mode needs:
 attribute an outside name to the sibling package it belongs to, so a later checker or
 view can treat it as a workspace edge rather than an ordinary third-party one.
 
@@ -203,7 +203,7 @@ def _owner_by_path(outside: str, importer: Package, packages: tuple[Package, ...
 class CrossEdges:
     """One pass over the workspace, three views of the same imports.
 
-    `by_package` is what M8 checked: (source package, target package). `by_component`
+    `by_package` is what ADR 0012 checks: (source package, target package). `by_component`
     narrows the target to the component actually reached - (source package,
     "target.component") - which is what a public surface is checked against (issue #4).
     The component is joined to its package with a dot in both languages, as rules
@@ -218,7 +218,7 @@ class CrossEdges:
 
 
 def cross_edges(ws: Workspace) -> CrossEdges:
-    """Every package's outside edges (M7) whose target is a sibling, attributed.
+    """Every package's outside edges (ADR 0011) whose target is a sibling, attributed.
 
     A workspace exception exempts a cross-package import the same way a package's own
     `[archview.exceptions]` exempt an internal one - `_exemption` is the same helper.
@@ -327,7 +327,7 @@ def _outside_imports(package: Package) -> dict[str, list[Import]]:
     pattern that is silently ignored inside a single package by default.
 
     The package's own `[[archview.exceptions]]` are stripped before `component_edges`
-    sees them: M7 widened exceptions to exempt outside edges too, so a package's own
+    sees them: ADR 0011 widened exceptions to exempt outside edges too, so a package's own
     exception would otherwise exempt a cross-package import before `cross_edges` ever
     saw it - the root rules file, via `[[archview.workspace.exceptions]]`, is the only
     authority for what crosses a package line. The package's own `check()` still
