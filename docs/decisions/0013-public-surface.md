@@ -1,6 +1,6 @@
 # 13. A package's public surface: where the target comes from, and who owns the contract
 
-Date: 2026-09-22 (M9)
+Date: 2026-09-22
 
 ## Status
 
@@ -52,7 +52,7 @@ inside the plugin left `archview check` green.
   grant.
 
 - **An absent `public` key means the whole package is public.** Every workspace that
-  existed before this milestone keeps its meaning. An empty list means the package
+  existed before this change keeps its meaning. An empty list means the package
   publishes nothing, which is why the parser distinguishes absent from empty.
 
 - **Both the root's grant and the owner's `public` must pass.** A qualified grant

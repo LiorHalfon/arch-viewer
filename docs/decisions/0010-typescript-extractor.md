@@ -1,6 +1,6 @@
 # 10. TypeScript through the compiler API; ids split by a model separator
 
-Date: 2026-09-17 (M6)
+Date: 2026-09-17
 
 ## Status
 
@@ -8,7 +8,7 @@ Accepted.
 
 ## Context
 
-M6 adds a second language. The frontend repo it is accepted on, `storygenerator`
+This adds a second language. The frontend repo it is accepted on, a real app
 (Expo / React Native), resolves 845 imports through a tsconfig `paths` alias and
 extends `expo/tsconfig.base` from `node_modules`. Nine public repos (Next.js, Expo,
 Vite, NestJS, ESM libraries, monorepos) added: solution-style tsconfigs (`files: []`
@@ -53,7 +53,7 @@ directories and root files below the source root (`"i18n.ts" = [...]`), and
 files, a global TypeScript fallback and resolving through a package's `exports` beyond
 what tsc's own resolution does are left for later.
 
-**Measured** (`storygenerator`, an Expo app, 408 source files, 2045 raw imports): full
+**Measured** (that Expo app, 408 source files, 2045 raw imports): full
 analysis takes about 0.5 seconds; the model has 407 modules, 1935 imports, 11
 components and 55 externals; exactly one unresolved import, which turned out to be a
 genuine dead import in that app.

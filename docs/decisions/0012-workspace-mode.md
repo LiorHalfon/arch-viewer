@@ -1,6 +1,6 @@
-# 12. Workspace mode: federation, the alias join, and what stays asymmetric with M7
+# 12. Workspace mode: federation, the alias join, and what stays asymmetric with outside rules
 
-Date: 2026-09-20 (M8)
+Date: 2026-09-20
 
 ## Status
 
@@ -29,13 +29,13 @@ ADR records the decisions that shape it and why.
   `Workspace` is just `Package`s, each with its own `Project`, plus the rules between
   them.
 
-- **The alias join.** A cross-package edge is an M7 outside edge whose outside name
+- **The alias join.** A cross-package edge is an outside edge (ADR 0011) whose outside name
   belongs to a sibling's `aliases`. Three kinds of alias exist, because "how a
   sibling is named" differs by language and by import style:
   1. **Python top-level module name** — `Project.package`, the only name Python
      siblings can be imported by.
   2. **npm `name`, scoped and unscoped** — a TypeScript package's `package.json`
-     `name` (`@bespoke/core`), plus that name with its `@scope/` prefix stripped
+     `name` (`@acme/core`), plus that name with its `@scope/` prefix stripped
      (`core`). Both forms are real: a bare unresolvable import (`import x from
      "core"`) is classified external by its literal specifier text, with no
      `node_modules` entry needed, so a workspace member can be reached by either
@@ -50,8 +50,8 @@ ADR records the decisions that shape it and why.
 
   `_owner(outside_name, importer_package, packages) -> str | None` is the one
   function that performs the attribution, for all three kinds. An outside name that
-  matches no sibling stays an ordinary third-party dependency, governed by M7's rules
-  inside that one package.
+  matches no sibling stays an ordinary third-party dependency, governed by the outside
+  rules (ADR 0011) inside that one package.
 
   **A bug the TypeScript case surfaced.** Writing the first end-to-end TypeScript
   test (`tests/fixtures/ts-workspace/`) found that `ComponentMap.outside()` was
@@ -62,14 +62,14 @@ ADR records the decisions that shape it and why.
   cutting `@fixture/core` down to `@fixture` and `../core` down to `..`. Both
   extractors already squash before `outside()` ever runs, so `outside()` now trusts
   the id it is given instead of re-splitting it (`rules/components.py`). This was a
-  latent bug in M7's code, invisible until a `/`-structured outside name that was not
+  latent bug in the outside-rules code, invisible until a `/`-structured outside name that was not
   also a dotted Python one existed to expose it.
 
 - **`undeclared` applies at workspace level; `[archview.externals]` has no
   analogue here.** A package missing from `[archview.workspace.allowed]` is a
   problem, exactly as an undeclared component is under `[archview.allowed]`
   (ADR 0006): a new workspace member is an architectural decision an agent must not
-  make quietly. This is the mirror image of M7's `[archview.externals]`, where a
+  make quietly. This is the mirror image of `[archview.externals]`, where a
   component missing from the table is deliberately unconstrained (ADR 0011) — and the
   difference is deliberate, not an oversight. The set of workspace packages is closed
   and declared by a human in `packages = [...]`; the universe of third-party packages
@@ -141,7 +141,7 @@ One command checks every package in a workspace and the rules between them, with
 exit code; the viewer's top level is the packages, drilling into each. A repo without
 `[archview.workspace]` is unchanged, byte for byte. `metrics`, `why`, `deps` and
 `rdeps` do not read `[archview.workspace]` at all yet — they take a package's own
-directory as `path`, exactly as before M8 existed. `archview init` still writes no
+directory as `path`, exactly as before workspace mode existed. `archview init` still writes no
 `[archview.workspace]` table: which packages exist and what may depend on what is the
 human's call, the same reasoning that already keeps `init` from writing
 `[archview.externals]` by default (ADR 0011).

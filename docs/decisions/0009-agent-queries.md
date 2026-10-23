@@ -1,6 +1,6 @@
 # 9. Agent queries: `why`, `deps`, `rdeps`, `cycles`, and the Stop hook
 
-Date: 2026-09-16 (M5)
+Date: 2026-09-16
 
 ## Status
 
@@ -10,7 +10,8 @@ file's components, as `check` does.
 
 ## Context
 
-After M4 the only part of M5 left is requirement G1: the query commands an agent
+With the metrics and the baseline done (ADR 0008), what agents still lack is
+requirement G1: the query commands an agent
 uses to look at the structure before it fixes a dependency. `check --format json`,
 the baseline, the CLAUDE.md paragraph and the hook already exist. `docs/05` leaves
 open what the queries answer at package level, what they print and how they exit.
@@ -22,8 +23,8 @@ every non-zero exit and ignores `stop_hook_active`.
 ### The queries work on the model, not on grimp
 
 The code is in `model/query.py` and works on `Model.imports`, not on grimp's
-graph. The reasons: `model` has to stay language-agnostic (N8; TypeScript comes in
-M6), and grimp's graph has not been through `exclude`, `--hide-tests` or
+graph. The reasons: `model` has to stay language-agnostic (N8; TypeScript came
+later, ADR 0010), and grimp's graph has not been through `exclude`, `--hide-tests` or
 `--runtime-only`. A chain through excluded code would contradict `check` and the
 viewer.
 
@@ -96,9 +97,9 @@ agent its stderr. `--stop-hook` turns `check` into a well-behaved hook:
 The documented command guards against a missing install:
 `command -v archview >/dev/null || exit 0; archview check --stop-hook`.
 
-### Not in M5
+### Not done here
 
-- Turning on grimp's cache. A cold `graph` on `tiny-tale-backend` (707 files) takes
+- Turning on grimp's cache. A cold `graph` on a real backend (707 files) takes
   0.25s, so ADR 0005's trigger has not fired.
 - Keeping deleted `allowed` entries when `archview init --force` regenerates the
   rules. That is a separate change.

@@ -1,22 +1,22 @@
 # 15. Test code under the rules, and type-only exceptions
 
-Date: 2026-09-22 (M11)
+Date: 2026-09-22
 
 ## Status
 
-Accepted (GitHub issues #8, #10). Builds on ADR 0006 (checker semantics) and ADR 0014 (M10's
+Accepted (GitHub issues #8, #10). Builds on ADR 0006 (checker semantics) and ADR 0014 (the
 `empty_source_root` warning).
 
 ## Context
 
-M10 (ADR 0014) closed three silences, among them a `source_roots` entry that
+ADR 0014 closed three silences, among them a `source_roots` entry that
 contributed nothing and a type-only import checked or not depending on a default
 nobody chose. It made both say so; it did not make either work the way the
 reporters actually wanted. Issue #10's reporter needs a rule that can reach a test
 file: `component/tests/test_live.py` legitimately wires the real vendor, and there
 was no way to say "no test may import a plugin, except this one" — they fell back
 to a ruff `TID251` `per-file-ignores` entry, the duplication issue #1 removed.
-Issue #8's reporter needs an exception narrower than "any import": once M10 flipped
+Issue #8's reporter needs an exception narrower than "any import": once ADR 0014 flipped
 `type_checking_imports` to `"include"`, the exception they had to write to keep a
 type-only prop shape legal was wide enough to also legalise the value import it was
 never meant to permit, and its `reason` became a comment asking humans not to use
@@ -40,7 +40,7 @@ what it permits.
   component map, nameable by nothing. The fix instead builds the grimp graph over the
   analysed package plus every other top-level package found under a configured root
   — `grimp.build_graph(package, *extras)` — the same multi-package call
-  `extract/siblings.py` already proved for sibling packages in M9. `_is_internal` and
+  `extract/siblings.py` already proved for sibling packages (ADR 0013). `_is_internal` and
   `ComponentMap` now take the set of internal roots rather than one name, so a module
   under an extra root is internal from the start and never mistaken for an outside
   name in the first place.
@@ -67,8 +67,8 @@ what it permits.
   a package `tests/` with an `__init__.py` is rooted at the *repo*, not at `tests/`:
   the repo is what makes `tests` importable, and `"tests"` as a configured root names
   a directory one level too deep. Issue #10 wrote the second spelling, guessed
-  wrong, and got silence for an afternoon. M10 made that spelling warn
-  (`empty_source_root`); this milestone keeps it warning rather than quietly
+  wrong, and got silence for an afternoon. ADR 0014 made that spelling
+  warn (`empty_source_root`); this change keeps it warning rather than quietly
   accepting both spellings, so `docs/06` says plainly which one to use instead of
   archview guessing on the reporter's behalf.
 
@@ -84,7 +84,7 @@ what it permits.
   second mechanism — `Exemption` gains one optional field, not one field per future
   distinction.
 
-### A latent bug this milestone surfaced and fixed
+### A latent bug this change surfaced and fixed
 
 Worth recording because it is invisible. grimp locates each top-level package with
 `importlib.util.find_spec`, which returns an already-imported module's cached spec
@@ -96,10 +96,10 @@ graphing a fixture repo whose analysed project names a component `tests`, from
 inside the pytest process that is itself running the package `tests`, resolves
 against the running suite instead of the fixture unless something intervenes.
 
-`extract/siblings.py`'s workspace resolution (M9) had the identical exposure —
+`extract/siblings.py`'s workspace resolution (ADR 0013) had the identical exposure —
 `resolve_targets`'s own `grimp.build_graph` call was unguarded — and had it since
-that milestone. It is fixed in the same commit as this one. Record that honestly:
-it shipped, it was silent, and it was found only because this milestone happened to
+it shipped. It is fixed in the same commit as this one. Record that honestly:
+it shipped, it was silent, and it was found only because this change happened to
 collide with it — the fixture workspace's member names (`core`, `plugin`) never
 matched an already-imported module, so nothing in CI ever triggered it.
 
@@ -148,13 +148,13 @@ Known limitations:
 - **Adding a root turns previously invisible modules into components.** An existing
   `[archview.allowed]` table will now fail as `undeclared` until it names them.
   That is the `undeclared` rule working (ADR 0006), and it only affects a repo that
-  explicitly listed such a root — which until M10 did nothing at all and since M10
-  has been warning about it. `open_project` computes `extra` from the sibling
+  explicitly listed such a root — which until ADR 0014 did nothing at all and since
+  then has been warning about it. `open_project` computes `extra` from the sibling
   packages `_packages` found only when `config.source_roots` is non-empty
   (`project.py`); a repo with no `source_roots` at all graphs exactly as it did
-  before this milestone, even one where `find_packages` happens to resolve to
+  before this change, even one where `find_packages` happens to resolve to
   several top-level packages - the shape `--package` exists for (Finding 1,
-  differential review, fixed the same milestone it shipped in).
+  differential review, fixed in the same change it shipped in).
 - **`_unimported`'s eviction mutates process-global `sys.modules`, live, while
   `serve --watch` is running.** `watch()` calls `reload()` - hence `build_model`,
   hence `resolve_targets`/`_unimported` - from a background daemon thread, while

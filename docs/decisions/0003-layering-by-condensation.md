@@ -1,10 +1,10 @@
 # 3. Layers come from the condensation of the graph, not from removing edges
 
-Date: 2026-09-06 (M1)
+Date: 2026-09-06
 
 ## Status
 
-Accepted for M1; revisit if the viewer needs to name the edge that causes a cycle.
+Accepted for the first version; revisit if the viewer needs to name the edge that causes a cycle.
 
 ## Context
 
@@ -15,7 +15,7 @@ heuristic and a tie-break rule to stay deterministic (N1).
 
 ## Decision
 
-M1 collapses each strongly connected component into one node (networkx
+The first version collapses each strongly connected component into one node (networkx
 `condensation`), layers the resulting DAG with `topological_generations`, and gives
 every member of a component the layer of that component.
 

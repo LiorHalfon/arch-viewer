@@ -9,7 +9,7 @@ Accepted. Fixes GitHub issues #21, #22, #23, #24 and #25. Amends ADR 0009 (what
 
 ## Context
 
-A component refactor of tiny-tale-backend (its PR #573) filed five issues against
+A component refactor of a real backend (its PR #573) filed five issues against
 0.5.1. Each one is a place where two parts of archview disagreed about what a component
 or a name is.
 
@@ -107,12 +107,12 @@ stops it with exit 2, as it stops `check`. A rules file that kept a rule for a l
 
 ## Dogfood
 
-On tiny-tale-backend's `dev`, `check` gives the same result, plus one notice on
+On that backend's `dev`, `check` gives the same result, plus one notice on
 `src/webapp/archview.toml`'s `repos = []`. After removing that rule and writing the
 three `repos` patterns relative to `src.webapp`, 0.5.1 reports 8 problems and 17
 warnings, and this release passes. `cycles --fold-root-modules` on the commit before
 PR #573 finds the five root cycles the refactor's script found: `src.webapp`,
-`src.story_generator`, `story_generator.providers`, `story_generator.template_rendered`
-and `webapp.services.bespoke`. It finds a sixth in `src.bespoke_story`, whose
+`src.engine`, `engine.providers`, `engine.templates` and `webapp.services.vendor`.
+It finds a sixth in `src.core`, whose
 `types.py` and `recording.py` sit on either side of `ports`. On the #573 branch it finds
 the three the issue says are still there, plus that one.

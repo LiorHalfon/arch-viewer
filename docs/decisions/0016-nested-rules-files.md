@@ -1,6 +1,6 @@
 # 16. Rules files inside sub-packages
 
-Date: 2026-10-09 (M12)
+Date: 2026-10-09
 
 ## Status
 
@@ -16,9 +16,9 @@ what its children import from outside the project.
 Rules can only be written between components, and a component is a direct child of
 the project package unless `[archview.components]` says otherwise. That map is flat.
 Issue #14's reporter wanted rules between the 12 packages under
-`src/webapp/services/` in tiny-tale-backend. It took 27 component patterns, 35
+`src/webapp/services/` in a real backend. It took 27 component patterns, 35
 components in all. Fifteen of those patterns existed only to stop the leftover
-`webapp` component from producing `CYCLE print_svc -> webapp -> print_svc` on code
+`webapp` component from producing `CYCLE billing -> webapp -> billing` on code
 with no cycle. A new `services/*` package that nobody added a pattern for joined
 `webapp` silently.
 
@@ -73,7 +73,7 @@ A package can be split into rule-bearing sub-packages one at a time, with the pa
 still treating it as a single component. Nested files may nest, and a workspace member
 may hold them.
 
-Not in this milestone:
+Not done here:
 
 - A key that limits which modules outside a scope its components may import. Those
   imports stay under the parent's rules only.
@@ -86,7 +86,7 @@ an `allowed` entry like any child.
 
 ## Dogfood
 
-`archview init --root src.webapp.services` on a copy of tiny-tale-backend wrote a
+`archview init --root src.webapp.services` on a copy of that backend wrote a
 13-entry `allowed` table: the 12 child packages and the scope's own `__init__.py`.
 `archview check` on the copy exited 0 in 0.26 s, with a `src.webapp.services` section
 (`ok`) and no `webapp` cycle. The summary read `ok: src, 9 components and 1 nested

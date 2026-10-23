@@ -1,6 +1,6 @@
 # 1. No timestamp in the model JSON
 
-Date: 2026-09-06 (M1)
+Date: 2026-09-06
 
 ## Status
 
@@ -8,7 +8,7 @@ Accepted.
 
 ## Context
 
-The model JSON sketch in `docs/05-approach-and-roadmap.md` carries a `generated_at`
+The model JSON sketch in `docs/05-architecture.md` carries a `generated_at`
 field. Requirement N1 says the same source must produce byte-identical JSON, so that
 CI can diff it and agents can cache it.
 

@@ -352,7 +352,7 @@ reason   = "the composition root builds the plugins from settings"
 rules file, just keyed by package name instead of component name; `"all"` and the
 `from = "*"` wildcard work the same way.
 
-A cross-package import is an M7 outside edge — each package already sees a sibling as
+A cross-package import is an outside edge (ADR 0011) — each package already sees a sibling as
 a plain external, since it cannot tell a workspace sibling from a third-party
 dependency on its own. archview attributes that outside name back to the sibling by
 matching it against the sibling's aliases: its top-level module name (Python), its
@@ -451,36 +451,29 @@ infer from imports. See ADR 0012.
 ## Rules inside a sub-package
 
 The rules file names components, and a component is a direct child of the project
-package. In a package like `src/webapp/`, that makes `services` one component, and
-the dozen packages inside it cannot be told apart. Put an `archview.toml` in the
+package. In `examples/pizzeria`, that makes `kitchen` one component, and the stations
+inside `kitchen/stations/` cannot be told apart. Put an `archview.toml` in the
 directory of the package whose children you want to constrain:
 
 ```toml
-# src/webapp/services/archview.toml
+# pizzeria/kitchen/stations/archview.toml
 [archview]
 fail_on_violations = true
 fail_on_cycles = true
 
 [archview.allowed]
-authors = ["print"]
-delivery = []
-fulfillment = ["print", "story_generation", "templates"]
-imaging = []
-payment = []
-pricing = []
-print = ["payment", "pricing", "storage", "templates", "users"]
-"src.webapp.services" = ["stories", "users"]
-storage = []
-stories = ["imaging", "print", "templates"]
-story_generation = ["print", "storage", "stories", "templates", "users"]
-templates = []
-users = ["storage"]
+boxing = ["oven"]
+dough = []
+oven = ["toppings"]
+sauce = ["dough"]
+toppings = ["oven", "sauce"]
 ```
 
-`archview init --root src.webapp.services` writes this file from the imports as they
-are today. The root file is unchanged and still sees `services` as part of `webapp`.
-On `tiny-tale-backend` this replaced the 27 component patterns issue #14 needed, and
-the false `webapp` cycle went with them.
+`archview init --root pizzeria.kitchen.stations` writes this file from the imports as
+they are today; deleting `"dough"` from `boxing` is the rule the demo then breaks. The
+root file is unchanged and still sees the stations as part of `kitchen`. In a real
+backend this replaced the 27 component patterns issue #14 needed, and a false cycle
+through the parent package went with them.
 
 `init --root` refuses `--config`, `--exclude`, `--language` and `--tsconfig` with
 exit 2. Each one sets the root's rules or shapes the model, and a nested file has no
@@ -493,13 +486,13 @@ How it works:
   prints it as a section of its own with its own count of problems. The exit code is 1
   if the root or any scope fails.
 - Names in `allowed`, `forbidden`, `layers`, `independent` and `ignored` are the short
-  child names (`print`). Module patterns in `components` and `exceptions` are read
-  below the scope too, so `print.*` in `src/webapp/services/archview.toml` means
-  `src.webapp.services.print.*`. A pattern that starts with the scope's own name is read
-  in full, so `src.webapp.services.print.*` still works. A pattern that matches no
-  module says where it was read: `matches no module below src.webapp.services`.
+  child names (`oven`). Module patterns in `components` and `exceptions` are read
+  below the scope too, so `oven.*` in `pizzeria/kitchen/stations/archview.toml` means
+  `pizzeria.kitchen.stations.oven.*`. A pattern that starts with the scope's own name is
+  read in full, so `pizzeria.kitchen.stations.oven.*` still works. A pattern that matches
+  no module says where it was read: `matches no module below pizzeria.kitchen.stations`.
 - A scope's own `__init__.py`, when it imports or is imported, is a component named
-  after the full scope id, `"src.webapp.services"` above. This is the way a project's
+  after the full scope id, `"pizzeria.kitchen.stations"` here. This is the way a project's
   root module is a component named after the project. Leave it out of `allowed` and
   `check` reports it as `undeclared`.
 - A nested file holds rule keys only. `package`, `language`, `tsconfig`,
@@ -536,7 +529,7 @@ modules of a plugin may import its vendor's SDK, put the table in the plugin's o
 rules file, keyed by its children:
 
 ```toml
-# src/bespoke_openai/archview.toml
+# src/acme_openai/archview.toml
 [archview]
 externals_undeclared = "error"   # a new child must say what it imports from outside
 
@@ -548,17 +541,17 @@ pricing  = []
 ```
 
 An import has to pass every file that covers it. The root's rules decide what
-`bespoke_openai` may import as a whole, and its own file narrows that per child, so a
-nested file can never allow what the root does not. With `bespoke_openai = []` in the
+`acme_openai` may import as a whole, and its own file narrows that per child, so a
+nested file can never allow what the root does not. With `acme_openai = []` in the
 root's `[archview.externals]`, the `openai` import in `language.py` fails at the root
 whatever the nested file says. `externals_undeclared`, the `partial_externals` notice,
 the stdlib check and `[[archview.forbidden]]` with a package outside the project in
 `to` work in a nested file as they do at the root, on the scope's children.
-`archview init --root src.bespoke_openai --externals` writes the table from today's
+`archview init --root src.acme_openai --externals` writes the table from today's
 imports.
 
 A key that names part of a component in the root's `[archview.externals]`, such as
-`"bespoke_openai.language"`, is a `ConfigError` that points here. See ADR 0021.
+`"acme_openai.language"`, is a `ConfigError` that points here. See ADR 0021.
 
 ## Legacy code: baseline
 
@@ -607,7 +600,7 @@ In the viewer:
 archview why domain infra             # the imports behind domain -> infra, or the shortest chain
 archview deps services                # what services imports (--externals adds third-party packages)
 archview rdeps services.pricing       # who imports it; also works for externals: rdeps requests
-archview cycles [--root webapp]       # every cycle at every level, as a path with its imports
+archview cycles [--root kitchen]      # every cycle at every level, as a path with its imports
 ```
 
 Names can be full (`pkg.domain`) or relative to the package (`domain`), here and in
