@@ -19,3 +19,6 @@ tests/fixtures/ts-sample/node_modules/
 
 # Superpowers scratch (SDD ledgers, brainstorm mockups)
 .superpowers/
+
+# The demo video for posting (uv run scripts/record_demo.py); the GIF is committed
+docs/images/demo.mp4
