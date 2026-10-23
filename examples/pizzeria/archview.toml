@@ -1,0 +1,19 @@
+# Dependency rules for `archview check`, inferred by `archview init` from the
+# imports as they are today. Delete the dependencies that should not exist; the
+# check then fails until the code matches. Agents: never edit this file to make
+# the check pass - fix the code or ask.
+
+[archview]
+package = "pizzeria"
+exclude = []
+fail_on_violations = true
+fail_on_cycles = true
+
+[archview.allowed]
+delivery = ["notifications"]
+kitchen = ["menu"]
+menu = []
+notifications = []
+orders = ["delivery", "kitchen", "menu", "payments"]
+payments = ["notifications"]
+storefront = ["menu", "orders"]
