@@ -3,16 +3,17 @@
 ## Install once
 
 ```bash
-uv tool install git+https://github.com/LiorHalfon/arch-viewer@v0.7
+uv tool install git+https://github.com/LiorHalfon/arch-viewer@latest
 cd ~/git/some-repo && archview .                 # opens the viewer (same as `archview serve .`)
 ```
 
-The floating tag `v0.7` always points at the latest 0.7.x release; a minor bump (0.8.0)
-gets its own `v0.8`. A moved tag is only picked up on reinstall or with `uvx --refresh`:
+The tag `latest` always points at the newest release. To stay on one minor line, use
+its floating tag instead (`@v0.7` is the newest 0.7.x). A moved tag is only picked up on
+reinstall or with `uvx --refresh`:
 
 ```bash
-uv tool install --reinstall git+https://github.com/LiorHalfon/arch-viewer@v0.7
-uvx --refresh --from git+https://github.com/LiorHalfon/arch-viewer@v0.7 archview check
+uv tool install --reinstall git+https://github.com/LiorHalfon/arch-viewer@latest
+uvx --refresh --from git+https://github.com/LiorHalfon/arch-viewer@latest archview check
 ```
 
 From a checkout of this repo, `uv tool install --editable .` puts `archview` on the PATH

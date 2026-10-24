@@ -97,5 +97,6 @@ uv run scripts/record_demo.py                      # re-record docs/images/demo.
 Releasing: bump `version` in `pyproject.toml`, commit, wait for CI, then
 `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. The Release workflow checks that
 the tag matches the version, reruns CI, builds, creates the GitHub release, and moves the
-floating `vX.Y` tag to it. Minor bump per feature or breaking change (rules file, JSON,
+floating `vX.Y` and `latest` tags to it, so the install line in the README never names a
+version. Minor bump per feature or breaking change (rules file, JSON,
 flags, exit codes), patch for fixes; no release for docs, tests or CI.

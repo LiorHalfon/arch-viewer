@@ -27,12 +27,12 @@ archview is the same idea for Python and TypeScript.
 ## Quick start
 
 ```bash
-uv tool install git+https://github.com/LiorHalfon/arch-viewer@v0.7
+uv tool install git+https://github.com/LiorHalfon/arch-viewer@latest
 cd your-repo && archview .
 ```
 
 `archview .` opens the viewer in your browser. To run it once without installing:
-`uvx --from git+https://github.com/LiorHalfon/arch-viewer@v0.7 archview .`
+`uvx --from git+https://github.com/LiorHalfon/arch-viewer@latest archview .`
 
 Python needs nothing else. TypeScript needs Node and the repo's own `npm install`,
 because archview resolves imports with the repo's `typescript`, exactly as `tsc` does.
