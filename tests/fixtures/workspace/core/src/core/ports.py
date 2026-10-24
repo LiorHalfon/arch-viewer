@@ -1,4 +1,4 @@
-"""An internal, in-package dependency: ports depends on the model (M8 fixture)."""
+"""An internal, in-package dependency: ports depends on the model (workspace fixture)."""
 
 from core.model import Thing
 

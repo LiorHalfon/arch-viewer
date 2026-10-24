@@ -187,7 +187,7 @@ def test_dynamic_imports_are_reported_as_warnings():
 
 
 def test_an_extraction_warning_is_named_by_its_own_kind():
-    """An unresolved import must not be reported as a dynamic one (TypeScript, M6)."""
+    """An unresolved import must not be reported as a dynamic one (TypeScript, ADR 0010)."""
     from archview.model.graph import ExtractionWarning
 
     m = model(("app.api.a", "app.domain.x"))

@@ -1,21 +1,20 @@
 # 17. The viewer draws its own SVG from Graphviz's layout
 
-Date: 2026-10-09 (M13)
+Date: 2026-10-09
 
 ## Status
 
-Accepted. Implements `docs/superpowers/specs/2026-10-09-viewer-drawing-design.md`.
-Amends ADR 0007: the DOT stays the single *layout* spec, and the UI no longer restyles
+Accepted. Amends ADR 0007: the DOT stays the single *layout* spec, and the UI no longer restyles
 Graphviz's own SVG.
 
 ## Context
 
-Until M13 the viewer called `viz.renderSVGElement(view.dot)` and restyled Graphviz's SVG
+Until this change the viewer called `viz.renderSVGElement(view.dot)` and restyled Graphviz's SVG
 through the `class` attributes `render/dot.py` sets. That SVG is fixed once drawn: a box
 cannot be moved and its lines routed again, and a line's width cannot follow its import
 count without a DOT attribute per edge.
 
-Four changes came out of a page of live mockups on tiny-tale-backend's views. The other
+Four changes came out of a page of live mockups on a real backend's views. The other
 archview on PyPI (lm17918/archview, Cytoscape.js and dagre) prompted the first two:
 
 1. Colour boxes by role, instability or zone, with a legend that picks out a group, and
@@ -49,8 +48,8 @@ Keep Graphviz for layout and draw the SVG in the UI from its JSON output.
 
   | View | Boxes | Lines | neato, every line |
   |---|---|---|---|
-  | tiny-tale `src` | 8 | 13 | 1.5 ms (Node), 5-6 ms in the browser |
-  | tiny-tale `src.story_generator.providers` | 15 | 41 | 3.7 ms (Node) |
+  | a real backend's `src` | 8 | 13 | 1.5 ms (Node), 5-6 ms in the browser |
+  | a real backend's `src.engine.providers` | 15 | 41 | 3.7 ms (Node) |
   | synthetic | 100 | 300 | 227 ms (Node) |
   | synthetic | 300 | 1000 | 4.9 s (Node); 808 ms for one box's 15 lines |
 
@@ -88,4 +87,12 @@ Keep Graphviz for layout and draw the SVG in the UI from its JSON output.
 - Collapse in place (the rest of V10) can now be built on the same drawing, with
   Graphviz clusters, rather than waiting for ELK.
 - Next: comparing the structure with a git ref and an `archview diff` command (idea 7
-  of the mockups), as its own milestone.
+  of the mockups), as its own piece of work.
+
+Not covered:
+
+- Layer bands behind the rows (idea 5 of the mockups).
+- Moving a box with the keyboard, or dragging a cluster frame as a whole.
+- Saving a layout into the repo, or sharing one between browsers.
+- Routing lines in a Web Worker. The 100-box limit keeps a drop under about 250 ms.
+- A hover card for edges. Edges keep their tooltips and the panel a click opens.

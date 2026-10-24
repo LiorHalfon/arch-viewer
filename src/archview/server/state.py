@@ -57,7 +57,7 @@ class NotFound(Exception):
 class _Analysis:
     """Everything one open `Project` needs to serve views and source: its check
     report (when it has rules), the outside names a rule violation must keep
-    visible even without `--externals` (M7), and the packages with a cycle
+    visible even without `--externals` (ADR 0011), and the packages with a cycle
     somewhere inside. Shared by a plain repo (keyed `None`) and every member of
     a workspace (keyed by package name)."""
 
@@ -353,7 +353,7 @@ class ViewerState:
                     imp["line"],
                 ) in analysis.failing
         # A package's own root has no parent in its own model; in a workspace, "up"
-        # from there leaves the package for the workspace top (M8).
+        # from there leaves the package for the workspace top (ADR 0012).
         parent = by_id[view.root].parent
         if parent is None and self.workspace is not None:
             parent = self.workspace.name

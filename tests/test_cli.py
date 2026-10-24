@@ -1,4 +1,4 @@
-"""`archview graph` (requirement G1, roadmap M1)."""
+"""`archview graph` (requirement G1)."""
 
 import json
 import shutil
@@ -140,7 +140,7 @@ def test_shows_no_outside_package_when_there_is_no_rules_file(repo, capsys):
 def test_graph_degrades_when_the_rules_file_is_broken(repo, capsys):
     """A broken rules file (here, a baseline that does not exist) must not stop `graph`
     from drawing the view - `server/state.py::_analyse` already degrades this way, and
-    `graph` reversed an earlier ruling to match it (Fix 5, M7/M8 review)."""
+    `graph` reversed an earlier ruling to match it (a review fix)."""
     run(capsys, "init", str(repo))
     rules = repo / "archview.toml"
     rules.write_text(

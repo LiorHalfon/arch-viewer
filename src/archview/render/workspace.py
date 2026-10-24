@@ -1,4 +1,4 @@
-"""Render a `WorkspaceReport` (M8): the presentation layer for `archview check` at a
+"""Render a `WorkspaceReport` (ADR 0012): the presentation layer for `archview check` at a
 workspace root - a section per package, then the cross-package section, then a
 single total. The workspace counterpart of `render/check.py`, and deliberately built
 on top of it rather than beside it: each section's body is `report_to_text`'s own
@@ -65,7 +65,7 @@ def _summary(report: WorkspaceReport) -> str:
     lists all of them (`_check_between` sets it from every package, with or without
     its own rules), while `report.packages` only holds the ones that have rules of
     their own. A bare `len(report.packages)` would undercount a workspace where a
-    member has no rules file, as `plugin` does not in the M8 fixture."""
+    member has no rules file, as `plugin` does not in the workspace fixture."""
     total = len(report.between.components)
     checked = len(report.packages)
     summary = _plural(total, "package")

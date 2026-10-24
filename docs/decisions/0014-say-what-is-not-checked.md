@@ -1,11 +1,10 @@
 # 14. Say what is not checked: the include default, closed externals, empty roots
 
-Date: 2026-09-22 (M10)
+Date: 2026-09-22
 
 ## Status
 
-Accepted. Implements `docs/superpowers/specs/2026-09-22-say-what-is-not-checked-design.md`
-(GitHub issues #5, #8, #10). Builds on ADR 0011 (rules for outside imports).
+Accepted (GitHub issues #5, #8, #10). Builds on ADR 0011 (rules for outside imports).
 
 ## Context
 
@@ -107,7 +106,7 @@ checking.
   model read as contributing nothing. The first fix patched that symptom directly —
   treat a root spelled `"."` or `""` as always non-empty — which introduced the
   opposite bug: a `"."` root that genuinely contributed nothing would now silently
-  pass, unconditionally, which is the exact failure this milestone exists to close.
+  pass, unconditionally, which is the exact failure this change exists to close.
   The second fix moved the check to `project.py` and compared resolved paths against
   `Project.source_root`, which is exact for Python — but it also carried a `len(roots)
   <= 1` guard whose own comment admitted `Project.source_root` is `project.repo`,

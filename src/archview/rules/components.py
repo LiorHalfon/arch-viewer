@@ -49,7 +49,7 @@ class ComponentMap:
         before this ever runs, and TypeScript's `_external_name` does the equivalent for
         npm imports. Splitting it again here would be wrong for a squashed id that still
         contains `sep` for a reason other than depth: a scoped npm name (`@scope/pkg`)
-        or a workspace's `../sibling` outside name (M8) would be cut down to `@scope` or
+        or a workspace's `../sibling` outside name (ADR 0012) would be cut down to `@scope` or
         `..`.
         """
         if module == self.project or within(module, self.project, self.sep):

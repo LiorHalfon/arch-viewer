@@ -10,19 +10,19 @@ test("two boxes that import each other are one loop", () => {
 });
 
 test("a tangle breaks into its loops, shortest first, each from its first name", () => {
-  // tiny-tale-backend's services tangle
-  const members = ["bespoke", "fulfillment", "next_ideas", "print", "stories", "story_generation"];
+  // a real backend's services tangle
+  const members = ["auth", "billing", "catalog", "orders", "search", "shipping"];
   const tangle = edges(
-    "bespoke>print", "print>next_ideas", "next_ideas>bespoke", "bespoke>story_generation", "fulfillment>print",
-    "next_ideas>fulfillment", "stories>print", "story_generation>next_ideas", "story_generation>print", "story_generation>stories",
-    "print>users", "users>print",  // outside the tangle: not its loops
+    "auth>orders", "orders>catalog", "catalog>auth", "auth>shipping", "billing>orders",
+    "catalog>billing", "search>orders", "shipping>catalog", "shipping>orders", "shipping>search",
+    "orders>users", "users>orders",  // outside the tangle: not its loops
   );
   assert.deepEqual(loopsIn(members, tangle).loops, [
-    ["bespoke", "print", "next_ideas"],
-    ["bespoke", "story_generation", "next_ideas"],
-    ["fulfillment", "print", "next_ideas"],
-    ["bespoke", "story_generation", "print", "next_ideas"],
-    ["bespoke", "story_generation", "stories", "print", "next_ideas"],
+    ["auth", "orders", "catalog"],
+    ["auth", "shipping", "catalog"],
+    ["billing", "orders", "catalog"],
+    ["auth", "shipping", "orders", "catalog"],
+    ["auth", "shipping", "search", "orders", "catalog"],
   ]);
 });
 

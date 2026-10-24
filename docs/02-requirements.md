@@ -50,9 +50,9 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | A10 | Compute Bob's component metrics: fan-in, fan-out, instability `I`, abstractness `A`, distance `D = |A + I − 1|`, zone (healthy / pain / useless) with a configurable threshold (default 0.3). | V2 | DC |
 | A11 | Exclusions: configurable directories/patterns (tests, migrations, generated code) and ignored components. | MVP | DC `:ignored-components` |
 | A12 | Export the full model as JSON (tree, edges with details, cycles, layers, components, metrics, violations) — the single interchange format the viewer, the checker, exports and agents all consume. | MVP | AV `--out/--in-edn`, `--no-gui` |
-| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design) / M6 (impl, ADR 0010) | LH |
+| A13 | Language-agnostic model: nothing in the JSON schema or the viewer is Python-specific; a second extractor (TypeScript for the frontend repo) must be pluggable later. | MVP (design), V2 (built, ADR 0010) | LH |
 | A14 | Speed: full analysis of a few thousand modules in seconds; per-view aggregation instantaneous. Optional on-disk cache. | MVP | 16:18 (checks must not make agents slower than humans) |
-| A15 | TypeScript extractor: tsc's own resolution (paths, extends, references), ids that keep file extensions split by '/', type-only and lazy flags, unresolved-import warnings. Needs Node and the project's installed typescript. | M6 | LH |
+| A15 | TypeScript extractor: tsc's own resolution (paths, extends, references), ids that keep file extensions split by '/', type-only and lazy flags, unresolved-import warnings. Needs Node and the project's installed typescript. | V2 | LH |
 
 ## 5. Functional requirements — viewer
 
@@ -65,18 +65,18 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | V5 | Leaf → code: click a module → its source opens in a panel (read-only, syntax-highlighted, import lines highlighted). | MVP | 27:16–27:20 |
 | V6 | Cycles are unmissable: red names for subtrees containing a cycle, red edges/indicators for cyclic dependencies, and a list of cycles in `a → b → c → a` form for the current view. The cycle count opens a panel that breaks each cycle (a tangle) into its loops, shortest first, with the import count of each step (the first 30 of a large tangle); hovering a loop lights up its boxes and lines, a click pins it, and Highlight all pins every cycle. | MVP | AV legend; LH |
 | V7 | Violations overlay: edges that break the rules file are styled distinctly (e.g. red dashed) and listed; optionally show allowed-but-unused rules. | V2 | 27:31; AV V2 "guidance vs actual diff" |
-| V8 | Abstract modules/packages are visually distinct: an italic name under every colour scheme, and the green fill (AV) under None. Edges to abstractions use the UML closed-triangle arrowhead. | V2 | AV legend; M13 |
+| V8 | Abstract modules/packages are visually distinct: an italic name under every colour scheme, and the green fill (AV) under None. Edges to abstractions use the UML closed-triangle arrowhead. | V2 | AV legend; ADR 0017 |
 | V9 | Reanalyze: a button (and/or file watching) rescans and redraws the current view without losing navigation state. | V2 | AV `Reanalyze` |
 | V10 | Filters and focus: hide tests/externals, focus a node and its neighbours, "what reaches X" (impact), collapse/expand packages in place. | V2 | dependency-cruiser `--focus/--reaches`; Nx graph |
-| V11 | Metrics panel per node (A10), with zone colouring (one of V16's schemes), and a panel that explains I, A, D and the zones with the view's boxes plotted by instability and abstractness. | V2 | DC; M13 |
+| V11 | Metrics panel per node (A10), with zone colouring (one of V16's schemes), and a panel that explains I, A, D and the zones with the view's boxes plotted by instability and abstractness. | V2 | DC; ADR 0017 |
 | V12 | Export the current view as SVG/PNG (for PRs and docs) and as Mermaid/DOT (for markdown). | V2 | AV V2 "export and CI" |
 | V13 | Launch with one command from the project root (`archview .` / `uv run archview`), opens in the browser, works offline, no accounts, no telemetry. | MVP | LH (Claude Code workflow) |
 | V14 | Handles a view of a few hundred boxes interactively; larger views are automatically collapsed to packages. | MVP | — |
 | V15 | File drawer: a hideable panel on the left lists the packages (folders) and modules (files) under the current root, with a `..` row to go up. Clicking a folder makes it the root, clicking a file opens its source; folders expand in place. Follows Hide tests. | V2 | LH |
-| V16 | Colour by: boxes are coloured by role in the view (entry point, in between, foundation, on its own; the default), instability, zone, or none. The legend chooses the scheme, counts the boxes in each class, and a click on a class picks out its boxes. | V2 (M13) | LH; lm17918/archview; ADR 0017 |
-| V17 | Drag boxes: a dropped box stays where it was put and Graphviz routes the lines again around it (straight lines past 100 boxes). Moved boxes are remembered per view in the browser, never in the repo, and Reset layout puts the Graphviz layout back. | V2 (M13) | LH; ADR 0017 |
-| V18 | A line's width grows with its import count; while a box is focused, what it imports is blue and what imports it violet (cycle and rule-break lines keep their colours); a hover card shows a box's import counts, metrics and zone. | V2 (M13) | ADR 0017 |
-| V19 | Quick find: `/` searches every package and module of the project (every member's at a workspace's top level), following Hide tests, and opens the level that draws the match and flashes it. | V2 (M13) | ADR 0017 |
+| V16 | Colour by: boxes are coloured by role in the view (entry point, in between, foundation, on its own; the default), instability, zone, or none. The legend chooses the scheme, counts the boxes in each class, and a click on a class picks out its boxes. | V2 | LH; lm17918/archview; ADR 0017 |
+| V17 | Drag boxes: a dropped box stays where it was put and Graphviz routes the lines again around it (straight lines past 100 boxes). Moved boxes are remembered per view in the browser, never in the repo, and Reset layout puts the Graphviz layout back. | V2 | LH; ADR 0017 |
+| V18 | A line's width grows with its import count; while a box is focused, what it imports is blue and what imports it violet (cycle and rule-break lines keep their colours); a hover card shows a box's import counts, metrics and zone. | V2 | ADR 0017 |
+| V19 | Quick find: `/` searches every package and module of the project (every member's at a workspace's top level), following Hide tests, and opens the level that draws the match and flashes it. | V2 | ADR 0017 |
 | V20 | The mouse wheel and a trackpad pinch zoom around the pointer; dragging the diagram's background pans it. | V2 | LH |
 
 ## 6. Functional requirements — checker
@@ -94,12 +94,12 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | C9 | Metrics report with optional thresholds (e.g. fail if a component enters the zone of pain). | V2 | DC metrics |
 | C10 | Runs in < a few seconds on a typical service repo so it can sit in a pre-commit hook and in the agent's fix-it loop. | MVP | 16:52–17:25 |
 | C11 | Config evolution: unknown/legacy keys produce a clear error with a hint, not silent acceptance. | V2 | DC |
-| C12 | `allowed`/`forbidden`/`exceptions` can name a package outside the project (a PyPI/npm dependency, or a workspace sibling before M8 tells them apart) via a new `[archview.externals]` allow-list; `forbidden` needs no new syntax. A stdlib target is a config error, not a silent no-op. | MVP (M7) | GitHub issue #1; ADR 0011 |
-| C13 | A `[archview.workspace]` table at a repo's root lists several packages (Python and/or TypeScript), each opened with its own rules file when it has one; `check` runs every package's own check plus a declared `allowed`/`forbidden`/`exceptions` table for the imports *between* them, with one exit code. A cross-package import is attributed to its sibling by the M7 outside name it already produces. | MVP (M8) | GitHub issue #2; ADR 0012 |
-| C14 | A package declares its contract with `public` in its own rules file; a sibling may reach only those components, and the workspace tables accept qualified `package.component` targets. The component an import reaches is resolved, not guessed: the sibling packages are analysed together for Python, and `Import.resolved` carries tsc's resolution for TypeScript. A grant naming an unpublished component is a config error; an import that cannot be placed is reported, never assumed public. | MVP (M9) | GitHub issue #4; ADR 0013 |
-| C15 | `check` says what it is not checking. `type_checking_imports` defaults to `"include"`, and the key is a `ConfigError` where it cannot take effect (a workspace root's bare `[archview]` table). A `[archview.externals]` table that covers one component and not a neighbour reaching the same package says so, by name (`partial_externals`). `externals_undeclared = "error"` closes the table, failing a component that reaches outside without a key (`undeclared_externals`). A `source_roots` entry that contributes no modules to the package says so (`empty_source_root`). | MVP (M10) | GitHub issues #5, #8, #10; ADR 0014 |
-| C16 | A `source_roots` entry outside `package` contributes its top-level packages as components, so a rule can reach test code; `[[archview.exceptions]]` gains an optional `kind = "type_only"`, exempting only an import whose `type_checking` flag is set (a value import between the same pair still fails). | MVP (M11) | GitHub issues #8, #10; ADR 0015 |
-| C17 | An `archview.toml` inside a package below the project package holds rules between that package's children (`allowed`, `forbidden`, `layers`, `independent`, `exceptions`, `components`, `ignored`, the fail switches, `metrics`, `baseline`). `check` reports each such scope as its own section with its own baseline, `init --root X` infers the file, and `serve` draws a scope's failing imports in the drill-down. A key that shapes the model is a `ConfigError` in a nested file, and a nested file that no analysed package owns gets an `unchecked_rules_file` notice. | MVP (M12) | GitHub issue #14; ADR 0016 |
+| C12 | `allowed`/`forbidden`/`exceptions` can name a package outside the project (a PyPI/npm dependency, or a workspace sibling until workspace mode tells them apart) via a new `[archview.externals]` allow-list; `forbidden` needs no new syntax. A stdlib target is a config error, not a silent no-op. | MVP | GitHub issue #1; ADR 0011 |
+| C13 | A `[archview.workspace]` table at a repo's root lists several packages (Python and/or TypeScript), each opened with its own rules file when it has one; `check` runs every package's own check plus a declared `allowed`/`forbidden`/`exceptions` table for the imports *between* them, with one exit code. A cross-package import is attributed to its sibling by the outside name it already produces (ADR 0011). | MVP | GitHub issue #2; ADR 0012 |
+| C14 | A package declares its contract with `public` in its own rules file; a sibling may reach only those components, and the workspace tables accept qualified `package.component` targets. The component an import reaches is resolved, not guessed: the sibling packages are analysed together for Python, and `Import.resolved` carries tsc's resolution for TypeScript. A grant naming an unpublished component is a config error; an import that cannot be placed is reported, never assumed public. | MVP | GitHub issue #4; ADR 0013 |
+| C15 | `check` says what it is not checking. `type_checking_imports` defaults to `"include"`, and the key is a `ConfigError` where it cannot take effect (a workspace root's bare `[archview]` table). A `[archview.externals]` table that covers one component and not a neighbour reaching the same package says so, by name (`partial_externals`). `externals_undeclared = "error"` closes the table, failing a component that reaches outside without a key (`undeclared_externals`). A `source_roots` entry that contributes no modules to the package says so (`empty_source_root`). | MVP | GitHub issues #5, #8, #10; ADR 0014 |
+| C16 | A `source_roots` entry outside `package` contributes its top-level packages as components, so a rule can reach test code; `[[archview.exceptions]]` gains an optional `kind = "type_only"`, exempting only an import whose `type_checking` flag is set (a value import between the same pair still fails). | MVP | GitHub issues #8, #10; ADR 0015 |
+| C17 | An `archview.toml` inside a package below the project package holds rules between that package's children (`allowed`, `forbidden`, `layers`, `independent`, `exceptions`, `components`, `ignored`, the fail switches, `metrics`, `baseline`). `check` reports each such scope as its own section with its own baseline, `init --root X` infers the file, and `serve` draws a scope's failing imports in the drill-down. A key that shapes the model is a `ConfigError` in a nested file, and a nested file that no analysed package owns gets an `unchecked_rules_file` notice. | MVP | GitHub issue #14; ADR 0016 |
 | C18 | Outside workspace mode too, a rules file may name a part of a component with a qualified name, `component.part` (a module or sub-package inside it), in an `allowed` value and in `forbidden`'s `from` and `to`. A grant that names parts admits only imports into those parts' subtrees; a plain grant still admits the whole component; the meaning matches the workspace's qualified grant. A qualified name archview cannot place (no such component, no such module, or a module that belongs to another component) is a `ConfigError`, never a rule that silently cannot fire. | MVP (0.5.1) | GitHub issue #17; ADR 0018 |
 | C19 | The commands read components the way `check` does. `cycles` reads a level that has a rules file, the project's or a nested scope's, by that file's components and names the file. In a nested rules file, the module patterns in `components` and `exceptions` are read below the scope, and a pattern that starts with the scope's own name is read in full. A component left with only the `__init__` of a package whose modules went to other components counts only when it imports or is imported. `graph --root` takes a name relative to the package, as the queries do. `cycles --fold-root-modules` and `graph --fold-root-modules` count a package's own modules as one member named after the package, at every level. | MVP (0.6.0) | GitHub issues #21, #22, #23, #24, #25; ADR 0019 |
 | C20 | In workspace mode, `[[archview.workspace.forbidden]]` takes a qualified name, `package.component`, on either side: `from` matches the importing module's component and `to` the component the import reaches, in Python and TypeScript alike. A qualified name in the workspace's `allowed` or `forbidden` whose package or component does not exist is a `ConfigError`, and a plain `forbidden` name that is no package gets a notice. | MVP (0.6.0) | GitHub issue #19; ADR 0020 |
@@ -109,7 +109,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 
 | ID | Requirement | Pri | Source |
 |---|---|---|---|
-| G1 | A query CLI agents can call: `archview graph --root pkg --json`, `archview why A B` (the direct imports, else the shortest import chain), `archview deps M` / `archview rdeps M` (direct dependencies / dependents), `archview cycles`. | MVP (built in M5, ADR 0009) | 26:18–26:32 (interrogating agents about structure) |
+| G1 | A query CLI agents can call: `archview graph --root pkg --json`, `archview why A B` (the direct imports, else the shortest import chain), `archview deps M` / `archview rdeps M` (direct dependencies / dependents), `archview cycles`. | MVP (built, ADR 0009) | 26:18–26:32 (interrogating agents about structure) |
 | G2 | Optional: an MCP server exposing the same queries, for agents without a shell or if repeated CLI queries prove too slow. Claude Code uses the G1 CLI. See ADR 0005. | Later | LH (Claude Code workflow) |
 | G3 | A ready-made snippet for `CLAUDE.md` / a hook so that `archview check` must pass before an agent hands off; checker messages are written to be read by an agent with a small context budget (terse, no decoration in `--format json`). | MVP | 12:33–15:14 (deterministic tools beat steering) |
 | G4 | The checker never auto-fixes; it reports. The agent (or human) decides how to restore the dependency direction. | MVP | 27:48–28:06 |
@@ -117,12 +117,12 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 ## 8. Non-functional requirements
 
 - **N1 Deterministic.** Same source → byte-identical JSON and identical layout; sorting is by name everywhere ties exist. Required for CI diffs and for agents.
-- **N2 Static only.** Never import or execute the analysed project's own source (safety, speed, no side effects). One carve-out, from M6: to read TypeScript, archview loads and runs the **compiler** from the analysed repo's `node_modules` (`typescript`), because tsc's resolution is what makes a tsconfig mean what it says. The repo's sources are parsed, never executed, but analysing an untrusted repo does run that repo's installed `typescript`.
+- **N2 Static only.** Never import or execute the analysed project's own source (safety, speed, no side effects). One carve-out: to read TypeScript, archview loads and runs the **compiler** from the analysed repo's `node_modules` (`typescript`), because tsc's resolution is what makes a tsconfig mean what it says. The repo's sources are parsed, never executed, but analysing an untrusted repo does run that repo's installed `typescript`.
 - **N3 Local & offline.** No network calls; no hosted viewer (unlike tach's `--web`).
 - **N4 Python target.** Analyse Python 3.11+ code; the tool itself runs on 3.12+. Install with `uv tool install` / `uvx` or as a dev dependency.
 - **N5 Permissive dependencies only** (MIT/BSD/Apache/EPL-2.0 for ELK); no GPL/AGPL/non-commercial libraries in the runtime path.
 - **N6 Tested the way Bob builds tools**: unit tests for the core, a small fixture project with relative imports, re-exports, `TYPE_CHECKING` imports, a dynamic import and a cycle; golden JSON tests; high coverage; small functions (his notes: cyclomatic complexity ≤ 5 where practical).
-- **N7 Dogfooding.** Run it on `tiny-tale-backend` from the first milestone; the fixture for the viewer should be a real repo, read-only, like Bob's empire-2025.
+- **N7 Dogfooding.** Run it on real repos, read-only, like Bob's empire-2025, and on `examples/pizzeria`, the demo the README's GIF is recorded from.
 - **N8 Clean separation** inside the tool itself: extraction (Python-specific) → model (language-agnostic) → analysis (layers, cycles, metrics, rules) → presentation (CLI, JSON, DOT, web). The tool must pass its own checker.
 
 ## 9. Out of scope (for now)
@@ -131,7 +131,7 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 
 ## 10. Open decisions for the Claude Code sessions
 
-1. **Viewer stack**: Graphviz-in-the-browser (fastest, matches import-linter's `explore`) vs React + ELK + React Flow (more app-like, better for V2 interactions). See `05-approach-and-roadmap.md`.
+1. **Viewer stack**: Graphviz-in-the-browser (fastest, matches import-linter's `explore`) vs React + ELK + React Flow (more app-like, better for V2 interactions). See `05-architecture.md`.
 2. **Rules format**: a minimal `allowed`-map (DC style, agent-friendly) vs adopting import-linter contract semantics so existing `.importlinter` files work. Recommendation: DC-style first, import-linter import/export later.
 3. **Edge granularity for `__init__` re-exports**: attribute to the package (grimp default) vs resolve to the defining module (needs symbol resolution, e.g. scip-python). Start with grimp's behaviour; revisit if re-exports hide real dependencies.
 4. **Name**: working name `archview` (package/CLI). Bob's tool is `arch-view`; pick something distinct before publishing.
@@ -139,13 +139,13 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 
 ## 11. Acceptance for the MVP (definition of done)
 
-- `uvx archview .` on `tiny-tale-backend` opens a browser view of the top-level packages in layers, with dependency counts, drill-down to files, source panel, and any cycles listed — in under 10 seconds from cold.
+- `uvx archview .` on a real Python backend opens a browser view of the top-level packages in layers, with dependency counts, drill-down to files, source panel, and any cycles listed — in under 10 seconds from cold.
 - `archview init` writes a rules file that `archview check` passes; deleting one allowed edge makes `archview check` fail with exit code 1 and a message pointing at a `file:line`.
 - `archview check --format json` output is stable across runs and parseable by a script.
-- `archview graph --root tiny_tale --json` and `archview why a.b c.d` work from the command line.
+- `archview graph --root shop --json` and `archview why a.b c.d` work from the command line.
 - The tool's own package passes `archview check` with a rules file committed in the repo.
 
-## 12. Implementation status (2026-10-09, after M13)
+## 12. Implementation status
 
 | Area | Built | Not yet |
 |---|---|---|
@@ -154,17 +154,17 @@ Call graphs and class diagrams (pyan3/pyreverse territory), runtime tracing, git
 | Checker | C1–C4, C6–C21. C5 text + JSON | C5 GitHub Actions annotations |
 | Agents | G1 `graph`, `why`, `deps`, `rdeps`, `cycles`; G3 (docs/06, `check --stop-hook`); G4 | G2 is optional (ADR 0005); transitive `deps`/`rdeps` |
 
-Clarified during M4 (ADR 0008): `layers` peers listed together are independent of
+Clarified with the metrics and the baseline (ADR 0008): `layers` peers listed together are independent of
 each other; TYPE_CHECKING imports are drawn but not checked by default; a baseline
 records imports, not line numbers.
 
-Clarified during M5 (ADR 0009): the queries run on the filtered model, not on grimp;
+Clarified with the agent queries (ADR 0009): the queries run on the filtered model, not on grimp;
 `why` prefers direct imports over a chain; `deps` leaves out third-party packages
 unless asked.
 
-M6 (2026-09-17): TypeScript through the compiler API (ADR 0010); accepted on storygenerator.
+TypeScript (2026-09-17): read through the compiler API (ADR 0010); accepted on a real Expo app.
 
-0.6.0 (2026-10-10): five issues from a component refactor of tiny-tale-backend (C19,
+0.6.0 (2026-10-10): five issues from a component refactor of a real backend (C19,
 ADR 0019). `cycles` agrees with `check` on components, a nested file's module patterns
 read like the rest of the file, and a package split into components no longer leaves
 its `__init__` behind as a component that needs a rule. `--fold-root-modules` finds
@@ -175,11 +175,11 @@ TypeScript member's `public` list is enforced for the first time.
 A sub-package's own rules file may say what its children import from outside the
 project (C21, ADR 0021).
 
-M9 (2026-09-22): a package publishes a contract its siblings are checked against
+Public surface (2026-09-22): a package publishes a contract its siblings are checked against
 (C14, ADR 0013); the model JSON is schema 4, carrying the resolved target of an
 import so TypeScript can say which component a cross-package import reaches.
 
-M10 (2026-09-22): archview says what it is not checking (C15, ADR 0014), closing three
+Saying what is not checked (2026-09-22): archview says what it is not checking (C15, ADR 0014), closing three
 issues that all reported the same failure: a rule that reads as enforced but is not.
 `type_checking_imports` now defaults to `"include"`, a breaking change landed while
 v0.4.0 is untagged; setting it where it cannot take effect is a `ConfigError`.
@@ -189,25 +189,25 @@ one component and not a neighbour reaching the same package, and an opt-in close
 `source_roots` entry that contributes no modules to the package gets an
 `empty_source_root` notice.
 
-M11 (2026-09-22): test code under the rules, and type-only exceptions (C16, ADR
-0015), closing the second halves of issues #8 and #10. A `source_roots` entry
+Test code and type-only exceptions (2026-09-22): test code under the rules, and
+type-only exceptions (C16, ADR 0015), closing the second halves of issues #8 and #10. A `source_roots` entry
 outside `package` now contributes its top-level packages as components - the
-analysed package is graphed together with them, the multi-package call M9 already
-proved for siblings - so `["src", "."]` makes `tests/test_live.py` a module in a
+analysed package is graphed together with them, the multi-package call the public
+surface already proved for siblings - so `["src", "."]` makes `tests/test_live.py` a module in a
 component named `tests` that a rule can reach; `["src", "tests"]`, the spelling
 issue #10 used, still contributes nothing and still warns.
 `[[archview.exceptions]]` gains `kind = "type_only"`, exempting only an import
 whose `type_checking` flag is set, so a value import between the same pair still
 fails.
 
-M7 (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
+Outside rules (2026-09-20): rules can name a package outside the project (C12, ADR 0011);
 `[archview.externals]`, `from = "*"`, a viewer overlay for the failing edge, and
 `archview init --externals`. This repo's own rules gain a live outside rule (`model`
 must not reach `grimp`).
 
-M8 (2026-09-20): workspace mode (C13, ADR 0012). A `[archview.workspace]` table
+Workspace mode (2026-09-20): C13, ADR 0012. A `[archview.workspace]` table
 federates several packages' own `Project`s rather than merging them into one `Model`;
-a cross-package import is an M7 outside edge whose name joins one of a sibling's
+a cross-package import is an outside edge (ADR 0011) whose name joins one of a sibling's
 aliases (its top-level module name; its `package.json` name, scoped or not; a
 TypeScript `../` import resolved back to a package directory). `check`, `graph` and
 `cycles` run over the whole workspace by default and drill into one package with

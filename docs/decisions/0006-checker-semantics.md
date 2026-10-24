@@ -1,6 +1,6 @@
 # 6. Checker semantics: components, undeclared components, exceptions, exit codes
 
-Date: 2026-09-16 (M2)
+Date: 2026-09-16
 
 ## Status
 

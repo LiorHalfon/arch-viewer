@@ -1,6 +1,6 @@
 # 8. Depth: import flags, abstractness, metrics, rule sugar, baseline, overlay
 
-Date: 2026-09-16 (M4)
+Date: 2026-09-16
 
 ## Status
 
@@ -8,7 +8,7 @@ Accepted. Implements what ADR 0002 deferred.
 
 ## Context
 
-M4 covers requirements A4–A5, A9–A10, C7–C9 and V7–V12. Most of them leave
+This ADR covers requirements A4–A5, A9–A10, C7–C9 and V7–V12. Most of them leave
 definitions open, such as what counts as "abstract", whose fan-in counts, and what
 a baseline records. The choices below are the ones the code relies on.
 
@@ -47,7 +47,7 @@ a baseline records. The choices below are the ones the code relies on.
 
 - `type_checking_imports = "ignore"` (default) drops TYPE_CHECKING imports before
   anything is checked, `init` included. The viewer still draws them, dotted,
-  and edge counts include them. Amendment (M10, ADR 0014): the default flipped to
+  and edge counts include them. Amendment (ADR 0014): the default flipped to
   `"include"`; `"ignore"` still checks runtime imports only.
 - `layers = [top, [peer, peer], bottom]` forbids importing any layer above, and
   peers in the same list may not import each other. `independent = [[a, b, c]]`
@@ -83,6 +83,6 @@ a baseline records. The choices below are the ones the code relies on.
 ## Consequences
 
 - The model JSON is schema 2. Readers of schema 1 must update.
-- **Not done in M4:** collapsing or expanding packages in place (part of V10).
+- **Not done here:** collapsing or expanding packages in place (part of V10).
   Graphviz redraws the whole layout, so this waits for the ELK/React Flow step
   (ADR 0007). GitHub Actions annotations (C5, V2) are not built either.

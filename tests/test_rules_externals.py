@@ -20,7 +20,7 @@ def test_outside_trusts_the_extractors_own_squash():
     """grimp already squashes a deep Python import (`openai.types.chat`) to its
     top-level package before `outside` ever sees it, and TypeScript's `_external_name`
     does the same for npm imports - so `outside` must not re-split on `sep`, or a
-    scoped npm name or a workspace's `../sibling` outside name (M8) would be cut down
+    scoped npm name or a workspace's `../sibling` outside name (ADR 0012) would be cut down
     to its first segment (`@scope`, `..`)."""
     components = ComponentMap("web", "/", {})
     assert components.outside("@scope/pkg") == "@scope/pkg"
@@ -135,7 +135,7 @@ def test_an_allowed_target_naming_an_outside_package_warns():
     both sides are components (`_rule_problems`); naming an outside package there is a
     rule that can never fire, and used to be silent because the `known` set the
     `allowed` loop checked against was widened (for `forbidden`/`*`) to include
-    externals - Fix 2 (M7/M8 review)."""
+    externals (a review fix)."""
     config = Config(allowed={"api": ["llm"], "llm": ["openai"]})
     report = check(model_with_external(), config)
     assert [w.message for w in report.warnings if w.kind == "unknown_component"] == [

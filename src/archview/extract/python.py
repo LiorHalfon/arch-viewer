@@ -59,7 +59,7 @@ def build_model(
 ) -> Model:
     """Build the model for `package`, plus every other top-level package `extra`
     names (issue #10): grimp graphs them together, exactly as `extract/siblings.py`
-    does for sibling packages (M9), so a module under an extra root is internal
+    does for sibling packages (ADR 0013), so a module under an extra root is internal
     rather than an outside name. Each extra root is one component, named after
     itself - as the project's own root module is a component named after the
     project (ADR 0006). `Model.project` always stays `package`.

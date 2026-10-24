@@ -21,7 +21,7 @@ def test_a_forbidden_problem_is_rendered_as_forbidden_by():
     """The branch inverted `reason = "not allowed by" if kind == "not_allowed" else
     "forbidden by"` to the other way round - a real fix, since the old form would have
     labelled an `outside` problem "forbidden by" - but nothing asserted the "forbidden
-    by" wording (Fix 6, M7/M8 review)."""
+    by" wording (a review fix)."""
     report = Report("proj", ("a", "b"), (_problem("forbidden", ("a", "b")),), ())
 
     text = report_to_text(report)

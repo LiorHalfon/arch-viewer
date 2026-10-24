@@ -2,7 +2,7 @@
 
 Shared by every face of the tool (the CLI commands and the server), so they all see
 the same model for the same repo. `project_report` also checks each nested rules file
-found below the package directory (M12), and `project_cycles` reads the levels those
+found below the package directory (ADR 0016), and `project_cycles` reads the levels those
 files rule by their components, as the check does (issue #21).
 """
 

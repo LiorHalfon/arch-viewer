@@ -1,6 +1,6 @@
 # 11. Rules for outside imports: outside names, `[archview.externals]`, stdlib rejection
 
-Date: 2026-09-20 (M7)
+Date: 2026-09-20
 
 ## Status
 
@@ -8,25 +8,24 @@ Accepted.
 
 ## Context
 
-`docs/superpowers/specs/2026-09-20-outside-rules-design.md` works out how a rule can
-name a package outside the project — a PyPI or npm dependency, or, in a workspace, a
-sibling package. Until M7, `archview check` dropped every import whose target was
-outside the checked package, so none of "the core never imports a vendor SDK" or "only
-this component may depend on `requests`" could be written. This ADR records the
-decisions the design makes and why.
+A rule should be able to name a package outside the project — a PyPI or npm
+dependency, or, in a workspace, a sibling package. Before this change, `archview check`
+dropped every import whose target was outside the checked package, so none of "the core
+never imports a vendor SDK" or "only this component may depend on `requests`" could be
+written. This ADR records the decisions that make it possible and why.
 
 ## Decision
 
 - **An outside name** is any model node with `kind == "external"`: one squashed node
   per top-level third-party package (`model/graph.py`). archview does not distinguish
   a first-party sibling package from a third-party dependency, because it cannot: from
-  one package's model alone, an import of `bespoke_openai` and an import of `openai`
+  one package's model alone, an import of `acme_openai` and an import of `openai`
   look identical, both nodes with no `file` sitting outside the project tree. That
-  distinction needs the list of sibling packages, which only workspace mode (M8)
+  distinction needs the list of sibling packages, which only workspace mode (ADR 0012)
   supplies. Until then there is exactly one bucket for anything outside the project.
 
 - **`from = "*"` means every component.** The design sketch that started this
-  milestone (GitHub issue #1) wrote `from = "bespoke_story"` meaning "the whole
+  work (GitHub issue #1) wrote `from = "acme_app"` meaning "the whole
   project". That reading was rejected: the project name is already a component, the
   root module `pkg/__init__.py` named after the project (ADR 0006), so a rule spelled
   that way would silently narrow to one file instead of applying project-wide. Only
@@ -77,7 +76,7 @@ decisions the design makes and why.
   parsing, which the current load order does not support.
 
 - **A violating outside edge is drawn in the viewer without `--externals`.** Every
-  other external node needs `--externals` to appear at all (M4). A violation you need
+  other external node needs `--externals` to appear at all (ADR 0008). A violation you need
   a flag to see is one you will miss, so `build_view()` takes a `keep:
   frozenset[str]` of outside names forced into the view regardless of the flag;
   `cli._graph` and the server compute it with `rules.overlay.outside_targets(report)`
@@ -89,7 +88,7 @@ decisions the design makes and why.
   reports exactly like any other forbidden edge: same `kind: "forbidden"`, same
   `from`/`to` JSON fields. An agent already parsing the report's `forbidden` problems
   catches a forbidden outside import with no change. Only `[archview.externals]`
-  violations, which have no equivalent under the pre-M7 rules, get the new kind.
+  violations, which have no equivalent under the earlier rules, get the new kind.
 
 ## Consequences
 
@@ -100,6 +99,6 @@ adoption path for `[externals]` that `init` already gives `[allowed]`, off by de
 so a plain `init` stays uncluttered by every third-party import already in the code.
 
 The accepted gap is the stdlib/TypeScript collision above; the workaround is one line
-(`language = "typescript"`) once it is hit. Workspace mode (M8) can add a further
+(`language = "typescript"`) once it is hit. Workspace mode (ADR 0012) can add a further
 `ComponentMap` accessor that resolves an outside name to a sibling package's own
 components, without changing what `outside()` means for a true third-party package.

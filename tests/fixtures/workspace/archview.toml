@@ -1,4 +1,4 @@
-# A two-package workspace (M8 fixture): core has its own rules, plugin does not.
+# A two-package workspace (workspace fixture): core has its own rules, plugin does not.
 [archview.workspace]
 packages = ["core", "plugin"]
 

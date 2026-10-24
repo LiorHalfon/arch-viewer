@@ -16,8 +16,8 @@ and imports that leave the scope are left to the root. The root sees each top-le
 package as one component. So "the plugin may import only the core's `ports` and
 `types`" belonged to neither file. The docs allowed a qualified grant
 (`server = ["core.ports"]`) only in workspace mode. In a single package, 0.5.0 warned
-that `bespoke_story.ports` "has no modules" and then failed every import into
-`bespoke_story`, including the ones the grant was written to allow. A qualified
+that `acme_core.ports` "has no modules" and then failed every import into
+`acme_core`, including the ones the grant was written to allow. A qualified
 `forbidden` target was worse: it never matched a component pair, so it printed `ok`
 with no notice at all.
 

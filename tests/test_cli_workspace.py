@@ -1,4 +1,4 @@
-"""`archview check` at a workspace root (M8): one run, one exit code."""
+"""`archview check` at a workspace root (ADR 0012): one run, one exit code."""
 
 from __future__ import annotations
 
@@ -176,7 +176,7 @@ def test_cycles_with_a_package_drills_in(capsys):
 def test_metrics_with_a_package_drills_in(capsys):
     """`_metrics` used `_open(args)` directly, skipping `_workspace_member` - so
     `--package` at a workspace root failed with "no package … (found: none)" even
-    though the workspace listed packages (Fix 3, M7/M8 review)."""
+    though the workspace listed packages (a review fix)."""
     assert main(["metrics", str(FIXTURE), "--package", "core"]) == 0
     out = capsys.readouterr().out
     assert "model" in out

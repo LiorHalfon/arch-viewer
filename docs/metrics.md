@@ -13,19 +13,17 @@ under [Modules, not classes](#modules-not-classes).
 
 ## What `archview metrics` prints
 
-On tiny-tale-backend, at commit `e46eb18`:
+On the demo in `examples/pizzeria`:
 
 ```
-component        Ca  Ce  I     A     D     zone
-bookpod_sdk      4   0   0.00  0.00  1.00  pain
-common           54  0   0.00  0.17  0.83  pain
-config           48  1   0.02  0.40  0.58  pain
-error_triage     0   1   1.00  0.43  0.43  useless
-experiments      0   17  1.00  0.12  0.12  main_sequence
-llm_tracking     12  0   0.00  0.17  0.83  pain
-src              0   2   1.00  0.00  0.00  main_sequence
-story_generator  29  12  0.29  0.10  0.61  pain
-webapp           0   65  1.00  0.09  0.09  main_sequence
+component      Ca  Ce  I     A     D     zone
+delivery       1   1   0.50  0.00  0.50  pain
+kitchen        1   1   0.50  0.00  0.50  pain
+menu           7   0   0.00  0.00  1.00  pain
+notifications  2   0   0.00  0.00  1.00  pain
+orders         1   4   0.80  0.00  0.20  main_sequence
+payments       1   1   0.50  0.00  0.50  pain
+storefront     0   3   1.00  0.00  0.00  main_sequence
 ```
 
 - **Ca** (afferent coupling): how many modules outside the component import something
@@ -43,10 +41,10 @@ I = Ce ÷ (Ca + Ce). It says how much a component leans on others compared with 
 much others lean on it.
 
 - **I = 0**: other code imports it and it imports nothing. A change to it can break
-  everything that depends on it, so it is expensive to change. `common` is 0: 54
-  modules elsewhere import it and it imports nothing.
+  everything that depends on it, so it is expensive to change. `menu` is 0: 7 modules
+  elsewhere import it and it imports nothing.
 - **I = 1**: it imports other code and nothing imports it. Nothing breaks when it
-  changes. `webapp` is 1: it imports from 65 modules and nothing imports it.
+  changes. `storefront` is 1: it imports from 3 modules and nothing imports it.
 
 A component with no imports either way has no instability. Its zone is `isolated`, which
 the viewer shows as "no dependencies".
@@ -60,8 +58,8 @@ A is the share of a component's modules that are abstract.
 - A TypeScript file counts when it has an `abstract class`, or exports types and
   interfaces and no values.
 
-`config` has A = 0.40 because 2 of its 5 modules define such a class. One abstract class
-is enough for the whole module to count, even next to ten concrete classes.
+A component with 2 such modules out of 5 has A = 0.40. One abstract class is enough for
+the whole module to count, even next to ten concrete classes.
 
 ## Distance and the zones
 
@@ -77,7 +75,7 @@ A component more than the threshold away from the line is in a zone. The thresho
 [archview.metrics]
 threshold = 0.3            # distance from the main sequence counted as healthy
 fail_on_zones = ["pain"]   # optional: archview check fails when a component enters a zone
-ignore = ["common"]        # components fail_on_zones leaves alone
+ignore = ["menu"]          # components fail_on_zones leaves alone
 ```
 
 - **Zone of pain** (A + I below 1 − threshold, bottom left): stable and concrete. Much
@@ -87,11 +85,12 @@ ignore = ["common"]        # components fail_on_zones leaves alone
   unstable. Interfaces that little or nothing uses.
 - **Main sequence**: within the threshold of the line.
 
-On tiny-tale-backend, `common`, `config` and `bookpod_sdk` are in the zone of pain and
-expected to be: they are shared code that changes rarely. `story_generator` is the one
-to watch. 29 modules elsewhere import it and only a tenth of its modules are abstract,
-so a change inside it reaches `webapp` and `experiments` directly. `error_triage` is in
-the zone of uselessness: 3 of its 7 modules are abstract and nothing imports it.
+In the pizzeria, `menu` and `notifications` are in the zone of pain and expected to be:
+everything uses them and they rarely change. `kitchen`, `payments` and `delivery` sit
+there too, at D = 0.50: each is imported once and offers no abstraction to import
+instead. `orders` and `storefront` are on the main sequence: unstable and concrete, the
+top of the app, where change belongs. Nothing here is in the zone of uselessness; that
+takes abstract code that nothing imports.
 
 ## Modules, not classes
 

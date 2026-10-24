@@ -1,16 +1,16 @@
 # 7. Viewer: FastAPI server, plain-JS UI, Graphviz in the browser
 
-Date: 2026-09-16 (M3)
+Date: 2026-09-16
 
 ## Status
 
-Accepted. Amended by ADR 0017 (M13): the UI draws its own SVG from Graphviz's JSON
+Accepted. Amended by ADR 0017: the UI draws its own SVG from Graphviz's JSON
 layout instead of restyling Graphviz's SVG, and dragging no longer waits for ELK and
 React Flow.
 
 ## Context
 
-M3 needs `archview serve`: a local page that draws one root at a time, drills down,
+The viewer needs `archview serve`: a local page that draws one root at a time, drills down,
 shows the imports behind an edge and opens source. `docs/05` left open whether to
 use the stdlib `http.server` or FastAPI, and how the browser gets its libraries
 without network access at runtime (N3).
@@ -34,7 +34,7 @@ without network access at runtime (N3).
   colours. Packages are drawn as UML components.
 - **"Cycle somewhere inside"** (V6: red names for subtrees containing a cycle) comes
   from `model/view.tangled_packages`. It builds the view of every package once
-  per analysis: 0.04 s on `tiny-tale-backend` (281 modules, 1040 imports).
+  per analysis: 0.04 s on a real backend (281 modules, 1040 imports).
 - **Navigation lives in the URL hash** (`#/pkg.sub`), so browser Back/Forward work.
   Each root remembers its zoom and scroll position (V4). Click a package to drill
   down, click a module for its source, click an edge for its imports.

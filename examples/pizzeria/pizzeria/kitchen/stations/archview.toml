@@ -1,0 +1,18 @@
+# Dependency rules between the children of pizzeria.kitchen.stations, inferred by
+# `archview init --root` from the imports as they are today. Imports that leave
+# pizzeria.kitchen.stations are checked by the rules above it, not here. Delete the
+# dependencies that should not exist; the check then fails until the code matches.
+# Agents: never edit this file to make the check pass - fix the code or ask.
+
+[archview]
+fail_on_violations = true
+# init wrote false here, since it found oven -> toppings -> oven; the demo fails on it.
+fail_on_cycles = true
+
+[archview.allowed]
+# Each station takes the pizza from the one before it: boxing only from the oven.
+boxing = ["oven"]
+dough = []
+oven = ["toppings"]
+sauce = ["dough"]
+toppings = ["oven", "sauce"]

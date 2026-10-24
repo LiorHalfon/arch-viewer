@@ -9,17 +9,17 @@ Accepted. Fixes GitHub issue #18. Amends ADR 0016, which kept `externals` and
 
 ## Context
 
-tiny-tale-backend's `bespoke_openai` plugin wants one rule: only `language` and
+A real backend's `acme_openai` plugin wants one rule: only `language` and
 `images` may import `openai`. The root's `[archview.externals]` is keyed by whole
-components, so it can only say what `bespoke_openai` as a whole may import. 0.5.1 could
-express the deny form, one `[[archview.forbidden]]` per part and package (tiny-tale has
+components, so it can only say what `acme_openai` as a whole may import. 0.5.1 could
+express the deny form, one `[[archview.forbidden]]` per part and package (that backend has
 four), but a module added to the plugin later is unconstrained.
 
 Issue #18 offered two spellings. Keys in the root that name a part
-(`"bespoke_openai.language" = ["openai"]`) need a part's key to override its
+(`"acme_openai.language" = ["openai"]`) need a part's key to override its
 component's key, and a new answer for closed mode, the `partial_externals` notice, and
 the names in the report and the baseline. The other spelling is `externals` in the
-plugin's own rules file, keyed by its children, and tiny-tale already has that file.
+plugin's own rules file, keyed by its children, and that backend already has that file.
 
 ## Decision
 
@@ -36,8 +36,8 @@ plugin's own rules file, keyed by its children, and tiny-tale already has that f
 
 - **Narrow, never widen.** An import has to pass every rules file that covers it. The
   root judges the component as a whole and the nested file judges the child, so a
-  nested file can only take away what the root allows. tiny-tale's case reads: the
-  root allows `openai` for `bespoke_openai`, or leaves it unconstrained, and the
+  nested file can only take away what the root allows. That backend's case reads: the
+  root allows `openai` for `acme_openai`, or leaves it unconstrained, and the
   plugin's file allows it for `language` and `images` only.
 
 - **`[[archview.forbidden]]` in a nested file may name a package outside the project.**
@@ -66,10 +66,10 @@ plugin's own rules file, keyed by its children, and tiny-tale already has that f
 
 ## Consequences
 
-tiny-tale's four deny rules for `bespoke_openai` become one table in
-`src/bespoke_openai/archview.toml`, and with `externals_undeclared = "error"` a new
+That backend's four deny rules for `acme_openai` become one table in
+`src/acme_openai/archview.toml`, and with `externals_undeclared = "error"` a new
 module in the plugin fails until someone declares what it imports. On a snapshot of
-tiny-tale's `dev`, the table that `init --root bespoke_openai --externals` wrote passes,
+its `dev`, the table that `init --root acme_openai --externals` wrote passes,
 an `openai` import added to `models.py` fails as
 `OUTSIDE models -> openai not allowed by [archview.externals.models]`, and a new
 `billing.py` that imports `httpx` fails as undeclared.

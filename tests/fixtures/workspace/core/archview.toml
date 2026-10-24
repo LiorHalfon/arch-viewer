@@ -1,4 +1,4 @@
-# core's own rules (M8 fixture): plugin has none, deliberately, to exercise
+# core's own rules (workspace fixture): plugin has none, deliberately, to exercise
 # "a workspace package without its own rules file".
 [archview]
 package = "core"

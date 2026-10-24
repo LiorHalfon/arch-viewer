@@ -101,8 +101,8 @@ def test_a_module_or_unknown_root_is_not_a_view(client):
 
 def test_unknown_package_error_names_the_repos_own_table(repo):
     """A plain (non-workspace) repo whose rules live under `[tool.archview]` must name
-    that table in the "not a package" message, not a hardcoded "archview" (Fix 4,
-    M7/M8 review)."""
+    that table in the "not a package" message, not a hardcoded "archview" (a review
+    fix)."""
     (repo / "pyproject.toml").write_text('[tool.archview]\npackage = "sample"\n')
     state = ViewerState(repo)
 
@@ -351,7 +351,7 @@ def test_serves_a_typescript_project(tmp_path):
     )
 
 
-# ---------- workspace mode (M8) ----------
+# ---------- workspace mode (ADR 0012) ----------
 
 
 def test_the_api_returns_the_workspace_view_at_the_top():

@@ -1,6 +1,6 @@
 [project]
 name = "archview"
-version = "0.6.0"
+version = "0.7.0"
 description = "Architecture viewer and dependency-rules checker for Python and TypeScript code bases"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -35,8 +35,8 @@ packages = ["src/archview"]
 line-length = 100
 target-version = "py312"
 # The fixture project is deliberately odd code, pinned by line number in the golden
-# files; `spike/` is exploratory and not held to the product's standards.
-extend-exclude = ["tests/fixtures", "spike", "docs"]
+# files.
+extend-exclude = ["tests/fixtures", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

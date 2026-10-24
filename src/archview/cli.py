@@ -515,7 +515,7 @@ def _serve(args: argparse.Namespace) -> int:
 
     # `_workspace_root`/`_workspace_member` are shared with `_check`, `_graph` and
     # `_cycles`; `ViewerState` itself opens a plain workspace root as a workspace
-    # (M8), so only `--package` at one needs resolving here, exactly as `_graph` does.
+    # (ADR 0012), so only `--package` at one needs resolving here, exactly as `_graph` does.
     member = _workspace_member(args)
     if member is not None:
         state = ViewerState(member.repo, config_path=member.config_path)
