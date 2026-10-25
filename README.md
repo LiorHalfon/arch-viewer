@@ -22,7 +22,7 @@ code is partitioned and which way dependencies run. That decision goes in a file
 fast, deterministic checker keeps the agents inside it. He built
 [arch-view](https://github.com/unclebob/arch-view) and
 [dependency-checker](https://github.com/unclebob/dependency-checker) for Clojure.
-archview is the same idea for Python and TypeScript.
+archview is based on the same idea.
 
 ## Quick start
 
