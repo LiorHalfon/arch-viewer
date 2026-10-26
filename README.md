@@ -22,7 +22,9 @@ code is partitioned and which way dependencies run. That decision goes in a file
 fast, deterministic checker keeps the agents inside it. He built
 [arch-view](https://github.com/unclebob/arch-view) and
 [dependency-checker](https://github.com/unclebob/dependency-checker) for Clojure.
-archview is based on the same idea.
+archview is based on the same idea. Its checks and metrics come from the component
+principles in Bob's book Clean Architecture: no cycles between components, dependencies
+that point toward the stable parts, and stable parts that are abstract.
 
 ## Quick start
 
@@ -104,14 +106,21 @@ instead of guessing: `archview why A B`, `archview deps X`, `archview rdeps X`,
 
 ## Python, TypeScript and monorepos
 
-archview reads Python with [grimp](https://github.com/seddonym/grimp) and an `ast`
-pass, and TypeScript with the repo's own compiler. Both land in the same model, so the
-viewer and the rules work the same way for each. A monorepo can check several packages
+archview reads Python and TypeScript today: Python with
+[grimp](https://github.com/seddonym/grimp) and an `ast` pass, TypeScript with the repo's
+own compiler. Both land in the same language-agnostic model, so the viewer and the rules
+work the same way for each, and another language needs a new extractor, not a new tool. A monorepo can check several packages
 as one architecture, each with its own rules file and a declared public surface
 ([workspace mode](docs/06-using-archview-in-a-repo.md#workspace-mode)).
 
 archview never runs your code and never touches the network. The one exception is
 TypeScript, where it runs the repo's installed `typescript` package to resolve imports.
+
+## What's next
+
+Comments on the architecture, in the viewer: click a component or a dependency, write
+down a decision or a problem, and have it reach the agent directly, for example through
+an MCP server.
 
 ## Docs
 
@@ -122,9 +131,9 @@ TypeScript, where it runs the repo's installed `typescript` package to resolve i
 
 ## Credits
 
-The idea and the metrics come from Uncle Bob's
-[arch-view](https://github.com/unclebob/arch-view) and
-[dependency-checker](https://github.com/unclebob/dependency-checker). Imports come from
+The idea comes from Uncle Bob's [arch-view](https://github.com/unclebob/arch-view) and
+[dependency-checker](https://github.com/unclebob/dependency-checker), and the rules and
+metrics from the component principles in his book Clean Architecture. Imports come from
 [grimp](https://github.com/seddonym/grimp), and Graphviz lays out every view through
 [viz-js](https://github.com/mdaines/viz-js). archview checks its own architecture in
 CI, with its own `archview.toml`.
