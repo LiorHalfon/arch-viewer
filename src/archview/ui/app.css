@@ -387,6 +387,8 @@ button.icon:hover { border-color: var(--accent); }
 .close { border: none; font-size: 20px; line-height: 1; padding: 0 4px; background: transparent; }
 .panel-body { overflow: auto; padding: 12px 14px; min-height: 0; }
 .panel-body.code { padding: 0; }
+/* The static snapshot's note (ADR 0022): its commands wrap rather than scroll sideways. */
+.panel-body.about pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0 0 12px; font-size: 13px; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }

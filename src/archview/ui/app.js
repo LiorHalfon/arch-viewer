@@ -1203,7 +1203,7 @@ async function loadSnapshot() {
 }
 
 function openAbout() {
-  openPanel("About this demo", state.snapshot.about);
+  openPanel("<h2>About this demo</h2>", state.snapshot.about).classList.add("about");
   state.aboutOpen = true;
 }
 
@@ -1299,9 +1299,10 @@ async function start() {
     $("about").hidden = !state.snapshot.about;
   }
   if (state.project.watching) poll();
-  const place = placeFromHash();
-  await show(place.root, place.package);
+  // The note opens before the first view, so that view is fitted beside it.
   if (state.snapshot?.about) openAbout();
+  const place = placeFromHash();
+  show(place.root, place.package);
 }
 
 start();
