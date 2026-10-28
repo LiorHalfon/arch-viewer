@@ -6,11 +6,16 @@ static site: the public demo on GitHub Pages is the pizzeria built this way.
 
 from __future__ import annotations
 
+import json
+import shutil
 from contextlib import suppress
+from pathlib import Path
 from typing import Any
 
+from archview.server.app import UI
 from archview.server.state import NotFound, ViewerState
 
+META = '<meta name="archview-snapshot" content="snapshot.json">'
 SETTINGS = [(False, False), (True, False), (False, True), (True, True)]  # externals, hide_tests
 
 
@@ -54,3 +59,17 @@ def answers(state: ViewerState) -> dict[str, Any]:
         if node.file:
             baked[key("source", {"module": node.id})] = state.source(node.id)
     return dict(sorted(baked.items()))
+
+
+def write_site(state: ViewerState, out: Path, about: str | None = None) -> None:
+    """The viewer as a static site in `out`, which must not exist yet: the page, with
+    the tag that puts app.js in snapshot mode, the UI beside it, and `snapshot.json`
+    holding the answers and `about`, the note the viewer opens in its side panel."""
+    out.mkdir(parents=True)
+    shutil.copytree(UI, out / "ui", ignore=shutil.ignore_patterns("index.html"))
+    page = (UI / "index.html").read_text()
+    if "</head>" not in page:
+        raise ValueError("the viewer's index.html has no </head>")
+    (out / "index.html").write_text(page.replace("</head>", f"  {META}\n</head>", 1))
+    snapshot = {"about": about, "answers": answers(state)}
+    (out / "snapshot.json").write_text(json.dumps(snapshot, separators=(",", ":")))

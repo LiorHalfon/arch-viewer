@@ -1,12 +1,14 @@
 """The viewer as a static site (V21, ADR 0022): every answer the UI can ask one project for."""
 
+import json
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from archview.server.app import create_app
-from archview.server.snapshot import answers, key
+from archview.server.snapshot import answers, key, write_site
 from archview.server.state import ViewerState
 
 REPO = Path(__file__).parent.parent
@@ -87,3 +89,30 @@ def test_an_answer_is_what_the_server_sends(state, baked):
 def test_a_workspace_is_not_baked():
     with pytest.raises(ValueError, match="workspace"):
         answers(ViewerState(REPO / "tests" / "fixtures" / "workspace"))
+
+
+def test_writes_the_page_the_ui_and_the_snapshot(state, tmp_path):
+    out = tmp_path / "site"
+    write_site(state, out, about="<p>hello</p>")
+
+    page = (out / "index.html").read_text()
+    assert '<meta name="archview-snapshot" content="snapshot.json">' in page
+    assert '"/ui/' not in page and "'/ui/" not in page
+    assert (out / "ui" / "app.js").is_file()
+    assert (out / "ui" / "vendor" / "viz-global.js").is_file()
+    snapshot = json.loads((out / "snapshot.json").read_text())
+    assert snapshot["about"] == "<p>hello</p>"
+    assert snapshot["answers"]["project"]["project"] == "pizzeria"
+
+
+def test_refuses_a_folder_that_already_exists(state, tmp_path):
+    with pytest.raises(FileExistsError):
+        write_site(state, tmp_path)
+
+
+def test_every_link_in_the_demo_note_opens_a_baked_view(baked):
+    note = (REPO / "scripts" / "pages" / "about.html").read_text()
+    roots = re.findall(r'href="#/([^"?]+)"', note)
+    assert roots
+    for root in roots:
+        assert key("view", {"root": root}) in baked

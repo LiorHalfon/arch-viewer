@@ -25,3 +25,6 @@ docs/superpowers/
 
 # The demo video for posting (uv run scripts/record_demo.py); the GIF is committed
 docs/images/demo.mp4
+
+# The demo site (uv run scripts/build_pages.py _site); GitHub Actions publishes it
+_site/
