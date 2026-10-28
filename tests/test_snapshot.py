@@ -2,6 +2,7 @@
 
 import json
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -84,6 +85,22 @@ def test_an_answer_is_what_the_server_sends(state, baked):
     assert baked["view?hide_tests=true&root=pizzeria.kitchen.stations"] == stations.json()
     mermaid = client.get("/api/export?format=mermaid&root=pizzeria")
     assert baked["export?format=mermaid&root=pizzeria"] == mermaid.text
+
+
+def test_leaves_out_what_the_server_refuses(tmp_path):
+    """A package that holds only tests has no tree once tests are hidden: the server
+    answers 404 there, and the bake leaves that one answer out instead of failing."""
+    shutil.copytree(REPO / "tests" / "fixtures" / "sample", tmp_path / "sample")
+    tests = tmp_path / "sample" / "tests"
+    tests.mkdir()
+    (tests / "__init__.py").write_text("")
+    (tests / "test_pricing.py").write_text("from sample.services import pricing\n")
+
+    baked = answers(ViewerState(tmp_path))
+
+    assert key("tree", {"root": "sample.tests"}) in baked
+    assert key("tree", {"root": "sample.tests", "hide_tests": "true"}) not in baked
+    assert key("view", {"root": "sample.tests", "hide_tests": "true"}) in baked
 
 
 def test_a_workspace_is_not_baked():

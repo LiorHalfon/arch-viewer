@@ -25,7 +25,9 @@ about 190 KB of JSON.
   `server/snapshot.py` asks `ViewerState`, the object `archview serve` uses, for every
   answer and writes them to `snapshot.json` beside a copy of `ui/`.
   `scripts/build_pages.py` builds the pizzeria's, and `.github/workflows/pages.yml`
-  publishes it to GitHub Pages.
+  publishes it to GitHub Pages. What the server would refuse with a 404 is left out:
+  the check without a usable rules file, or the tree of a package that holds only tests
+  once tests are hidden. So any single project bakes, tests and all.
 
 - **An answer's key is its endpoint and parameters, sorted by name and unencoded:**
   `view?hide_tests=true&root=pizzeria.kitchen`. Sorting frees the key from the order the

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from contextlib import suppress
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -36,28 +38,33 @@ def _flags(externals: bool, hide_tests: bool) -> dict[str, str]:
 def answers(state: ViewerState) -> dict[str, Any]:
     """The summary, the check, and for every package a view and both exports under
     each Hide tests and third-party setting, its tree with and without tests, and the
-    source of every file."""
+    source of every file. What the server would refuse with a 404 is left out: the
+    check without a usable rules file, the tree of a package that holds only tests
+    once tests are hidden."""
     if state.workspace is not None:
         raise ValueError("a workspace snapshot is not supported")
     nodes = state.project.model.nodes
     roots = sorted({n.parent for n in nodes if n.parent})
     baked: dict[str, Any] = {"project": state.summary()}
-    with suppress(NotFound):  # no rules file: the UI hides the Rules button and never asks
-        baked["check"] = state.check()
+
+    def bake(k: str, answer: Callable[[], Any]) -> None:
+        with suppress(NotFound):
+            baked[k] = answer()
+
+    bake("check", state.check)
     for root in roots:
         for externals, hide_tests in SETTINGS:
             q = {"root": root, **_flags(externals, hide_tests)}
-            baked[key("view", q)] = state.view(root, externals, hide_tests)
+            bake(key("view", q), partial(state.view, root, externals, hide_tests))
             for fmt in ("dot", "mermaid"):
-                baked[key("export", {**q, "format": fmt})] = state.export(
-                    root, fmt, externals, hide_tests
-                )
+                export = partial(state.export, root, fmt, externals, hide_tests)
+                bake(key("export", {**q, "format": fmt}), export)
         for hide_tests in (False, True):
             q = {"root": root, **_flags(False, hide_tests)}
-            baked[key("tree", q)] = state.tree(root, hide_tests)
+            bake(key("tree", q), partial(state.tree, root, hide_tests))
     for node in nodes:
         if node.file:
-            baked[key("source", {"module": node.id})] = state.source(node.id)
+            bake(key("source", {"module": node.id}), partial(state.source, node.id))
     return dict(sorted(baked.items()))
 
 
