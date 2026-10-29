@@ -463,7 +463,7 @@ table.metrics tbody tr:hover { background: var(--focus); }
   .stats { display: none; }
   /* One header row (V22): the crumbs' first link goes to the top too, and when they
      do not fit they show their end, where you are. */
-  .bar { gap: 8px; padding: 8px 10px; }
+  header.bar { gap: 8px; padding: 8px 10px; }
   .brand { display: none; }
   .crumbs { justify-content: flex-end; }
   .tools { margin-left: auto; }
