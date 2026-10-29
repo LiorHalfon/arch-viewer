@@ -8,6 +8,7 @@ import { enableDrag, layoutKey, loadMoved, saveMoved } from "./drag.js";
 import { drawSvg, edgeGeometry } from "./draw.js";
 import { flatten } from "./find.js";
 import { bounds, clusterFrames, edgeKey, layoutView, routesAfterMove, straightRoute } from "./layout.js";
+import { enableFold, NARROW, narrowStart } from "./narrow.js";
 import { enableResize, PANEL_DEFAULT, panelWidth } from "./resize.js";
 import { answerFrom } from "./snapshot.js";
 import { createFinder, hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
@@ -37,6 +38,7 @@ const state = {
   snapshot: null,       // {about, answers} when the page is a static snapshot (ADR 0022)
   aboutOpen: false,     // the snapshot's note is in the panel
   options: { tests: false, externals: false, colour: "role", legend: true, tree: true, panel: PANEL_DEFAULT },
+  held: {},             // saved options a narrow start overrode, kept until changed here (V22)
   palette: null,        // the theme's colour tokens, read from app.css, for label ink
 };
 
@@ -102,7 +104,8 @@ function paletteFromCss() {
 }
 
 function saveOptions() {
-  try { localStorage.setItem("archview.options", JSON.stringify(state.options)); } catch { /* storage unavailable */ }
+  const options = { ...state.options, ...state.held };
+  try { localStorage.setItem("archview.options", JSON.stringify(options)); } catch { /* storage unavailable */ }
 }
 
 function applyOptions() {
@@ -695,6 +698,7 @@ function renderTree(tree) {
 
 function toggleTree() {
   state.options.tree = !state.options.tree;
+  delete state.held.tree;
   saveOptions();
   applyOptions();
   drawTree();
@@ -1185,7 +1189,8 @@ function rulesButton() {
   const prefix = scoped ? "Workspace rules" : "Rules";
   button.hidden = !p.rules;
   button.classList.toggle("bad", p.failing > 0 || !!p.rules_error);
-  button.textContent = p.rules_error ? `${prefix} ⚠` : p.failing ? `${prefix}: ${p.failing} failing` : `${prefix} ✓`;
+  // On a phone's width the count alone says it, so the crumbs keep their room (V22).
+  button.innerHTML = p.rules_error ? `${prefix} ⚠` : p.failing ? `<span class="wide-only">${prefix}: </span>${p.failing} failing` : `${prefix} ✓`;
   const base = p.rules_error || `archview check against ${p.rules}`;
   button.title = scoped ? `${base} - counts every package in the workspace, not just this one` : base;
 }
@@ -1205,6 +1210,7 @@ async function loadSnapshot() {
 function openAbout() {
   openPanel("<h2>About this demo</h2>", state.snapshot.about).classList.add("about");
   state.aboutOpen = true;
+  $("about").classList.remove("hint");
 }
 
 // ---------- wiring ----------
@@ -1223,6 +1229,7 @@ function bind() {
   $("zoom-fit").onclick = () => setZoom(fitZoom());
   $("stage").addEventListener("wheel", zoomAtPointer, { passive: false });
   enablePan($("stage"));
+  enableFold($("fold"), $("more"), matchMedia(NARROW));
   $("reset-layout").onclick = resetLayout;
   $("reanalyze").onclick = reanalyze;
   $("about").onclick = openAbout;
@@ -1239,6 +1246,7 @@ function bind() {
   const option = (id, key, redraw) => {
     $(id).onchange = () => {
       state.options[key] = $(id).checked;
+      delete state.held[key];
       saveOptions();
       applyOptions();
       if (redraw) show(state.root, state.package, { refit: true });
@@ -1277,6 +1285,9 @@ function bind() {
 
 async function start() {
   loadOptions();
+  // On a phone's width the diagram comes first: no drawer, no legend, no note (V22).
+  const narrow = matchMedia(NARROW).matches;
+  if (narrow) ({ options: state.options, held: state.held } = narrowStart(state.options));
   applyOptions();
   bind();
   state.palette = paletteFromCss();
@@ -1297,10 +1308,11 @@ async function start() {
   if (state.snapshot) {
     $("reanalyze").hidden = true;
     $("about").hidden = !state.snapshot.about;
+    $("about").classList.add("hint");
   }
   if (state.project.watching) poll();
   // The note opens before the first view, so that view is fitted beside it.
-  if (state.snapshot?.about) openAbout();
+  if (state.snapshot?.about && !narrow) openAbout();
   const place = placeFromHash();
   show(place.root, place.package);
 }
