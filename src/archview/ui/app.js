@@ -9,6 +9,7 @@ import { drawSvg, edgeGeometry } from "./draw.js";
 import { flatten } from "./find.js";
 import { bounds, clusterFrames, edgeKey, layoutView, routesAfterMove, straightRoute } from "./layout.js";
 import { enableResize, PANEL_DEFAULT, panelWidth } from "./resize.js";
+import { answerFrom } from "./snapshot.js";
 import { createFinder, hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
 import { enablePan, keepUnder, wheelFactor } from "./zoom.js";
 
@@ -33,6 +34,8 @@ const state = {
   trees: new Map(),     // "package|root|tests" -> tree payload
   expanded: new Set(),  // package ids opened in place in the file drawer
   source: null,         // module whose source is in the panel
+  snapshot: null,       // {about, answers} when the page is a static snapshot (ADR 0022)
+  aboutOpen: false,     // the snapshot's note is in the panel
   options: { tests: false, externals: false, colour: "role", legend: true, tree: true, panel: PANEL_DEFAULT },
   palette: null,        // the theme's colour tokens, read from app.css, for label ink
 };
@@ -65,6 +68,7 @@ const grammarOf = (file) => {
 };
 
 async function api(path, options) {
+  if (state.snapshot) return answerFrom(state.snapshot.answers, path);
   const response = await fetch(path, options);
   if (!response.ok) {
     let detail = response.statusText;
@@ -177,9 +181,10 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   crumbs(root);
   stats(view);
   rulesButton();
-  // The metrics panel stays open across navigation and redraws for the new view.
+  // The metrics panel stays open across navigation and redraws for the new view; the
+  // snapshot's note stays too, so its links can show what it talks about.
   const metricsOpen = !!state.metricsPanel;
-  if (!keepPanel && !metricsOpen) closePanel();
+  if (!keepPanel && !metricsOpen && !state.aboutOpen) closePanel();
   layOut(view);
   draw(view);
   resetButton();
@@ -741,6 +746,7 @@ function zoomAtPointer(e) {
 function openPanel(titleHtml, bodyHtml, code = false) {
   if (!code && state.source) { state.source = null; drawTree(); }
   state.metricsPanel = null;  // any panel replaces the metrics panel; openMetricsPanel sets it again
+  state.aboutOpen = false;    // and the snapshot's note; openAbout sets it again
   $("main").classList.add("with-panel");
   $("panel").hidden = false;
   $("panel-title").innerHTML = titleHtml;
@@ -753,6 +759,7 @@ function openPanel(titleHtml, bodyHtml, code = false) {
 
 function closePanel() {
   state.metricsPanel = null;
+  state.aboutOpen = false;
   $("main").classList.remove("with-panel");
   $("panel").hidden = true;
   if (state.source) { state.source = null; drawTree(); }
@@ -1147,6 +1154,7 @@ async function refresh(summary, message) {
 }
 
 async function reanalyze() {
+  if (state.snapshot) return;  // a snapshot has no source to read again
   const button = $("reanalyze");
   button.disabled = true;
   try {
@@ -1182,6 +1190,23 @@ function rulesButton() {
   button.title = scoped ? `${base} - counts every package in the workspace, not just this one` : base;
 }
 
+// ---------- static snapshot (V21, ADR 0022) ----------
+
+// A page built by server/snapshot.py names its snapshot in a meta tag; the live server's
+// page has none, so this is null there.
+async function loadSnapshot() {
+  const meta = document.querySelector('meta[name="archview-snapshot"]');
+  if (!meta) return null;
+  const response = await fetch(meta.content);
+  if (!response.ok) throw new Error(`${meta.content}: ${response.statusText}`);
+  return response.json();
+}
+
+function openAbout() {
+  openPanel("<h2>About this demo</h2>", state.snapshot.about).classList.add("about");
+  state.aboutOpen = true;
+}
+
 // ---------- wiring ----------
 
 function bind() {
@@ -1200,6 +1225,7 @@ function bind() {
   enablePan($("stage"));
   $("reset-layout").onclick = resetLayout;
   $("reanalyze").onclick = reanalyze;
+  $("about").onclick = openAbout;
   $("rules").onclick = openRules;
   $("metrics-table").onclick = openMetricsTable;
   $("panel-close").onclick = closePanel;
@@ -1260,6 +1286,7 @@ async function start() {
     redraw();
   });
   try {
+    state.snapshot = await loadSnapshot();
     [state.viz, state.project] = await Promise.all([Viz.instance(), api("/api/project")]);
   } catch (error) {
     $("graph").innerHTML = `<p class="hint">Could not start: ${esc(error.message)}</p>`;
@@ -1267,7 +1294,13 @@ async function start() {
   }
   state.isWorkspace = !!state.project.workspace;
   rulesButton();
+  if (state.snapshot) {
+    $("reanalyze").hidden = true;
+    $("about").hidden = !state.snapshot.about;
+  }
   if (state.project.watching) poll();
+  // The note opens before the first view, so that view is fitted beside it.
+  if (state.snapshot?.about) openAbout();
   const place = placeFromHash();
   show(place.root, place.package);
 }

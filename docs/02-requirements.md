@@ -78,6 +78,7 @@ Both read the *actual* imports from the source. Guidance never overrides reality
 | V18 | A line's width grows with its import count; while a box is focused, what it imports is blue and what imports it violet (cycle and rule-break lines keep their colours); a hover card shows a box's import counts, metrics and zone. | V2 | ADR 0017 |
 | V19 | Quick find: `/` searches every package and module of the project (every member's at a workspace's top level), following Hide tests, and opens the level that draws the match and flashes it. | V2 | ADR 0017 |
 | V20 | The mouse wheel and a trackpad pinch zoom around the pointer; dragging the diagram's background pans it. | V2 | LH |
+| V21 | The viewer runs from a static snapshot: every answer the UI can ask one project for, baked into JSON beside a copy of the UI, with an optional note in the side panel. The public demo is the pizzeria, built this way on every push to `main` and published to GitHub Pages. | V2 | LH; ADR 0022 |
 
 ## 6. Functional requirements — checker
 

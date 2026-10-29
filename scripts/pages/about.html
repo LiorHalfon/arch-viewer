@@ -1,0 +1,14 @@
+<p>This is <a href="https://github.com/LiorHalfon/arch-viewer" target="_blank" rel="noopener">archview</a> on
+<code>examples/pizzeria</code>, a small pizza shop with two planted problems. Click a box
+to go inside it, a module to read its code, a line to see the imports behind it.</p>
+<p>Both problems are in <a href="#/pizzeria.kitchen.stations">the kitchen's stations</a>:</p>
+<ul>
+  <li><strong>A cycle.</strong> <code>toppings</code> asks the <code>oven</code> how hot it
+  is, and the <code>oven</code> takes pizzas from <code>toppings</code>.</li>
+  <li><strong>A broken rule.</strong> The stations' rules say <code>boxing</code> takes
+  pizzas from the <code>oven</code> only, but <code>boxing</code> imports
+  <code>dough</code> to patch a torn base.</li>
+</ul>
+<p>On your own code:</p>
+<pre><code>uv tool install git+https://github.com/LiorHalfon/arch-viewer@latest
+cd your-repo &amp;&amp; archview .</code></pre>

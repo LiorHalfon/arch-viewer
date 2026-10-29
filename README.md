@@ -8,6 +8,9 @@ line. It holds an agent on its fortieth edit to the same rules as you on your fi
 
 ![The viewer on examples/pizzeria: from the top-level packages into the kitchen, then into its assembly line, where a cycle and a broken rule show up, down to the line of code that breaks the rule](docs/images/demo.gif)
 
+[Try it in your browser](https://liorhalfon.github.io/arch-viewer/): the same demo, live,
+with nothing to install.
+
 ## Why
 
 Agents write most of the code now. They are fast, and they don't care which way a
@@ -45,6 +48,9 @@ The demo from the GIF is in this repo:
 git clone https://github.com/LiorHalfon/arch-viewer && cd arch-viewer
 archview examples/pizzeria
 ```
+
+Or open it [in the browser](https://liorhalfon.github.io/arch-viewer/#/pizzeria.kitchen.stations)
+at the kitchen's stations, where the cycle and the broken rule are.
 
 ## Hold agents to it
 

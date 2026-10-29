@@ -21,7 +21,8 @@ a declared dependency structure.
 - `workspace.py` checks and draws several packages as one architecture, each with its
   public surface (ADRs 0012, 0013).
 - `server/` and `ui/` are the viewer. The UI draws its own SVG from Graphviz's layout,
-  with colour schemes, dragging and quick find (ADRs 0007, 0017).
+  with colour schemes, dragging and quick find (ADRs 0007, 0017). `server/snapshot.py`
+  bakes it into the static site of the public demo (ADR 0022).
 - `render/` writes DOT, Mermaid and the check report.
 - `cli.py` has `graph`, `check`, `init`, `metrics`, `serve`, `why`, `deps`, `rdeps` and
   `cycles`. Every command reads components the way `check` does (ADR 0019).
@@ -92,6 +93,7 @@ uv run pytest && uv run ruff check
 node --test "tests/ui/*.test.mjs"                 # the viewer's JS modules alone (pytest runs them too)
 UPDATE_GOLDEN=1 uv run pytest                      # accept new golden files, then read the diff
 uv run scripts/record_demo.py                      # re-record docs/images/demo.gif from the pizzeria
+uv run scripts/build_pages.py _site                # the public demo as a static site (ADR 0022)
 ```
 
 Releasing: bump `version` in `pyproject.toml`, commit, wait for CI, then
