@@ -467,7 +467,9 @@ table.metrics tbody tr:hover { background: var(--focus); }
   .brand { display: none; }
   .crumbs { justify-content: flex-end; }
   .tools { margin-left: auto; }
-  .tools > .sep, .wide-only { display: none; }
+  /* .tools > .fold: the controls wait out of sight until narrow.js has moved them
+     into ⋯, so a slow phone never paints the wide toolbar. */
+  .tools > .sep, .tools > .fold, .wide-only { display: none; }
   .tools > button, #more > summary { white-space: nowrap; padding: 3px 7px; }
   main { position: relative; }
   main.with-panel, main.with-tree, main.with-tree.with-panel { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
