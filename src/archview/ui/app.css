@@ -94,8 +94,8 @@ button:hover { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; border-color: var(--border); }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* header */
-.bar {
+/* header (scoped: the hover card's metric bars are .bar too) */
+header.bar {
   display: flex;
   align-items: center;
   gap: 14px;
