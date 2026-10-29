@@ -18,43 +18,50 @@
     <div class="tools">
       <button id="up" title="Up one level (u)" aria-label="Up one level">&uarr;</button>
       <span class="sep"></span>
-      <button id="zoom-out" title="Zoom out (- or the wheel; drag the background to pan)" aria-label="Zoom out">&minus;</button>
-      <button id="zoom-fit" title="Fit to window (0)">Fit</button>
-      <button id="zoom-in" title="Zoom in (+ or the wheel; drag the background to pan)" aria-label="Zoom in">+</button>
-      <button id="reset-layout" title="Put back the Graphviz layout for this view" disabled>Reset layout</button>
-      <span class="sep"></span>
-      <button id="find" title="Find a package or module (/)">Find</button>
-      <span class="sep"></span>
-      <details class="menu" id="view-menu">
-        <summary title="Filters and colouring">View</summary>
-        <div class="menu-body">
-          <label><input type="checkbox" id="opt-tests"> Hide tests</label>
-          <label><input type="checkbox" id="opt-externals"> Show third-party packages</label>
-          <label><input type="checkbox" id="opt-legend" checked> Legend</label>
-          <hr>
-          <div class="menu-group" role="radiogroup" aria-label="Colour by">
-            <span class="menu-label">Colour by</span>
-            <label><input type="radio" name="colour" value="role"> Role</label>
-            <label><input type="radio" name="colour" value="instability"> Instability</label>
-            <label><input type="radio" name="colour" value="zone"> Zone</label>
-            <label><input type="radio" name="colour" value="none"> None</label>
+      <!-- On a phone's width these move into the ⋯ menu below (narrow.js) -->
+      <div class="fold" id="fold">
+        <button id="zoom-out" title="Zoom out (- or the wheel; drag the background to pan)" aria-label="Zoom out">&minus;</button>
+        <button id="zoom-fit" title="Fit to window (0)">Fit</button>
+        <button id="zoom-in" title="Zoom in (+ or the wheel; drag the background to pan)" aria-label="Zoom in">+</button>
+        <button id="reset-layout" title="Put back the Graphviz layout for this view" disabled>Reset layout</button>
+        <span class="sep"></span>
+        <button id="find" title="Find a package or module (/)">Find</button>
+        <span class="sep"></span>
+        <details class="menu" id="view-menu">
+          <summary title="Filters and colouring">View</summary>
+          <div class="menu-body">
+            <label><input type="checkbox" id="opt-tests"> Hide tests</label>
+            <label><input type="checkbox" id="opt-externals"> Show third-party packages</label>
+            <label><input type="checkbox" id="opt-legend" checked> Legend</label>
+            <hr>
+            <div class="menu-group" role="radiogroup" aria-label="Colour by">
+              <span class="menu-label">Colour by</span>
+              <label><input type="radio" name="colour" value="role"> Role</label>
+              <label><input type="radio" name="colour" value="instability"> Instability</label>
+              <label><input type="radio" name="colour" value="zone"> Zone</label>
+              <label><input type="radio" name="colour" value="none"> None</label>
+            </div>
+            <hr>
+            <button id="metrics-table" class="menu-item">Metrics table&hellip;</button>
           </div>
-          <hr>
-          <button id="metrics-table" class="menu-item">Metrics table&hellip;</button>
-        </div>
-      </details>
-      <details class="menu" id="export-menu">
-        <summary title="Export this view">Export</summary>
-        <div class="menu-body">
-          <button class="menu-item" data-export="svg">SVG image</button>
-          <button class="menu-item" data-export="png">PNG image</button>
-          <button class="menu-item" data-export="mermaid">Mermaid (copy)</button>
-          <button class="menu-item" data-export="dot">Graphviz DOT (copy)</button>
-        </div>
-      </details>
+        </details>
+        <details class="menu" id="export-menu">
+          <summary title="Export this view">Export</summary>
+          <div class="menu-body">
+            <button class="menu-item" data-export="svg">SVG image</button>
+            <button class="menu-item" data-export="png">PNG image</button>
+            <button class="menu-item" data-export="mermaid">Mermaid (copy)</button>
+            <button class="menu-item" data-export="dot">Graphviz DOT (copy)</button>
+          </div>
+        </details>
+      </div>
       <button id="rules" title="Rule problems from archview check" hidden>Rules</button>
       <button id="reanalyze" title="Re-read the source and the rules (r)">Reanalyze</button>
       <button id="about" title="What this demo shows" hidden>About</button>
+      <details class="menu" id="more" hidden>
+        <summary title="Zoom, find, view and export" aria-label="More">&#x22EF;</summary>
+        <div class="menu-body" id="more-body"></div>
+      </details>
     </div>
   </header>
 

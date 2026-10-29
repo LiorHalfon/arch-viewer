@@ -115,6 +115,18 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .stats .warn { color: var(--warn); font-weight: 600; }
 .tools { display: flex; align-items: center; gap: 4px; }
 .tools .sep { width: 8px; }
+/* The secondary controls. On a phone's width narrow.js moves them into the ⋯ menu,
+   where a separator starts a new row and View and Export open in place. */
+.fold { display: contents; }
+#more > summary::after { content: none; }
+#more > .menu-body { min-width: 240px; max-height: calc(100dvh - 64px); overflow: auto; }
+#more .fold { display: flex; flex-wrap: wrap; gap: 4px; }
+#more .fold .sep { flex-basis: 100%; width: auto; height: 0; }
+#more .fold .menu { flex-basis: 100%; }
+#more .fold .menu summary { border-color: transparent; padding: 4px 6px; }
+#more .fold .menu-body { position: static; border: none; box-shadow: none; min-width: 0; padding: 0 0 4px 10px; }
+/* The demo's note waits behind About on a phone: the button stands out until opened. */
+#about.hint { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 
 /* layout */
 main {
@@ -449,6 +461,14 @@ table.metrics tbody tr:hover { background: var(--focus); }
 
 @media (max-width: 760px) {
   .stats { display: none; }
+  /* One header row (V22): the crumbs' first link goes to the top too, and when they
+     do not fit they show their end, where you are. */
+  .bar { gap: 8px; padding: 8px 10px; }
+  .brand { display: none; }
+  .crumbs { justify-content: flex-end; }
+  .tools { margin-left: auto; }
+  .tools > .sep, .wide-only { display: none; }
+  .tools > button, #more > summary { white-space: nowrap; padding: 3px 7px; }
   main { position: relative; }
   main.with-panel, main.with-tree, main.with-tree.with-panel { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
   main.with-tree:not(.with-panel) { grid-template-rows: 1fr; }
