@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { enablePan, keepUnder, wheelFactor } from "../../src/archview/ui/zoom.js";
+import { enablePan, KEEP, keepOneBox, panRoom, wheelFactor, zoomAround } from "../../src/archview/ui/zoom.js";
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-3, `${actual} is not ${expected}`);
 
@@ -25,10 +25,64 @@ test("one wheel event never zooms by more than half", () => {
 });
 
 test("the point under the pointer stays under it", () => {
-  const before = { left: 100, top: 50, width: 200, height: 100 };
-  const after = { left: 100, top: 50, width: 400, height: 200 };
-  assert.deepEqual(keepUnder(before, after, { x: 200, y: 100 }), { x: 100, y: 50 });
-  assert.deepEqual(keepUnder(before, after, { x: 100, y: 50 }), { x: 0, y: 0 });
+  // the drawing's corner at (100, 50), doubled around (200, 100): that point stays
+  assert.deepEqual(zoomAround({ x: 100, y: 50 }, { x: 200, y: 100 }, 2), { x: 0, y: 0 });
+  assert.deepEqual(zoomAround({ x: 100, y: 50 }, { x: 100, y: 50 }, 2), { x: 100, y: 50 });
+});
+
+// A 400 x 300 drawing on an 800 x 600 stage: one box at the top right, one at the
+// bottom left.
+const stage = { w: 800, h: 600 };
+const size = { w: 400, h: 300 };
+const topRight = { left: 300, top: 0, right: 400, bottom: 40 };
+const bottomLeft = { left: 0, top: 260, right: 100, bottom: 300 };
+
+test("the drawing pans until its last box is whole against the far edge", () => {
+  const room = panRoom([topRight, bottomLeft], size, stage);
+  // panned right: the bottom-left box ends KEEP short of the stage's right edge
+  assert.equal(room.left + bottomLeft.right, stage.w - KEEP);
+  // panned left: the top-right box starts KEEP into the stage
+  assert.equal(room.left + size.w + room.right - stage.w, room.left + topRight.left - KEEP);
+  // panned down: the top-right box ends KEEP short of the bottom
+  assert.equal(room.top + topRight.bottom, stage.h - KEEP);
+  // panned up: the bottom-left box starts KEEP into the stage
+  assert.equal(room.top + size.h + room.bottom - stage.h, room.top + bottomLeft.top - KEEP);
+});
+
+test("one box can go to any corner of the stage", () => {
+  const room = panRoom([topRight], size, stage);
+  // bottom left: scrolled to the far left and the far bottom
+  const scroll = { x: room.left + size.w + room.right - stage.w, y: 0 };
+  assert.equal(room.left + topRight.left - scroll.x, KEEP);
+  assert.equal(room.top + topRight.bottom - scroll.y, stage.h - KEEP);
+});
+
+test("the drawing stays where it is while a box is whole on the stage", () => {
+  const at = { x: 200, y: 150 };
+  assert.equal(keepOneBox(at, [topRight, bottomLeft], stage), at);
+});
+
+test("a corner with no whole box on it goes back to the nearest one that has one", () => {
+  // far left and down: the top-right box is cut by the left edge, the bottom-left
+  // one is below the stage
+  const at = { x: -340, y: 560 };
+  assert.deepEqual(keepOneBox(at, [topRight, bottomLeft], stage), { x: KEEP - topRight.left, y: stage.h - KEEP - topRight.bottom });
+});
+
+test("a box bigger than the stage counts while it covers it", () => {
+  const huge = { left: 0, top: 0, right: 2000, bottom: 2000 };
+  const at = { x: -500, y: -500 };
+  assert.equal(keepOneBox(at, [huge], stage), at);
+  assert.deepEqual(keepOneBox({ x: 100, y: -500 }, [huge], stage), { x: KEEP, y: -500 });
+});
+
+test("a drawing bigger than the stage still gets a little room", () => {
+  const room = panRoom([{ left: 0, top: 0, right: 2000, bottom: 2000 }], { w: 2000, h: 2000 }, stage);
+  assert.deepEqual(room, { left: 24, right: 24, top: 24, bottom: 24 });
+});
+
+test("nothing drawn, a little room", () => {
+  assert.deepEqual(panRoom([], size, stage), { left: 24, right: 24, top: 24, bottom: 24 });
 });
 
 // Just enough of the stage for enablePan: listeners, scroll offsets and a class list.

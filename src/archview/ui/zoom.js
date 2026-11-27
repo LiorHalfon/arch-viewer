@@ -15,13 +15,48 @@ export function wheelFactor({ deltaY, deltaMode, ctrlKey }) {
   return Math.min(1.5, Math.max(1 / 1.5, factor));
 }
 
-// The scroll that puts the point under the pointer back under it, given the
-// drawing's screen rectangle before and after it was resized.
-export function keepUnder(before, after, pointer) {
-  const fx = (pointer.x - before.left) / before.width;
-  const fy = (pointer.y - before.top) / before.height;
-  return { x: after.left + fx * after.width - pointer.x, y: after.top + fy * after.height - pointer.y };
+// Where the drawing's top-left corner goes, in the stage's own pixels, when it is
+// scaled by `ratio` around `anchor` and the point under the anchor stays put.
+export function zoomAround(at, anchor, ratio) {
+  return { x: anchor.x - (anchor.x - at.x) * ratio, y: anchor.y - (anchor.y - at.y) * ratio };
 }
+
+export const KEEP = 16;  // how far from the stage's edge the last box on it stops
+const EDGE = 24;         // the room left around a drawing that has none to spare
+
+// The room around the drawing that lets it pan until one box is left on the stage:
+// the box nearest an edge, whole, KEEP pixels from the opposite edge. `boxes` are the
+// boxes' rectangles in pixels from the drawing's top-left corner; `size` is the
+// drawing's and `stage` the stage's, in pixels.
+export function panRoom(boxes, size, stage) {
+  if (!boxes.length) return { left: EDGE, right: EDGE, top: EDGE, bottom: EDGE };
+  const most = (key, pick) => pick(...boxes.map((b) => b[key]));
+  const room = (v) => Math.max(EDGE, v);
+  return {
+    left: room(stage.w - KEEP - most("right", Math.min)),
+    right: room(stage.w - KEEP - (size.w - most("left", Math.max))),
+    top: room(stage.h - KEEP - most("bottom", Math.min)),
+    bottom: room(stage.h - KEEP - (size.h - most("top", Math.max))),
+  };
+}
+
+// The nearest place for the drawing's top-left corner that leaves at least one box
+// whole on the stage, KEEP pixels in from its edges. panRoom gives the scroll range
+// around all of them; this keeps a corner of that range from showing none of them.
+// A box bigger than the stage counts as on it while it covers the stage.
+export function keepOneBox(at, boxes, stage) {
+  let best = at, far = Infinity;
+  for (const b of boxes) {
+    const x = within(at.x, KEEP - b.left, stage.w - KEEP - b.right);
+    const y = within(at.y, KEEP - b.top, stage.h - KEEP - b.bottom);
+    const d = Math.hypot(x - at.x, y - at.y);
+    if (d === 0) return at;
+    if (d < far) [best, far] = [{ x, y }, d];
+  }
+  return best;
+}
+
+const within = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
 
 // A press on the background that moves past the drag threshold scrolls the stage
 // with the pointer; one that does not stays a click. Boxes keep their own dragging.

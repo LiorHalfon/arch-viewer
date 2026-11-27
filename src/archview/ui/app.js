@@ -12,7 +12,7 @@ import { enableFold, NARROW, narrowStart } from "./narrow.js";
 import { enableResize, PANEL_DEFAULT, panelWidth } from "./resize.js";
 import { answerFrom } from "./snapshot.js";
 import { createFinder, hideCard, renderLegend, renderMetricsPanel, showCard, ZONE_NAMES } from "./widgets.js";
-import { enablePan, keepUnder, wheelFactor } from "./zoom.js";
+import { enablePan, keepOneBox, panRoom, wheelFactor, zoomAround } from "./zoom.js";
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -26,9 +26,11 @@ const state = {
   moved: new Map(),     // boxes moved by hand in the current view: id -> {x, y}
   routes: {},           // the current view's edge routes (Graphviz's, or routed again after a drop)
   views: new Map(),     // "root=..&package=..&externals=..&hide_tests=.." -> view payload
-  places: new Map(),    // "package|root" -> {zoom, left, top}
+  places: new Map(),    // "package|root" -> {zoom, at}: the zoom and where the drawing sat
   zoom: 1,
   natural: { w: 0, h: 0 },
+  box: null,            // the drawn svg's viewBox, in layout units
+  room: null,           // the room around the drawing on the stage, in pixels (frame)
   sticky: null,         // {ids, label} while a focus is pinned
   metricsPanel: null,   // the metrics panel's handle while it is open
   pendingFlash: null,   // a box quick find picked, flashed once its level is shown
@@ -156,7 +158,8 @@ function go(root, pkg = state.package) {
 function rememberPlace() {
   if (!state.root) return;
   const stage = $("stage");
-  state.places.set(placeKey(state.package, state.root), { zoom: state.zoom, left: stage.scrollLeft, top: stage.scrollTop });
+  if (!stage.querySelector("svg")) return;
+  state.places.set(placeKey(state.package, state.root), { zoom: state.zoom, at: drawingAt() });
 }
 
 async function loadView(root, pkg = state.package) {
@@ -196,10 +199,8 @@ async function show(root, pkg = state.package, { keepPanel = false, refit = fals
   if (metricsOpen) openMetricsPanel();
   drawTree();
   const place = state.places.get(key);
-  setZoom(place ? place.zoom : fitZoom(), false);
-  const stage = $("stage");
-  stage.scrollLeft = place ? place.left : 0;
-  stage.scrollTop = place ? place.top : 0;
+  setZoom(place ? place.zoom : fitZoom());
+  frame(place ? place.at : homeAt());
   $("up").disabled = !view.parent;
   if (state.sticky) focusOn(state.sticky.ids, state.sticky);
   if (state.pendingFlash) {
@@ -308,6 +309,7 @@ function draw(view) {
   const graph = $("graph");
   graph.innerHTML = "";
   hideCard();
+  state.box = null;
   if (!state.layout) {
     graph.innerHTML = '<p class="hint">Nothing to show at this level.</p>';
     return;
@@ -319,6 +321,7 @@ function draw(view) {
     positions: at, routes: state.routes, clusters, box, weighted: true, scheme: state.options.colour, palette: state.palette,
   });
   state.natural = { w: box.w, h: box.h };
+  state.box = box;
   const svg = graph.querySelector("svg");
   wire(svg, view);
   enableDrag(svg, { toSvgPoint: (e) => svgPoint(svg, e), onMove: previewMove, onDrop: dropBox, onCancel: redraw });
@@ -416,15 +419,14 @@ function resetButton() {
   $("reset-layout").disabled = !state.moved.size;
 }
 
-// Draw the current view again in place: same zoom, scroll and pinned focus.
+// Draw the current view again in place: same zoom, pinned focus, and every box that
+// did not move where it was, though a drop grew the drawing on its top or left.
 function redraw() {
   if (!state.view) return;
-  const stage = $("stage");
-  const { scrollLeft, scrollTop } = stage;
+  const at = drawingAt(), was = state.box;
   draw(state.view);
-  setZoom(state.zoom, false);
-  stage.scrollLeft = scrollLeft;
-  stage.scrollTop = scrollTop;
+  setZoom(state.zoom);
+  if (was && state.box) frame({ x: at.x + (state.box.x - was.x) * state.zoom, y: at.y + (state.box.y - was.y) * state.zoom });
   if (state.sticky) focusOn(state.sticky.ids, state.sticky);
 }
 
@@ -714,35 +716,82 @@ function fitZoom() {
   return Math.max(0.2, Math.min(1.5, fit));
 }
 
-function setZoom(zoom, keepCentre = true) {
+// Size the drawing for `zoom`, keeping the point under `anchor` (stage pixels, the
+// stage's middle by default) where it is.
+function setZoom(zoom, anchor) {
   const svg = $("graph").querySelector("svg");
-  if (!svg) return;
+  if (!svg) return frame();
   const stage = $("stage");
   const next = Math.max(0.1, Math.min(4, zoom));
-  const ratio = next / state.zoom;
-  const cx = stage.scrollLeft + stage.clientWidth / 2;
-  const cy = stage.scrollTop + stage.clientHeight / 2;
+  const at = zoomAround(drawingAt(), anchor || { x: stage.clientWidth / 2, y: stage.clientHeight / 2 }, next / state.zoom);
   state.zoom = next;
   svg.style.width = `${state.natural.w * next}px`;
   svg.style.height = `${state.natural.h * next}px`;
-  if (keepCentre) {
-    stage.scrollLeft = cx * ratio - stage.clientWidth / 2;
-    stage.scrollTop = cy * ratio - stage.clientHeight / 2;
+  frame(at);
+}
+
+// Where the drawing's top-left corner is, in pixels from the stage's top-left.
+function drawingAt() {
+  const stage = $("stage");
+  const room = state.room || { left: 0, top: 0 };
+  return { x: room.left - stage.scrollLeft, y: room.top - stage.scrollTop };
+}
+
+// Where a view opens and Fit puts it: centred across, near the top.
+function homeAt() {
+  const stage = $("stage");
+  const w = state.natural.w * state.zoom;
+  return { x: Math.max(24, (stage.clientWidth - w) / 2), y: 24 };
+}
+
+// The boxes' rectangles in pixels from the drawing's top-left corner.
+function boxesOnScreen() {
+  const z = state.zoom, { x, y } = state.box;
+  return Object.entries(state.layout.nodes).map(([id, size]) => {
+    const c = centre(id);
+    const left = (c.x - size.w / 2 - x) * z, top = (c.y - size.h / 2 - y) * z;
+    return { left, top, right: left + size.w * z, bottom: top + size.h * z };
+  });
+}
+
+// Give the drawing room to pan until one box is left on the stage (zoom.js), and put
+// its top-left corner at `at`; the scroll range is the limit. No drawing, no room.
+function frame(at) {
+  const stage = $("stage"), graph = $("graph");
+  if (!at || !state.box || !graph.querySelector("svg")) {
+    state.room = null;
+    graph.style.padding = "";
+    stage.scrollLeft = 0;
+    stage.scrollTop = 0;
+    return;
   }
+  const z = state.zoom, boxes = boxesOnScreen(), on = { w: stage.clientWidth, h: stage.clientHeight };
+  const room = panRoom(boxes, { w: state.natural.w * z, h: state.natural.h * z }, on);
+  state.room = room;
+  graph.style.padding = `${room.top}px ${room.right}px ${room.bottom}px ${room.left}px`;
+  const kept = keepOneBox(at, boxes, on);
+  stage.scrollLeft = room.left - kept.x;
+  stage.scrollTop = room.top - kept.y;
+}
+
+// A pan or a scroll into a corner of the room that shows no whole box comes back to
+// the nearest place that shows one.
+function keepABoxInView() {
+  if (!state.room || !state.box) return;
+  const stage = $("stage"), at = drawingAt();
+  const kept = keepOneBox(at, boxesOnScreen(), { w: stage.clientWidth, h: stage.clientHeight });
+  if (Math.abs(kept.x - at.x) < 0.5 && Math.abs(kept.y - at.y) < 0.5) return;
+  stage.scrollLeft = state.room.left - kept.x;
+  stage.scrollTop = state.room.top - kept.y;
 }
 
 // The wheel and a pinch zoom around the pointer rather than the middle of the stage.
 function zoomAtPointer(e) {
-  const svg = $("graph").querySelector("svg");
-  if (!svg) return;
+  if (!$("graph").querySelector("svg")) return;
   e.preventDefault();
   hideCard();
-  const before = svg.getBoundingClientRect();
-  setZoom(state.zoom * wheelFactor(e), false);
-  const by = keepUnder(before, svg.getBoundingClientRect(), { x: e.clientX, y: e.clientY });
-  const stage = $("stage");
-  stage.scrollLeft += by.x;
-  stage.scrollTop += by.y;
+  const stage = $("stage").getBoundingClientRect();
+  setZoom(state.zoom * wheelFactor(e), { x: e.clientX - stage.left, y: e.clientY - stage.top });
 }
 
 // ---------- panel ----------
@@ -1226,9 +1275,20 @@ function bind() {
   };
   $("zoom-in").onclick = () => setZoom(state.zoom * 1.25);
   $("zoom-out").onclick = () => setZoom(state.zoom / 1.25);
-  $("zoom-fit").onclick = () => setZoom(fitZoom());
+  $("zoom-fit").onclick = () => {
+    setZoom(fitZoom());
+    frame(homeAt());
+  };
   $("stage").addEventListener("wheel", zoomAtPointer, { passive: false });
   enablePan($("stage"));
+  $("stage").addEventListener("scroll", keepABoxInView, { passive: true });
+  // The panel, the drawer or the window changed the stage's size: the room follows.
+  let stageSize = null;
+  new ResizeObserver(() => {
+    const stage = $("stage"), size = `${stage.clientWidth}x${stage.clientHeight}`;
+    if (size !== stageSize && state.room) frame(drawingAt());
+    stageSize = size;
+  }).observe($("stage"));
   enableFold($("fold"), $("more"), matchMedia(NARROW));
   $("reset-layout").onclick = resetLayout;
   $("reanalyze").onclick = reanalyze;
